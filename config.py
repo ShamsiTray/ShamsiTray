@@ -32,19 +32,15 @@ class Config:
     # --- Logging ---
     LOG_LEVEL = 10  # logging.DEBUG
 
-    # --- API & cache ---
-    API_URL_TEMPLATE = os.environ.get(
-        "SHAMSITRAY_API_URL_TEMPLATE", 
-        "https://api.persian-calendar.ir/api/v1/calendar/{year}/holidays"
-    )
-    CACHE_FILENAME = "holidays_cache.json"
-
     # --- App meta ---
     APP_NAME = "ShamsiTray"
     COMPANY_NAME = ""
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     ICON_PATH = os.path.join(BASE_DIR, 'assets', 'icons', 'icon.ico')
     AUTO_START_SETTING_KEY = "General/OpenAtLogin"
+    
+    # --- Holidays Data Source ---
+    HOLIDAYS_FILE_PATH = os.path.join(BASE_DIR, 'assets', 'data', 'holidays.json')
 
     # --- Calendar UI ---
     FONT_SIZE_LABEL = 15
@@ -155,10 +151,13 @@ def load_fonts():
         logger.warning("No fonts were loaded from font directory.")
 
 def verify_assets():
-    """Verify that required assets (icons, fonts) exist; log error if missing."""
+    """Verify that required assets (icons, fonts, data) exist; log error if missing."""
     errors = []
+    # Check for icon
     if not os.path.exists(Config.ICON_PATH):
         errors.append(f"App icon not found: {Config.ICON_PATH}")
+    
+    # Check for fonts directory
     font_dir = os.path.join(Config.BASE_DIR, "assets", "fonts")
     if not os.path.isdir(font_dir):
         errors.append(f"Font directory not found: {font_dir}")
@@ -166,24 +165,13 @@ def verify_assets():
         fonts = [f for f in os.listdir(font_dir) if f.lower().endswith(('.ttf', '.otf'))]
         if not fonts:
             errors.append(f"No font files found in: {font_dir}")
+            
+    # Check for holidays data file
+    if not os.path.exists(Config.HOLIDAYS_FILE_PATH):
+        errors.append(f"Holidays data file not found: {Config.HOLIDAYS_FILE_PATH}")
+
     if errors:
         for err in errors:
             logger.error(err)
         return False
     return True
-
-def parse_holidays_from_api(data) -> dict:
-    """
-    Parse the 'data' list from the API and return {(month, day): description} mapping.
-    """
-    holidays_for_year = {}
-    for holiday_info in data:
-        jalali_date_str = holiday_info.get('date')
-        description = holiday_info.get('holidayDesription') or holiday_info.get('holidayDescription')
-        if jalali_date_str and description:
-            try:
-                y, m, d = map(int, jalali_date_str.split('/'))
-                holidays_for_year[(m, d)] = description
-            except Exception as e:
-                logger.warning(f"Invalid Jalali date: {jalali_date_str}, error: {e}")
-    return holidays_for_year

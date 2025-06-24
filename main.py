@@ -2,26 +2,25 @@ import sys
 import os
 import json
 import ctypes
+from ctypes import wintypes
 import datetime
 import logging
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
 
 import jdatetime
-import requests
-from appdirs import user_data_dir
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel, QPushButton, QGridLayout,
-    QSystemTrayIcon, QMenu, QFrame, QAction, QCheckBox, QWidgetAction, QMessageBox
+    QSystemTrayIcon, QMenu, QFrame, QAction, QWidgetAction, QMessageBox
 )
 from PyQt5.QtCore import (
-    Qt, QTimer, QEvent, pyqtSignal, QRectF, QSettings, QCoreApplication, QPoint, QSize, QObject, QThread
+    Qt, QTimer, QEvent, pyqtSignal, QRectF, QSettings, QCoreApplication, QPoint, QSize, QAbstractNativeEventFilter
 )
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QFont, QColor, QPainterPath, QMouseEvent
 
 from config import (
     Config, to_persian_digits, persian_month_name, persian_weekday_name,
-    safe_jdate, load_fonts, verify_assets, parse_holidays_from_api
+    safe_jdate, load_fonts, verify_assets
 )
 from dateconverter import DateConverterWindow
 
@@ -33,35 +32,6 @@ logging.basicConfig(
     level=Config.LOG_LEVEL
 )
 logger = logging.getLogger(__name__)
-
-
-# ==================== HOLIDAY FETCHER THREAD ====================
-
-class HolidayFetcher(QObject):
-    """
-    Worker class to fetch holidays in a separate thread.
-    Emits result as a dict or error message.
-    """
-    holidays_fetched = pyqtSignal(int, dict)
-    fetch_failed = pyqtSignal(int, str)
-
-    def __init__(self, year: int, api_url: str):
-        super().__init__()
-        self.year = year
-        self.api_url = api_url
-
-    def run(self):
-        url = self.api_url.format(year=self.year)
-        try:
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            json_data = response.json()
-            data = json_data.get('data', [])
-            holidays_for_year = parse_holidays_from_api(data)
-            self.holidays_fetched.emit(self.year, holidays_for_year)
-        except Exception as e:
-            logger.error(f"Failed to fetch holidays for {self.year}: {e}")
-            self.fetch_failed.emit(self.year, str(e))
 
 
 # ==================== UTILITY CLASSES ====================
@@ -99,9 +69,10 @@ class PersianCalendarWidget(QWidget):
         self.current_date = jdatetime.date.today()
         self.display_date = self.current_date
         self.day_labels = []
+        # holidays_cache now stores Dict[int, Dict[Tuple[int, int], List[str]]]
         self.holidays_cache = self.tray_icon_parent.holidays_cache
+        # self.holidays will be Dict[Tuple[int, int], List[str]] for the current year
         self.holidays = self.holidays_cache.get(self.display_date.year, {})
-        self.error_message: Optional[str] = None  # Show API/network errors
 
         self.formatted_mdy = ""
         self.formatted_month_day_year = ""
@@ -143,7 +114,7 @@ class PersianCalendarWidget(QWidget):
         self.container_layout.addStretch(1)
 
         self.inner_content_v_layout = QVBoxLayout()
-        self.inner_content_v_layout.setContentsMargins(15, 15, 15, 15)
+        self.inner_content_v_layout.setContentsMargins(15, 10, 15, 10)
         self.inner_content_v_layout.setSpacing(0)
         self.inner_content_v_layout_widget = QWidget()
         self.inner_content_v_layout_widget.setStyleSheet("QWidget {background: transparent;}")
@@ -157,12 +128,6 @@ class PersianCalendarWidget(QWidget):
         self._setup_today_gregorian()
         self._setup_weekdays_header()
         self._setup_calendar_grid()
-
-        # Error message label for holidays API/network
-        self.error_label = QLabel("")
-        self.error_label.setStyleSheet("color: red; font-weight: bold; font-size: 14px;")
-        self.error_label.setAlignment(Qt.AlignCenter)
-        self.inner_content_v_layout.addWidget(self.error_label)
 
         main_v_layout.addWidget(self.container)
 
@@ -279,8 +244,6 @@ class PersianCalendarWidget(QWidget):
             self.formatted_mdy if self.show_mdy_format else self.formatted_month_day_year
         )
 
-        self.error_label.setText(self.error_message or "")
-
         # Clear all day labels
         for row_labels in self.day_labels:
             for label in row_labels:
@@ -305,6 +268,7 @@ class PersianCalendarWidget(QWidget):
         self.year_label.setText(to_persian_digits(str(self.display_date.year)))
 
     def _update_current_holidays(self):
+        # Retrieve holidays for the displayed year
         self.holidays = self.tray_icon_parent.holidays_cache.get(self.display_date.year, {})
 
     def _fill_grid_prev_month(self):
@@ -349,7 +313,9 @@ class PersianCalendarWidget(QWidget):
                 self.display_date.year == self.current_date.year
             )
             is_friday = actual_weekday == 6
-            is_holiday = (self.display_date.month, day) in self.holidays
+            # Check if there are any holidays for this date
+            holiday_reasons = self.holidays.get((self.display_date.month, day))
+            is_holiday = bool(holiday_reasons) # True if list is not empty
             is_selected = (current_jdate == self.selected_date)
 
             style_background_color = "transparent"
@@ -364,7 +330,8 @@ class PersianCalendarWidget(QWidget):
                 style_background_color = "rgba(255, 76, 76, 0.15)"
                 style_hover_background_color = "rgba(255, 76, 76, 0.3)"
                 if is_holiday:
-                    current_tooltip = f"{self.holidays[(self.display_date.month, day)]}"
+                    # Join multiple holiday reasons with newline
+                    current_tooltip = "\n".join(holiday_reasons)
 
             if is_today:
                 style_font_size = 17
@@ -374,7 +341,10 @@ class PersianCalendarWidget(QWidget):
                 else:
                     style_border = f"1px solid {Config.HOLIDAY_COLOR}"
                 if is_holiday:
-                    current_tooltip = f"تعطیلی: {self.holidays[(self.display_date.month, self.current_date.day)]}"
+                    # Prepend "تعطیلی:" if there are holidays
+                    tooltip_prefix = "تعطیلی:\n" if holiday_reasons else ""
+                    current_tooltip = tooltip_prefix + "\n".join(holiday_reasons)
+
 
             if is_selected:
                 if is_today:
@@ -431,7 +401,7 @@ class PersianCalendarWidget(QWidget):
         else:
             self.display_date = jdatetime.date(self.display_date.year, self.display_date.month - 1, 1)
         self.selected_date = None
-        self._refresh_calendar_with_holiday_check()
+        self._fill_calendar_grid()
 
     def next_month(self):
         if self.display_date.month == 12:
@@ -439,12 +409,12 @@ class PersianCalendarWidget(QWidget):
         else:
             self.display_date = jdatetime.date(self.display_date.year, self.display_date.month + 1, 1)
         self.selected_date = None
-        self._refresh_calendar_with_holiday_check()
+        self._fill_calendar_grid()
 
     def go_to_today(self):
         self.display_date = jdatetime.date.today()
         self.selected_date = self.display_date
-        self._refresh_calendar_with_holiday_check()
+        self._fill_calendar_grid()
 
     def _on_day_label_clicked(self, jalali_date: jdatetime.date):
         self.selected_date = jalali_date
@@ -477,27 +447,27 @@ class PersianCalendarWidget(QWidget):
             f"QLabel:hover {{ background-color: rgba(128, 128, 128, 0.1); border-radius: 8px; }}"
         )
 
-    def _refresh_calendar_with_holiday_check(self):
-        """If holidays for the year are not in cache, fetch them asynchronously, else just refresh."""
-        target_year = self.display_date.year
-        if target_year in self.tray_icon_parent.holidays_cache:
-            self.error_message = None
-            self._fill_calendar_grid()
-        else:
-            # Start async holiday fetch
-            self.error_message = "در حال دریافت تعطیلات سال..."
-            self._fill_calendar_grid()
-            self.tray_icon_parent.fetch_holidays_async(target_year, self._on_holidays_fetched, self._on_holidays_failed)
+class TimeChangeEventFilter(QAbstractNativeEventFilter):
+    def __init__(self, on_time_change_callback):
+        super().__init__()
+        self.on_time_change_callback = on_time_change_callback
 
-    def _on_holidays_fetched(self, year: int, holidays: dict):
-        self.error_message = None
-        self.tray_icon_parent.holidays_cache[year] = holidays
-        self._fill_calendar_grid()
+    def nativeEventFilter(self, eventType, message):
+        if eventType != "windows_generic_MSG":
+            return False, 0
 
-    def _on_holidays_failed(self, year: int, error_msg: str):
-        self.error_message = "خطا در دریافت اطلاعات تعطیلات سال"
-        self._fill_calendar_grid()
+        # Properly extract MSG from the sip.voidptr
+        msg_ptr = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG))
+        msg = msg_ptr.contents
 
+        WM_TIMECHANGE = 0x001E
+
+        if msg.message == WM_TIMECHANGE:
+            print("⏰ Windows system time changed")
+            if callable(self.on_time_change_callback):
+                self.on_time_change_callback()
+
+        return False, 0
 # ==================== SYSTEM TRAY ICON ====================
 
 class SystemTrayIcon(QSystemTrayIcon):
@@ -505,20 +475,17 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def __init__(self):
         super().__init__()
-        try:
-            self.data_dir = user_data_dir(Config.APP_NAME, Config.COMPANY_NAME)
-            os.makedirs(self.data_dir, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Failed to create user data dir: {e}")
-            self.data_dir = os.path.expanduser("~/.ShamsiTray")  # fallback
-            os.makedirs(self.data_dir, exist_ok=True)
-        self.cache_file_path = os.path.join(self.data_dir, Config.CACHE_FILENAME)
         self.calendar_widget: Optional[PersianCalendarWidget] = None
         self._is_calendar_visible = False
         self.current_date: jdatetime.date = jdatetime.date.today()
-        self.holidays_cache, self.last_checked_date = self._load_holidays_from_file()
+        # holidays_cache now stores Dict[int, Dict[Tuple[int, int], List[str]]]
+        self.holidays_cache = self._load_holidays_from_file()
+        # self.holidays will be Dict[Tuple[int, int], List[str]] for the current year
         self.holidays = self.holidays_cache.get(self.current_date.year, {})
-        self._perform_daily_update_check()
+        self.event_filter = TimeChangeEventFilter(self._on_system_time_changed)
+        QCoreApplication.instance().installNativeEventFilter(self.event_filter)
+        self.schedule_next_midnight_check()
+
         QCoreApplication.setOrganizationName(Config.APP_NAME)
         QCoreApplication.setApplicationName(Config.APP_NAME)
 
@@ -535,119 +502,70 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.timer.start(60000)
         self._apply_startup_setting(self.is_open_at_login)
 
-    def _load_holidays_from_file(self) -> Tuple[Dict[int, Dict[Tuple[int, int], str]], Optional[datetime.date]]:
-        holidays_data: Dict[int, Dict[Tuple[int, int], str]] = {}
-        last_checked = None
-        if os.path.exists(self.cache_file_path):
-            try:
-                with open(self.cache_file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    loaded_holidays_raw = data.get('holidays', {})
-                    for year_str, holidays_for_year_raw in loaded_holidays_raw.items():
-                        deserialized = {}
-                        for month_day_str, desc in holidays_for_year_raw.items():
-                            try:
-                                month, day = map(int, month_day_str.split('-'))
-                                deserialized[(month, day)] = desc
-                            except ValueError:
-                                logger.warning(f"Could not parse month-day '{month_day_str}' in year {year_str}")
-                        holidays_data[int(year_str)] = deserialized
-                    last_checked_str = data.get('last_checked_date')
-                    if last_checked_str:
-                        last_checked = datetime.datetime.strptime(last_checked_str, "%Y-%m-%d").date()
-                logger.info(f"Holidays loaded from {self.cache_file_path}")
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                logger.error(f"Error loading holidays from file: {e}. Starting with empty cache.")
-        return holidays_data, last_checked
-
-    def _save_holidays_to_file(self):
+    def _load_holidays_from_file(self) -> Dict[int, Dict[Tuple[int, int], List[str]]]:
+        """
+        Loads holiday data from the local holidays.json file.
+        The data structure is converted to be used by the application,
+        handling multiple reasons for the same date.
+        """
+        holidays_data: Dict[int, Dict[Tuple[int, int], List[str]]] = {}
         try:
-            serializable = {}
-            for year, holidays_for_year in self.holidays_cache.items():
-                serializable_inner = {
-                    f"{month}-{day}": description
-                    for (month, day), description in holidays_for_year.items()
-                }
-                serializable[str(year)] = serializable_inner
-            last_checked_str = self.last_checked_date.strftime("%Y-%m-%d") if self.last_checked_date else None
-            with open(self.cache_file_path, 'w', encoding='utf-8') as f:
-                json.dump({'holidays': serializable, 'last_checked_date': last_checked_str}, f, ensure_ascii=False, indent=4)
-            logger.info(f"Holidays saved to {self.cache_file_path}")
-        except IOError as e:
-            logger.error(f"Error saving holidays to file: {e}")
+            with open(Config.HOLIDAYS_FILE_PATH, 'r', encoding='utf-8') as f:
+                raw_data = json.load(f)
+                # The top-level key in the JSON is 'holidays'
+                loaded_holidays_raw = raw_data.get('holidays', {})
 
-    def fetch_holidays_async(self, year: int, on_success, on_failure):
-        """Fetch holidays for a given year in a separate thread, then call appropriate callback."""
-        self._holiday_thread = QThread()
-        self._holiday_worker = HolidayFetcher(year, Config.API_URL_TEMPLATE)
-        self._holiday_worker.moveToThread(self._holiday_thread)
-        self._holiday_worker.holidays_fetched.connect(lambda yr, holidays: self._on_holidays_async_success(yr, holidays, on_success))
-        self._holiday_worker.fetch_failed.connect(lambda yr, err: self._on_holidays_async_failure(yr, err, on_failure))
-        self._holiday_thread.started.connect(self._holiday_worker.run)
-        # CLEANUP: Delete thread and worker after finished
-        self._holiday_worker.holidays_fetched.connect(self._holiday_worker.deleteLater)
-        self._holiday_worker.holidays_fetched.connect(self._holiday_thread.quit)
-        self._holiday_thread.finished.connect(self._holiday_thread.deleteLater)
-        self._holiday_worker.fetch_failed.connect(self._holiday_worker.deleteLater)
-        self._holiday_worker.fetch_failed.connect(self._holiday_thread.quit)
-        self._holiday_thread.finished.connect(self._holiday_thread.deleteLater)
-        self._holiday_thread.start()
+                for year_str, holidays_for_year_raw in loaded_holidays_raw.items():
+                    year_int = int(year_str)
+                    holidays_data[year_int] = {} 
+                    # Create a temporary dict to store lists of reasons
+                    temp_holidays_by_date: Dict[Tuple[int, int], List[str]] = {}
 
-    def _on_holidays_async_success(self, year, holidays, user_callback):
-        self.holidays_cache[year] = holidays
-        self._save_holidays_to_file()
-        if user_callback:
-            user_callback(year, holidays)
+                    for month_day_str, descriptions in holidays_for_year_raw.items():
+                        try:
+                            month, day = map(int, month_day_str.split('-'))
+                            date_tuple = (month, day)
+                            
+                            if isinstance(descriptions, list):
+                                # If the value is already a list, use it directly
+                                temp_holidays_by_date[date_tuple] = descriptions
+                            elif isinstance(descriptions, str):
+                                # If the value is a single string, wrap it in a list
+                                temp_holidays_by_date[date_tuple] = [descriptions]
+                            else:
+                                logger.warning(f"Unexpected holiday description type for {month_day_str} in year {year_str}: {type(descriptions)}")
 
-    def _on_holidays_async_failure(self, year, error_msg, user_callback):
-        logger.error(f"Failed to fetch holidays for {year} (async): {error_msg}")
-        if user_callback:
-            user_callback(year, error_msg)
+                        except ValueError:
+                            logger.warning(f"Could not parse month-day '{month_day_str}' in year {year_str}")
+                    
+                    holidays_data[year_int] = temp_holidays_by_date
 
-    def _perform_daily_update_check(self):
-        today = datetime.date.today()
-        if not self.last_checked_date or self.last_checked_date < today:
-            logger.info(f"Performing daily holiday update for {today}")
-            current_jalali_year = jdatetime.date.today().year
-            for year in [current_jalali_year - 1, current_jalali_year, current_jalali_year + 1]:
-                # For startup, fetch synchronously (to ensure initial cache)
-                holidays = self._fetch_and_cache_holidays(year)
-            self.last_checked_date = today
-            self._save_holidays_to_file()
-        else:
-            logger.debug(f"Daily holiday check already performed for {today}")
+            logger.info(f"Holidays loaded successfully from {Config.HOLIDAYS_FILE_PATH}")
+        except FileNotFoundError:
+            logger.error(f"Holidays file not found at: {Config.HOLIDAYS_FILE_PATH}")
+            QMessageBox.critical(None, "خطا در بارگزاری فایل", f"فایل تعطیلات در مسیر زیر یافت نشد:\n{Config.HOLIDAYS_FILE_PATH}")
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.error(f"Error parsing holidays file: {e}")
+            QMessageBox.critical(None, "خطا در خواندن فایل", f"مشکلی در خواندن یا پردازش فایل تعطیلات پیش آمد.\n{e}")
+            
+        return holidays_data
 
-    def _fetch_and_cache_holidays(self, year: int) -> Dict[Tuple[int, int], str]:
-        if year in self.holidays_cache:
-            logger.debug(f"Holidays for {year} fetched from cache.")
-            return self.holidays_cache[year]
-
-        url = Config.API_URL_TEMPLATE.format(year=year)
-        try:
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            json_data = response.json()
-            data = json_data.get('data', [])
-            holidays_for_year = parse_holidays_from_api(data)
-        except Exception as e:
-            logger.error(f"Failed to fetch holidays for {year}: {e}")
-            return self.holidays_cache.get(year, {})
-
-        self.holidays_cache[year] = holidays_for_year
-        self._save_holidays_to_file()
-        return holidays_for_year
 
     def _create_tray_icon(self):
-        pixmap = QPixmap(32, 32)
+        pixmap = QPixmap(36, 36)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         day_str = to_persian_digits(str(self.current_date.day))
         is_friday = self.current_date.weekday() == 6
         current_year_holidays = self.holidays_cache.get(self.current_date.year, {})
-        is_holiday = (self.current_date.month, self.current_date.day) in current_year_holidays
+        
+        # Get holiday reasons for the current date. It will be a list of strings or None.
+        holiday_reasons = current_year_holidays.get((self.current_date.month, self.current_date.day))
+        is_holiday = bool(holiday_reasons) # True if the list is not empty
+
         painter.setPen(QColor(Config.HOLIDAY_COLOR) if is_holiday or is_friday else QColor(255, 255, 255))
-        font = QFont("IRANSans", 20, QFont.Bold)
+        font = QFont(Config.FONT_FAMILY, 20, QFont.Bold)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), Qt.AlignCenter, day_str)
         painter.end()
@@ -657,17 +575,21 @@ class SystemTrayIcon(QSystemTrayIcon):
         year_str = str(self.current_date.year)
         month_str = f"{self.current_date.month:02d}"
         day_str_2 = f"{self.current_date.day:02d}"
-        tooltip = f"{weekday_name}\n{year_str}-{month_str}-{day_str_2}\n{day_str_2} {month_name} {year_str}"
+        month_written = f"\u200F{day_str_2} {month_name} {year_str}"
+        tooltip = f"{weekday_name}\n{year_str}-{month_str}-{day_str_2}\n {month_written}"
+        
         if is_holiday:
-            tooltip += f"\n(تعطیلی: {current_year_holidays[(self.current_date.month, self.current_date.day)]})"
+            # Join multiple holiday reasons with newline for the tooltip
+            tooltip += f"\nتعطیلی:\n" + "\n".join(holiday_reasons)
         self.setToolTip(tooltip)
 
-    def update_tray_icon(self):
+    def update_tray_icon(self, force=False):
         new_date = jdatetime.date.today()
-        if new_date != self.current_date:
+        if force or new_date != self.current_date:
             logger.info(f"Date changed: {self.current_date} → {new_date}")
             self.current_date = new_date
-            self._perform_daily_update_check()
+            # Update self.holidays for the current year based on the new structure
+            self.holidays = self.holidays_cache.get(self.current_date.year, {})
             self._create_tray_icon()
         if self.calendar_widget and self._is_calendar_visible:
             self.calendar_widget.current_date = new_date
@@ -801,6 +723,23 @@ class SystemTrayIcon(QSystemTrayIcon):
         target_x = max(0, min(target_x, screen.width() - widget_width))
         target_y = max(0, min(target_y, screen.height() - widget_height))
         self.calendar_widget.move(target_x, target_y)
+    
+    def _on_system_time_changed(self):
+        self.update_tray_icon(force=True)
+        self.schedule_next_midnight_check()
+
+    def schedule_next_midnight_check(self):
+        now = datetime.datetime.now()
+        tomorrow = now + datetime.timedelta(days=1)
+        midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
+        millis_until_midnight = int((midnight - now).total_seconds() * 1000)
+
+        QTimer.singleShot(millis_until_midnight + 500, self._on_midnight)
+
+
+    def _on_midnight(self):
+        self.update_tray_icon()
+        self.schedule_next_midnight_check()
 
 # ==================== CUSTOM MENU WIDGETS ====================
 
@@ -951,7 +890,7 @@ def main():
     import logging
     logging.basicConfig(level=logging.INFO)
     if not verify_assets():
-        QMessageBox.critical(None, "خطا", "برخی از فایل‌های موردنیاز برنامه وجود ندارند. لطفاً نصب را بررسی کنید.")
+        QMessageBox.critical(None, "خطا در فایل‌های برنامه", "برخی از فایل‌های موردنیاز برنامه (مانند فونت، آیکون، یا فایل تعطیلات) وجود ندارند. لطفاً نصب را بررسی کنید.")
         sys.exit(1)
     myappid = 'Rayden.ShamsiTray.TrayApp.1.0'
     if sys.platform == 'win32':
@@ -976,4 +915,5 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    main() 
+    main()
+

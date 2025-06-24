@@ -604,8 +604,8 @@ class DateConverterWindow(QWidget):
                     day=target_gregorian_date.day
                 )
                 is_input_year_leap = is_gregorian_leap_year(year)
-        except Exception as e:
-            self._show_error(f"خطا در تبدیل تاریخ: {e}")
+        except Exception:
+            self._show_error("خطا در تبدیل تاریخ. لطفاً ورودی را بررسی کنید.")
             return
         self.status_message.setVisible(False)
         self.dynamic_content_widget.setVisible(True)
