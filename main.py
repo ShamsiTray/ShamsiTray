@@ -274,19 +274,27 @@ class PersianCalendarWidget(QWidget):
     def _fill_grid_prev_month(self):
         first_day = jdatetime.date(self.display_date.year, self.display_date.month, 1)
         start_col = first_day.weekday()
-        prev_month_year = self.display_date.year - 1 if self.display_date.month == 1 else self.display_date.year
-        prev_month_num = 12 if self.display_date.month == 1 else self.display_date.month - 1
-        days_in_prev_month = max(
-            d for d in (31, 30, 29) if safe_jdate(prev_month_year, prev_month_num, d)
-        )
-        current_row, current_col = 0, 0
+
+        prev_year  = self.display_date.year - 1 if self.display_date.month == 1 else self.display_date.year
+        prev_month = 12 if self.display_date.month == 1 else self.display_date.month - 1
+
+        days_in_prev = max(d for d in (31, 30, 29) if safe_jdate(prev_year, prev_month, d))
+
         for col_offset in range(start_col):
-            day_to_display = days_in_prev_month - (start_col - 1 - col_offset)
-            label = self.day_labels[current_row][col_offset]
+            day_to_display = days_in_prev - (start_col - 1 - col_offset)
+            jalali_date    = jdatetime.date(prev_year, prev_month, day_to_display)
+
+            label = self.day_labels[0][col_offset]
             label.setText(to_persian_digits(str(day_to_display)))
-            label.setStyleSheet(self._grey_style())
+
+            # Friday or holiday?
+            holidays_prev_year = self.tray_icon_parent.holidays_cache.get(jalali_date.year, {})
+            is_friday  = jalali_date.weekday() == 6
+            is_holiday = (jalali_date.month, jalali_date.day) in holidays_prev_year
+
+            label.setStyleSheet(self._faded_day_style(is_friday or is_holiday))
             if isinstance(label, ClickableLabel):
-                label.jalali_date = None
+                label.jalali_date = None   # keep non-interactive
 
     def _fill_grid_current_month(self):
         first_day = jdatetime.date(self.display_date.year, self.display_date.month, 1)
@@ -388,11 +396,21 @@ class PersianCalendarWidget(QWidget):
         next_day = 1
         for row_idx in range(self._current_row, 6):
             for col_idx in range(self._current_col if row_idx == self._current_row else 0, 7):
+                next_year  = self.display_date.year + 1 if self.display_date.month == 12 else self.display_date.year
+                next_month = 1 if self.display_date.month == 12 else self.display_date.month + 1
+                jalali_date = jdatetime.date(next_year, next_month, next_day)
+
                 label = self.day_labels[row_idx][col_idx]
                 label.setText(to_persian_digits(str(next_day)))
-                label.setStyleSheet(self._grey_style())
+
+                holidays_next_year = self.tray_icon_parent.holidays_cache.get(jalali_date.year, {})
+                is_friday  = jalali_date.weekday() == 6
+                is_holiday = (jalali_date.month, jalali_date.day) in holidays_next_year
+
+                label.setStyleSheet(self._faded_day_style(is_friday or is_holiday))
                 if isinstance(label, ClickableLabel):
                     label.jalali_date = None
+
                 next_day += 1
 
     def prev_month(self):
@@ -446,6 +464,25 @@ class PersianCalendarWidget(QWidget):
             f"font-weight: bold; color: {Config.GREY_COLOR}; border-radius: 8px; font-family: '{Config.FONT_FAMILY}'; }}"
             f"QLabel:hover {{ background-color: rgba(128, 128, 128, 0.1); border-radius: 8px; }}"
         )
+    def _faded_day_style(self, is_special: bool) -> str:
+        """
+        Style sheet for faded days from prev/next month.
+        is_special == True   -> Friday or holiday → red text + faint red bg
+        is_special == False  -> ordinary day      → grey text, no bg
+        """
+        if is_special:
+            return (
+                f"QLabel {{ background-color: rgba(255, 76, 76, 0.05); "
+                f"color: rgba(255, 76, 76, 0.45); "
+                f"border: none; border-radius: 8px; "
+                f"font-size: {Config.FONT_SIZE_LABEL}px; font-weight: bold; "
+                f"font-family: '{Config.FONT_FAMILY}'; }}"
+                f"QLabel:hover {{ background-color: rgba(255, 76, 76, 0.10); "
+                f"border-radius: 8px; }}"
+            )
+        else:
+            # existing plain-grey look
+            return self._grey_style()
 
 class TimeChangeEventFilter(QAbstractNativeEventFilter):
     def __init__(self, on_time_change_callback):
@@ -468,6 +505,7 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
                 self.on_time_change_callback()
 
         return False, 0
+        
 # ==================== SYSTEM TRAY ICON ====================
 
 class SystemTrayIcon(QSystemTrayIcon):
