@@ -1,20 +1,21 @@
 import sys
 import os
 import json
-import ctypes
-from ctypes import wintypes
+import ctypes.wintypes
 import datetime
 import logging
+import winreg
 from typing import Optional, Dict, Tuple, List
 
 import jdatetime
-
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel, QPushButton, QGridLayout,
-    QSystemTrayIcon, QMenu, QFrame, QAction, QWidgetAction, QMessageBox
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
+    QPushButton, QGridLayout, QSystemTrayIcon, QMenu, QFrame, QAction,
+    QWidgetAction, QMessageBox
 )
 from PyQt5.QtCore import (
-    Qt, QTimer, QEvent, pyqtSignal, QRectF, QSettings, QCoreApplication, QPoint, QSize, QAbstractNativeEventFilter
+    Qt, QTimer, QEvent, pyqtSignal, QRectF, QSettings, QCoreApplication, QPoint,
+    QSize, QAbstractNativeEventFilter
 )
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QFont, QColor, QPainterPath, QMouseEvent
 
@@ -24,26 +25,19 @@ from config import (
 )
 from dateconverter import DateConverterWindow
 
-# ==================== LOGGING SETUP ====================
-
-logging.basicConfig(
-    format='[%(levelname)s] %(asctime)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    level=Config.LOG_LEVEL
-)
 logger = logging.getLogger(__name__)
-
+logger.setLevel(Config.LOG_LEVEL)
 
 # ==================== UTILITY CLASSES ====================
 
 class ClickableLabel(QLabel):
     """
-    QLabel that emits a clicked signal with a Jalali date (if set).
+    QLabel that emits a clicked signal with a Jalali date (if set), or label_clicked if not.
     """
     clicked = pyqtSignal(jdatetime.date)
     label_clicked = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.jalali_date: Optional[jdatetime.date] = None
 
@@ -62,16 +56,16 @@ class PersianCalendarWidget(QWidget):
     Main calendar widget: displays a month of Persian (Jalali) dates
     with holidays and day selection.
     """
+    ROWS = 6
+    COLS = 7
 
     def __init__(self, tray_icon_parent: 'SystemTrayIcon'):
         super().__init__()
         self.tray_icon_parent = tray_icon_parent
         self.current_date = jdatetime.date.today()
         self.display_date = self.current_date
-        self.day_labels = []
-        # holidays_cache now stores Dict[int, Dict[Tuple[int, int], List[str]]]
+        self.day_labels: List[List[ClickableLabel]] = []
         self.holidays_cache = self.tray_icon_parent.holidays_cache
-        # self.holidays will be Dict[Tuple[int, int], List[str]] for the current year
         self.holidays = self.holidays_cache.get(self.display_date.year, {})
 
         self.formatted_mdy = ""
@@ -123,7 +117,6 @@ class PersianCalendarWidget(QWidget):
         self.container_layout.addWidget(self.inner_content_v_layout_widget)
         self.container_layout.addStretch(1)
 
-        # [Navigation Bar, Today/Gregorian, Weekdays, Calendar Grid]
         self._setup_navigation_bar()
         self._setup_today_gregorian()
         self._setup_weekdays_header()
@@ -189,7 +182,7 @@ class PersianCalendarWidget(QWidget):
             weekday_layout.addWidget(label)
         self.inner_content_v_layout.addLayout(weekday_layout)
 
-    def _make_nav_button(self, text, slot, is_today=False):
+    def _make_nav_button(self, text: str, slot, is_today: bool = False) -> QPushButton:
         btn = QPushButton(text)
         btn.setFixedSize(60, 30) if is_today else btn.setFixedSize(30, 30)
         if is_today:
@@ -209,7 +202,7 @@ class PersianCalendarWidget(QWidget):
         btn.clicked.connect(slot)
         return btn
 
-    def _make_header_label(self):
+    def _make_header_label(self) -> QLabel:
         label = QLabel("")
         label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         label.setStyleSheet(
@@ -224,9 +217,9 @@ class PersianCalendarWidget(QWidget):
         self.calendar_grid_layout.setSpacing(5)
         self.calendar_grid_layout.setOriginCorner(Qt.TopRightCorner)
         self.inner_content_v_layout.addLayout(self.calendar_grid_layout)
-        for row in range(6):
+        for row in range(self.ROWS):
             week_labels = []
-            for col in range(7):
+            for col in range(self.COLS):
                 label = ClickableLabel()
                 label.setAlignment(Qt.AlignCenter)
                 label.setFixedSize(Config.DAY_LABEL_SIZE, Config.DAY_LABEL_SIZE)
@@ -244,7 +237,7 @@ class PersianCalendarWidget(QWidget):
             self.formatted_mdy if self.show_mdy_format else self.formatted_month_day_year
         )
 
-        # Clear all day labels
+        # Clear all day labels and disconnect signals
         for row_labels in self.day_labels:
             for label in row_labels:
                 if isinstance(label, ClickableLabel):
@@ -257,8 +250,6 @@ class PersianCalendarWidget(QWidget):
                 label.setStyleSheet("")
 
         self._update_current_holidays()
-
-        # Fill grid: prev month, this month, next month
         self._fill_grid_prev_month()
         self._fill_grid_current_month()
         self._fill_grid_next_month()
@@ -268,33 +259,28 @@ class PersianCalendarWidget(QWidget):
         self.year_label.setText(to_persian_digits(str(self.display_date.year)))
 
     def _update_current_holidays(self):
-        # Retrieve holidays for the displayed year
         self.holidays = self.tray_icon_parent.holidays_cache.get(self.display_date.year, {})
 
     def _fill_grid_prev_month(self):
         first_day = jdatetime.date(self.display_date.year, self.display_date.month, 1)
         start_col = first_day.weekday()
-
-        prev_year  = self.display_date.year - 1 if self.display_date.month == 1 else self.display_date.year
-        prev_month = 12 if self.display_date.month == 1 else self.display_date.month - 1
-
-        days_in_prev = max(d for d in (31, 30, 29) if safe_jdate(prev_year, prev_month, d))
-
+        prev_month_year = self.display_date.year - 1 if self.display_date.month == 1 else self.display_date.year
+        prev_month_num = 12 if self.display_date.month == 1 else self.display_date.month - 1
+        days_in_prev_month = max(
+            d for d in (31, 30, 29) if safe_jdate(prev_month_year, prev_month_num, d)
+        )
         for col_offset in range(start_col):
-            day_to_display = days_in_prev - (start_col - 1 - col_offset)
-            jalali_date    = jdatetime.date(prev_year, prev_month, day_to_display)
-
+            day_to_display = days_in_prev_month - (start_col - 1 - col_offset)
+            jalali_date = jdatetime.date(prev_month_year, prev_month_num, day_to_display)
             label = self.day_labels[0][col_offset]
             label.setText(to_persian_digits(str(day_to_display)))
-
-            # Friday or holiday?
             holidays_prev_year = self.tray_icon_parent.holidays_cache.get(jalali_date.year, {})
-            is_friday  = jalali_date.weekday() == 6
+            is_friday = jalali_date.weekday() == 6
             is_holiday = (jalali_date.month, jalali_date.day) in holidays_prev_year
-
             label.setStyleSheet(self._faded_day_style(is_friday or is_holiday))
+            label.setStyleSheet(self._grey_style())
             if isinstance(label, ClickableLabel):
-                label.jalali_date = None   # keep non-interactive
+                label.jalali_date = None
 
     def _fill_grid_current_month(self):
         first_day = jdatetime.date(self.display_date.year, self.display_date.month, 1)
@@ -305,7 +291,7 @@ class PersianCalendarWidget(QWidget):
         current_row, current_col = 0, start_col
         day = 1
         while day <= days_in_month:
-            if current_row >= 6:
+            if current_row >= self.ROWS:
                 logger.warning(f"Calendar overflow month={self.display_date.month} year={self.display_date.year}")
                 break
             label = self.day_labels[current_row][current_col]
@@ -321,9 +307,8 @@ class PersianCalendarWidget(QWidget):
                 self.display_date.year == self.current_date.year
             )
             is_friday = actual_weekday == 6
-            # Check if there are any holidays for this date
             holiday_reasons = self.holidays.get((self.display_date.month, day))
-            is_holiday = bool(holiday_reasons) # True if list is not empty
+            is_holiday = bool(holiday_reasons)
             is_selected = (current_jdate == self.selected_date)
 
             style_background_color = "transparent"
@@ -338,7 +323,6 @@ class PersianCalendarWidget(QWidget):
                 style_background_color = "rgba(255, 76, 76, 0.15)"
                 style_hover_background_color = "rgba(255, 76, 76, 0.3)"
                 if is_holiday:
-                    # Join multiple holiday reasons with newline
                     current_tooltip = "\n".join(holiday_reasons)
 
             if is_today:
@@ -349,10 +333,8 @@ class PersianCalendarWidget(QWidget):
                 else:
                     style_border = f"1px solid {Config.HOLIDAY_COLOR}"
                 if is_holiday:
-                    # Prepend "تعطیلی:" if there are holidays
                     tooltip_prefix = "تعطیلی:\n" if holiday_reasons else ""
                     current_tooltip = tooltip_prefix + "\n".join(holiday_reasons)
-
 
             if is_selected:
                 if is_today:
@@ -394,23 +376,19 @@ class PersianCalendarWidget(QWidget):
 
     def _fill_grid_next_month(self):
         next_day = 1
-        for row_idx in range(self._current_row, 6):
-            for col_idx in range(self._current_col if row_idx == self._current_row else 0, 7):
-                next_year  = self.display_date.year + 1 if self.display_date.month == 12 else self.display_date.year
+        for row_idx in range(self._current_row, self.ROWS):
+            for col_idx in range(self._current_col if row_idx == self._current_row else 0, self.COLS):
+                next_year = self.display_date.year + 1 if self.display_date.month == 12 else self.display_date.year
                 next_month = 1 if self.display_date.month == 12 else self.display_date.month + 1
                 jalali_date = jdatetime.date(next_year, next_month, next_day)
-
                 label = self.day_labels[row_idx][col_idx]
                 label.setText(to_persian_digits(str(next_day)))
-
                 holidays_next_year = self.tray_icon_parent.holidays_cache.get(jalali_date.year, {})
-                is_friday  = jalali_date.weekday() == 6
+                is_friday = jalali_date.weekday() == 6
                 is_holiday = (jalali_date.month, jalali_date.day) in holidays_next_year
-
                 label.setStyleSheet(self._faded_day_style(is_friday or is_holiday))
                 if isinstance(label, ClickableLabel):
                     label.jalali_date = None
-
                 next_day += 1
 
     def prev_month(self):
@@ -458,12 +436,13 @@ class PersianCalendarWidget(QWidget):
             self.formatted_mdy if self.show_mdy_format else self.formatted_month_day_year
         )
 
-    def _grey_style(self):
+    def _grey_style(self) -> str:
         return (
             f"QLabel {{ background: transparent; border: none; font-size: {Config.FONT_SIZE_LABEL}px; "
             f"font-weight: bold; color: {Config.GREY_COLOR}; border-radius: 8px; font-family: '{Config.FONT_FAMILY}'; }}"
             f"QLabel:hover {{ background-color: rgba(128, 128, 128, 0.1); border-radius: 8px; }}"
         )
+    	
     def _faded_day_style(self, is_special: bool) -> str:
         """
         Style sheet for faded days from prev/next month.
@@ -481,8 +460,8 @@ class PersianCalendarWidget(QWidget):
                 f"border-radius: 8px; }}"
             )
         else:
-            # existing plain-grey look
             return self._grey_style()
+        
 
 class TimeChangeEventFilter(QAbstractNativeEventFilter):
     def __init__(self, on_time_change_callback):
@@ -493,19 +472,18 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
         if eventType != "windows_generic_MSG":
             return False, 0
 
-        # Properly extract MSG from the sip.voidptr
-        msg_ptr = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG))
+        msg_ptr = ctypes.cast(int(message), ctypes.POINTER(ctypes.wintypes.MSG))
         msg = msg_ptr.contents
 
         WM_TIMECHANGE = 0x001E
 
         if msg.message == WM_TIMECHANGE:
-            print("⏰ Windows system time changed")
+            logger.info("⏰ Windows system time changed")
             if callable(self.on_time_change_callback):
                 self.on_time_change_callback()
 
         return False, 0
-        
+
 # ==================== SYSTEM TRAY ICON ====================
 
 class SystemTrayIcon(QSystemTrayIcon):
@@ -516,9 +494,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget: Optional[PersianCalendarWidget] = None
         self._is_calendar_visible = False
         self.current_date: jdatetime.date = jdatetime.date.today()
-        # holidays_cache now stores Dict[int, Dict[Tuple[int, int], List[str]]]
         self.holidays_cache = self._load_holidays_from_file()
-        # self.holidays will be Dict[Tuple[int, int], List[str]] for the current year
         self.holidays = self.holidays_cache.get(self.current_date.year, {})
         self.event_filter = TimeChangeEventFilter(self._on_system_time_changed)
         QCoreApplication.instance().installNativeEventFilter(self.event_filter)
@@ -527,7 +503,6 @@ class SystemTrayIcon(QSystemTrayIcon):
         QCoreApplication.setOrganizationName(Config.APP_NAME)
         QCoreApplication.setApplicationName(Config.APP_NAME)
 
-        # QSettings and auto-start
         self.settings = QSettings()
         self.is_open_at_login = self.settings.value(
             Config.AUTO_START_SETTING_KEY, False, type=bool
@@ -541,43 +516,27 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._apply_startup_setting(self.is_open_at_login)
 
     def _load_holidays_from_file(self) -> Dict[int, Dict[Tuple[int, int], List[str]]]:
-        """
-        Loads holiday data from the local holidays.json file.
-        The data structure is converted to be used by the application,
-        handling multiple reasons for the same date.
-        """
         holidays_data: Dict[int, Dict[Tuple[int, int], List[str]]] = {}
         try:
             with open(Config.HOLIDAYS_FILE_PATH, 'r', encoding='utf-8') as f:
                 raw_data = json.load(f)
-                # The top-level key in the JSON is 'holidays'
                 loaded_holidays_raw = raw_data.get('holidays', {})
 
                 for year_str, holidays_for_year_raw in loaded_holidays_raw.items():
                     year_int = int(year_str)
-                    holidays_data[year_int] = {} 
-                    # Create a temporary dict to store lists of reasons
-                    temp_holidays_by_date: Dict[Tuple[int, int], List[str]] = {}
-
+                    holidays_data[year_int] = {}
                     for month_day_str, descriptions in holidays_for_year_raw.items():
                         try:
                             month, day = map(int, month_day_str.split('-'))
                             date_tuple = (month, day)
-                            
                             if isinstance(descriptions, list):
-                                # If the value is already a list, use it directly
-                                temp_holidays_by_date[date_tuple] = descriptions
+                                holidays_data[year_int][date_tuple] = descriptions
                             elif isinstance(descriptions, str):
-                                # If the value is a single string, wrap it in a list
-                                temp_holidays_by_date[date_tuple] = [descriptions]
+                                holidays_data[year_int][date_tuple] = [descriptions]
                             else:
                                 logger.warning(f"Unexpected holiday description type for {month_day_str} in year {year_str}: {type(descriptions)}")
-
                         except ValueError:
                             logger.warning(f"Could not parse month-day '{month_day_str}' in year {year_str}")
-                    
-                    holidays_data[year_int] = temp_holidays_by_date
-
             logger.info(f"Holidays loaded successfully from {Config.HOLIDAYS_FILE_PATH}")
         except FileNotFoundError:
             logger.error(f"Holidays file not found at: {Config.HOLIDAYS_FILE_PATH}")
@@ -585,9 +544,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             logger.error(f"Error parsing holidays file: {e}")
             QMessageBox.critical(None, "خطا در خواندن فایل", f"مشکلی در خواندن یا پردازش فایل تعطیلات پیش آمد.\n{e}")
-            
-        return holidays_data
 
+        return holidays_data
 
     def _create_tray_icon(self):
         pixmap = QPixmap(36, 36)
@@ -597,10 +555,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         day_str = to_persian_digits(str(self.current_date.day))
         is_friday = self.current_date.weekday() == 6
         current_year_holidays = self.holidays_cache.get(self.current_date.year, {})
-        
-        # Get holiday reasons for the current date. It will be a list of strings or None.
         holiday_reasons = current_year_holidays.get((self.current_date.month, self.current_date.day))
-        is_holiday = bool(holiday_reasons) # True if the list is not empty
+        is_holiday = bool(holiday_reasons)
 
         painter.setPen(QColor(Config.HOLIDAY_COLOR) if is_holiday or is_friday else QColor(255, 255, 255))
         font = QFont(Config.FONT_FAMILY, 20, QFont.Bold)
@@ -615,18 +571,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         day_str_2 = f"{self.current_date.day:02d}"
         month_written = f"\u200F{day_str_2} {month_name} {year_str}"
         tooltip = f"{weekday_name}\n{year_str}-{month_str}-{day_str_2}\n {month_written}"
-        
+
         if is_holiday:
-            # Join multiple holiday reasons with newline for the tooltip
             tooltip += f"\nتعطیلی:\n" + "\n".join(holiday_reasons)
         self.setToolTip(tooltip)
 
-    def update_tray_icon(self, force=False):
+    def update_tray_icon(self, force: bool = False):
         new_date = jdatetime.date.today()
         if force or new_date != self.current_date:
             logger.info(f"Date changed: {self.current_date} → {new_date}")
             self.current_date = new_date
-            # Update self.holidays for the current year based on the new structure
             self.holidays = self.holidays_cache.get(self.current_date.year, {})
             self._create_tray_icon()
         if self.calendar_widget and self._is_calendar_visible:
@@ -649,7 +603,6 @@ class SystemTrayIcon(QSystemTrayIcon):
             f"QMenu::separator {{ height: 1px; background-color: #606060; margin: 5px 0px; }}"
         )
 
-        # Date converter
         convert_date_widget_action = QWidgetAction(self)
         convert_date_widget = MenuActionWidget("تبدیل تاریخ", parent=menu, hover_color="rgba(255,255,255,0.08)")
         convert_date_widget_action.setDefaultWidget(convert_date_widget)
@@ -657,7 +610,6 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(convert_date_widget_action)
         menu.addSeparator()
 
-        # Open at boot
         self.open_at_boot_action = QWidgetAction(self)
         self.open_at_boot_widget = IconCheckboxActionWidget(
                 "راه اندازی همراه با سیستم", self.is_open_at_login, parent=menu
@@ -668,7 +620,6 @@ class SystemTrayIcon(QSystemTrayIcon):
             menu.addAction(self.open_at_boot_action)
         menu.addSeparator()
 
-        # Exit
         exit_widget_action = QWidgetAction(self)
         exit_widget = MenuActionWidget("خروج", parent=menu, hover_color="rgba(255,76,76,0.15)")
         exit_widget_action.setDefaultWidget(exit_widget)
@@ -693,7 +644,6 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _set_windows_startup(self, app_path: str, app_name: str, enable: bool):
         try:
-            import winreg
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
             if enable:
@@ -761,7 +711,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         target_x = max(0, min(target_x, screen.width() - widget_width))
         target_y = max(0, min(target_y, screen.height() - widget_height))
         self.calendar_widget.move(target_x, target_y)
-    
+
     def _on_system_time_changed(self):
         self.update_tray_icon(force=True)
         self.schedule_next_midnight_check()
@@ -771,9 +721,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         tomorrow = now + datetime.timedelta(days=1)
         midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
         millis_until_midnight = int((midnight - now).total_seconds() * 1000)
-
         QTimer.singleShot(millis_until_midnight + 500, self._on_midnight)
-
 
     def _on_midnight(self):
         self.update_tray_icon()
@@ -783,7 +731,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
 class MenuActionWidget(QWidget):
     """Custom widget for menu actions with full-width hover effect."""
-    def __init__(self, text: str, parent=None, hover_color: str = "rgba(255,255,255,0.1)"):
+    def __init__(self, text: str, parent: Optional[QWidget] = None, hover_color: str = "rgba(255,255,255,0.1)"):
         super().__init__(parent)
         self._hover_color = hover_color
         self._is_hovered = False
@@ -844,13 +792,12 @@ class IconCheckboxActionWidget(QWidget):
     """A context menu checkbox using FontAwesome icons."""
     toggled = pyqtSignal(bool)
 
-    def __init__(self, text: str, is_checked: bool = False, parent=None):
+    def __init__(self, text: str, is_checked: bool = False, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.is_checked = is_checked
         self.setAttribute(Qt.WA_Hover)
         self.setMouseTracking(True)
         self._hovered = False
-
         self.setFocusPolicy(Qt.StrongFocus)
         self.setAttribute(Qt.WA_NoMousePropagation)
 
@@ -872,7 +819,6 @@ class IconCheckboxActionWidget(QWidget):
         layout.addStretch()
 
         self.setStyleSheet("background-color: transparent; border-radius: 6px;")
-
         self._update_icon()
 
     def _update_icon(self):
@@ -933,9 +879,10 @@ def main():
     myappid = 'Rayden.ShamsiTray.TrayApp.1.0'
     if sys.platform == 'win32':
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
     if os.path.exists(Config.ICON_PATH):
-        app.setWindowIcon(QIcon(Config.ICON_PATH))
+        app.setWindowIcon(QIcon(str(Config.ICON_PATH)))
     else:
         logger.warning(f"Application icon file not found: {Config.ICON_PATH}")
         app.setWindowIcon(QIcon.fromTheme("applications-other"))
@@ -954,4 +901,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

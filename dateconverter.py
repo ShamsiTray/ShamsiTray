@@ -30,10 +30,9 @@ try:
 except ImportError:
     WIN32_AVAILABLE = False
 
-# Define safe year ranges for UI input
 MIN_JALALI_YEAR = 1
 MAX_JALALI_YEAR = 1600
-MIN_GREGORIAN_YEAR = 1
+MIN_GREGORIAN_YEAR = 622
 MAX_GREGORIAN_YEAR = 2500
 
 class DateConverterWindow(QWidget):
@@ -44,7 +43,7 @@ class DateConverterWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("تبدیل تاریخ")
-        self.setWindowIcon(QIcon(Config.ICON_PATH))
+        self.setWindowIcon(QIcon(str(Config.ICON_PATH)))
         self._initial_height = 260
         self._divider_height = 2
         self._divider_spacing = 10
@@ -219,7 +218,6 @@ class DateConverterWindow(QWidget):
         self.year_input.textChanged.connect(self._clear_results)
         self.year_input.setAlignment(Qt.AlignCenter)
         self.year_input.setFocusPolicy(Qt.StrongFocus)
-        # Validator range will be set dynamically in _set_initial_year_and_dropdown_direction
         self.year_validator = QIntValidator(1, 9999, self)
         self.year_input.setValidator(self.year_validator)
         input_grid.addWidget(self.year_input, 1, 3)
@@ -327,7 +325,6 @@ class DateConverterWindow(QWidget):
         palette.setColor(QPalette.Text, QColor(Config.TEXT_COLOR))
         self.setPalette(palette)
 
-        # Centralize style snippets
         button_style_basic = (
             f"QPushButton {{ background-color: {Config.BACKGROUND_COLOR}; color: {Config.TEXT_COLOR}; "
             f"border: 1px solid #606060; border-radius: 8px; font-size: 18px; font-weight: bold; }}"
@@ -555,7 +552,6 @@ class DateConverterWindow(QWidget):
         conversion_type_text = self.conversion_type_combo.currentText()
         year_text = self.year_input.text().strip()
         year_text_english = from_persian_digits(year_text)
-        # --- Improved validation for year range ---
         if not year_text_english.isdigit() or len(year_text_english) not in [1, 2, 3, 4]:
             self._show_error("خطا: سال باید یک عدد 1 تا 4 رقمی باشد.")
             return
@@ -644,7 +640,6 @@ class DateConverterWindow(QWidget):
             today_gregorian = datetime.date.today()
             delta = today_gregorian - target_gregorian_date
             total_days = abs(delta.days)
-            # Improved: use relativedelta if available
             if RELATIVEDELTA_AVAILABLE:
                 rel = relativedelta(today_gregorian, target_gregorian_date)
                 years = abs(rel.years)
