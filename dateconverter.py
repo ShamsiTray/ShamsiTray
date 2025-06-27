@@ -8,12 +8,13 @@ from PyQt5.QtWidgets import (
     QLabel, QComboBox, QLineEdit, QPushButton, QSpacerItem, QSizePolicy, QFrame,
     QGraphicsOpacityEffect
 )
-from PyQt5.QtCore import Qt, QEvent, QRect
+from PyQt5.QtCore import Qt, QEvent, QRect, QTimer
 from PyQt5.QtGui import QFont, QColor, QPainter, QPainterPath, QPalette, QIntValidator, QIcon
 
 from config import (
-    Config, to_persian_digits, from_persian_digits,
-    persian_weekday_name, is_gregorian_leap_year, is_jalali_leap_year, load_fonts, verify_assets
+    APP_CONFIG, to_persian_digits, from_persian_digits,
+    persian_weekday_name, is_gregorian_leap_year, is_jalali_leap_year, load_fonts, verify_assets,
+    gregorian_month_name # Import gregorian_month_name
 )
 
 try:
@@ -43,7 +44,7 @@ class DateConverterWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("تبدیل تاریخ")
-        self.setWindowIcon(QIcon(str(Config.ICON_PATH)))
+        self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
         self._initial_height = 260
         self._divider_height = 2
         self._divider_spacing = 10
@@ -56,9 +57,9 @@ class DateConverterWindow(QWidget):
         self._focus_timer = None
 
         self._setup_ui()
-        self._apply_styles()
-        self._update_month_dropdown()
+        self._set_theme_colors() # Apply theme colors on initialization
         self.setStyleSheet(self._build_stylesheet())
+        self._initialize_date_inputs() # Call this to set initial date values
 
         if sys.platform == "win32" and WIN32_AVAILABLE:
             hwnd = self.winId().__int__()
@@ -72,7 +73,8 @@ class DateConverterWindow(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self._focus_timer is None:
+        # Ensure focus timer starts only when inputs are ready
+        if self._focus_timer is None and self.year_input.isEnabled():
             self._focus_timer = self.startTimer(100)
 
     def timerEvent(self, event):
@@ -82,6 +84,16 @@ class DateConverterWindow(QWidget):
             self._focus_timer = None
             event.accept()
         super().timerEvent(event)
+
+    def _set_theme_colors(self):
+        """Applies colors based on the current theme."""
+        palette = self.palette()
+        palette.setColor(QPalette.WindowText, QColor(APP_CONFIG.current_palette['TEXT_COLOR']))
+        palette.setColor(QPalette.Text, QColor(APP_CONFIG.current_palette['TEXT_COLOR']))
+        self.setPalette(palette)
+        self._apply_styles() # Reapply styles to update colors
+        self.setStyleSheet(self._build_stylesheet()) # Rebuild and apply stylesheet
+        self.repaint() # Request a repaint to update custom painting
 
     # --- Window Drag and Paint Events ---
 
@@ -121,8 +133,8 @@ class DateConverterWindow(QWidget):
         path = QPainterPath()
         radius = 15
         path.addRoundedRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2, radius, radius)
-        painter.fillPath(path, QColor(Config.BACKGROUND_COLOR))
-        painter.setPen(QColor("#606060"))
+        painter.fillPath(path, QColor(APP_CONFIG.current_palette['BACKGROUND_COLOR']))
+        painter.setPen(QColor(APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']))
         painter.drawPath(path)
 
     def eventFilter(self, obj, event):
@@ -155,7 +167,7 @@ class DateConverterWindow(QWidget):
         button_layout = QHBoxLayout()
         self.exit_button = QPushButton("✕")
         self.exit_button.setFixedSize(30, 30)
-        self.exit_button.clicked.connect(self.close)
+        self.exit_button.clicked.connect(self.close) # Changed to self.close()
         button_layout.addWidget(self.exit_button)
 
         self.minimize_button = QPushButton("—")
@@ -187,8 +199,7 @@ class DateConverterWindow(QWidget):
 
         self.conversion_type_combo = QComboBox()
         self.conversion_type_combo.addItems(["شمسی به میلادی", "میلادی به شمسی"])
-        self.conversion_type_combo.currentIndexChanged.connect(self._update_month_dropdown)
-        self.conversion_type_combo.currentIndexChanged.connect(self._clear_results)
+        self.conversion_type_combo.currentIndexChanged.connect(self._on_conversion_type_changed)
         self.conversion_type_combo.setEditable(True)
         self.conversion_type_combo.lineEdit().setReadOnly(True)
         self.conversion_type_combo.lineEdit().setAlignment(Qt.AlignCenter)
@@ -241,7 +252,8 @@ class DateConverterWindow(QWidget):
         self.middle_divider = QFrame()
         self.middle_divider.setFrameShape(QFrame.HLine)
         self.middle_divider.setFrameShadow(QFrame.Sunken)
-        self.middle_divider.setStyleSheet("color: #606060; border-width: 0.5px;")
+        # Use theme-aware color for the divider
+        self.middle_divider.setStyleSheet(f"color: {APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']}; border-width: 0.5px;")
         main_layout.addWidget(self.middle_divider)
         self.middle_divider.setVisible(False)
         main_layout.addSpacing(10)
@@ -318,23 +330,19 @@ class DateConverterWindow(QWidget):
         main_layout.addStretch(1)
 
     def _apply_styles(self):
-        base_font = QFont(Config.FONT_FAMILY, 14)
-        bold_font = QFont(Config.FONT_FAMILY, 14, QFont.Bold)
-        palette = self.palette()
-        palette.setColor(QPalette.WindowText, QColor(Config.TEXT_COLOR))
-        palette.setColor(QPalette.Text, QColor(Config.TEXT_COLOR))
-        self.setPalette(palette)
+        base_font = QFont(APP_CONFIG.FONT_FAMILY, 14)
+        bold_font = QFont(APP_CONFIG.FONT_FAMILY, 14, QFont.Bold)
 
         button_style_basic = (
-            f"QPushButton {{ background-color: {Config.BACKGROUND_COLOR}; color: {Config.TEXT_COLOR}; "
-            f"border: 1px solid #606060; border-radius: 8px; font-size: 18px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {Config.HOVER_BG}; }}"
-            f"QPushButton:pressed {{ background-color: rgba(255, 255, 255, 0.05); }}"
+            f"QPushButton {{ background-color: {APP_CONFIG.current_palette['BACKGROUND_COLOR']}; color: {APP_CONFIG.current_palette['TEXT_COLOR']}; "
+            f"border: 1px solid {APP_CONFIG.current_palette['MENU_BORDER_COLOR']}; border-radius: 8px; font-size: 18px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {APP_CONFIG.current_palette['HOVER_BG']}; }}"
+            f"QPushButton:pressed {{ background-color: {APP_CONFIG.current_palette['HOVER_BG'].replace('0.08', '0.05').replace('0.05', '0.03')}; }}" # Slightly darker on press
         )
         self.minimize_button.setStyleSheet(button_style_basic)
         self.exit_button.setStyleSheet(
-            f"QPushButton {{ background-color: #FF4C4C; color: {Config.TEXT_COLOR}; "
-            f"border: 1px solid #606060; border-radius: 8px; font-size: 18px; font-weight: bold; }}"
+            f"QPushButton {{ background-color: #FF4C4C; color: {APP_CONFIG.current_palette['TEXT_COLOR']}; "
+            f"border: 1px solid {APP_CONFIG.current_palette['MENU_BORDER_COLOR']}; border-radius: 8px; font-size: 18px; font-weight: bold; }}"
             f"QPushButton:hover {{ background-color: #FF6666; }}"
             f"QPushButton:pressed {{ background-color: #CC3D3D; }}"
         )
@@ -343,43 +351,43 @@ class DateConverterWindow(QWidget):
 
         for label in [self.conversion_type_label, self.year_label, self.month_label, self.day_label]:
             label.setFont(base_font)
-            label.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 8px 5px;")
+            label.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 8px 5px;")
             label.setFixedHeight(input_field_height)
 
         for label in [self.jalali_date_label_1, self.gregorian_date_label_1]:
             label.setFont(bold_font)
-            label.setStyleSheet(f"color: {Config.ACCENT_COLOR}; font-size: 16px; padding: 5px;")
+            label.setStyleSheet(f"color: {APP_CONFIG.current_palette['ACCENT_COLOR']}; font-size: 16px; padding: 5px;")
             label.setMinimumHeight(30)
 
-        self.jalali_date_value_1.setFont(QFont(Config.FONT_FAMILY, 15, QFont.Bold))
-        self.jalali_date_value_1.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
+        self.jalali_date_value_1.setFont(QFont(APP_CONFIG.FONT_FAMILY, 15, QFont.Bold))
+        self.jalali_date_value_1.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
         self.jalali_date_value_1.setMinimumHeight(30)
-        self.jalali_date_value_2.setFont(QFont(Config.FONT_FAMILY, 14))
-        self.jalali_date_value_2.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
+        self.jalali_date_value_2.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
+        self.jalali_date_value_2.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
         self.jalali_date_value_2.setMinimumHeight(30)
 
-        self.gregorian_date_value_1.setFont(QFont(Config.GREGORIAN_FONT_FAMILY, 15, QFont.Bold))
-        self.gregorian_date_value_1.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
+        self.gregorian_date_value_1.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 15, QFont.Bold))
+        self.gregorian_date_value_1.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
         self.gregorian_date_value_1.setMinimumHeight(30)
-        self.gregorian_date_value_2.setFont(QFont(Config.GREGORIAN_FONT_FAMILY, 14))
-        self.gregorian_date_value_2.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
+        self.gregorian_date_value_2.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 14))
+        self.gregorian_date_value_2.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 2px 5px; border-radius: 5px; vertical-align: middle;")
         self.gregorian_date_value_2.setMinimumHeight(30)
 
         self.elapsed_text.setFont(base_font)
-        self.elapsed_text.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 2px; border-radius: 5px;")
-        self.leap_year_status.setFont(QFont(Config.FONT_FAMILY, 12))
-        self.leap_year_status.setStyleSheet(f"color: {Config.TEXT_COLOR}; padding: 2px; border-radius: 5px;")
+        self.elapsed_text.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 2px; border-radius: 5px;")
+        self.leap_year_status.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
+        self.leap_year_status.setStyleSheet(f"color: {APP_CONFIG.current_palette['TEXT_COLOR']}; padding: 2px; border-radius: 5px;")
 
         scrollbar_style_snippet = (
             f"QAbstractItemView::verticalScrollBar {{"
             f"    border: none;"
-            f"    background-color: {Config.SCROLLBAR_GROOVE_COLOR};"
+            f"    background-color: {APP_CONFIG.current_palette['SCROLLBAR_GROOVE_COLOR']};"
             f"    width: 10px;"
             f"    margin: 0px;"
             f"    border-radius: 5px;"
             f"}}"
             f"QAbstractItemView::verticalScrollBar::handle {{"
-            f"    background-color: {Config.SCROLLBAR_HANDLE_COLOR};"
+            f"    background-color: {APP_CONFIG.current_palette['SCROLLBAR_HANDLE_COLOR']};"
             f"    border-radius: 5px;"
             f"    min-height: 20px;"
             f"}}"
@@ -394,25 +402,25 @@ class DateConverterWindow(QWidget):
         )
         combo_base_style = (
             f"QComboBox {{ "
-            f"    background-color: {Config.INPUT_BG_COLOR}; "
-            f"    color: {Config.TEXT_COLOR}; "
-            f"    border: 1px solid #606060; "
+            f"    background-color: {APP_CONFIG.current_palette['INPUT_BG_COLOR']}; "
+            f"    color: {APP_CONFIG.current_palette['TEXT_COLOR']}; "
+            f"    border: 1px solid {APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']}; "
             f"    border-radius: 8px; "
             f"    padding: 8px 5px; "
             f"    font-size: 14px; "
-            f"    font-family: '{Config.FONT_FAMILY}'; "
+            f"    font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"    text-align: center; "
             f"}}"
-            f"QComboBox:focus {{ border: 1px solid {Config.ACCENT_COLOR}; }}"
-            f"QComboBox::on {{ border: 1px solid {Config.ACCENT_COLOR}; }}"
+            f"QComboBox:focus {{ border: 1px solid {APP_CONFIG.current_palette['ACCENT_COLOR']}; }}"
+            f"QComboBox::on {{ border: 1px solid {APP_CONFIG.current_palette['ACCENT_COLOR']}; }}"
             f"QComboBox::drop-down {{ border: 0px; width: 0px; height: 0px; }}"
         )
         combo_view_style = (
             f"QComboBox QAbstractItemView {{ "
-            f"    background-color: {Config.INPUT_BG_COLOR}; "
-            f"    color: {Config.TEXT_COLOR}; "
-            f"    selection-background-color: {Config.ACCENT_COLOR}; "
-            f"    border: 1px solid #606060; "
+            f"    background-color: {APP_CONFIG.current_palette['INPUT_BG_COLOR']}; "
+            f"    color: {APP_CONFIG.current_palette['TEXT_COLOR']}; "
+            f"    selection-background-color: {APP_CONFIG.current_palette['ACCENT_COLOR']}; "
+            f"    border: 1px solid {APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']}; "
             f"    border-radius: 8px; "
             f"}}"
             + scrollbar_style_snippet
@@ -426,21 +434,72 @@ class DateConverterWindow(QWidget):
 
         self.year_input.setFixedSize(100, input_field_height)
         self.year_input.setStyleSheet(
-            f"QLineEdit {{ background-color: {Config.INPUT_BG_COLOR}; color: {Config.TEXT_COLOR}; "
-            f"border: 1px solid #606060; border-radius: 8px; padding: 8px; font-size: 14px; "
-            f"font-family: '{Config.FONT_FAMILY}'; text-align: center; }}"
-            f"QLineEdit:focus {{ border: 1px solid {Config.ACCENT_COLOR}; }}"
+            f"QLineEdit {{ background-color: {APP_CONFIG.current_palette['INPUT_BG_COLOR']}; color: {APP_CONFIG.current_palette['TEXT_COLOR']}; "
+            f"border: 1px solid {APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 8px; font-size: 14px; "
+            f"font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; }}"
+            f"QLineEdit:focus {{ border: 1px solid {APP_CONFIG.current_palette['ACCENT_COLOR']}; }}"
         )
         button_style = (
-            f"QPushButton {{ background-color: {Config.ACCENT_COLOR}; color: {Config.TEXT_COLOR}; "
+            f"QPushButton {{ background-color: {APP_CONFIG.current_palette['ACCENT_COLOR']}; color: {APP_CONFIG.current_palette['TEXT_COLOR']}; "
             f"border: none; border-radius: 8px; padding: 8px 15px; font-size: 16px; "
-            f"font-weight: bold; font-family: '{Config.FONT_FAMILY}'; }}"
-            f"QPushButton:hover {{ background-color: rgba(92, 184, 92, 0.8); }}"
-            f"QPushButton:pressed {{ background-color: rgba(92, 184, 92, 0.6); }}"
+            f"font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }}"
+            f"QPushButton:hover {{ background-color: {QColor(APP_CONFIG.current_palette['ACCENT_COLOR']).darker(120).name()}; }}" # Darken on hover
+            f"QPushButton:pressed {{ background-color: {QColor(APP_CONFIG.current_palette['ACCENT_COLOR']).darker(150).name()}; }}" # Even darker on press
         )
         self.convert_button.setStyleSheet(button_style)
 
     # --- UI Logic Helpers ---
+
+    def _initialize_date_inputs(self):
+        """Sets the initial date values based on the current conversion type."""
+        self._on_conversion_type_changed(self.conversion_type_combo.currentIndex())
+
+    def _on_conversion_type_changed(self, index: int):
+        """
+        Handles changes in the conversion type dropdown.
+        Updates month/day dropdowns and year input based on the selected type.
+        """
+        self._clear_results()
+        conversion_type_text = self.conversion_type_combo.itemText(index)
+        
+        if conversion_type_text == "شمسی به میلادی":
+            today_jalali = jdatetime.date.today()
+            self.year_input.setText(to_persian_digits(str(today_jalali.year)))
+            self.year_validator.setRange(MIN_JALALI_YEAR, MAX_JALALI_YEAR)
+            self.month_combo.view().setLayoutDirection(Qt.RightToLeft)
+            self.day_combo.view().setLayoutDirection(Qt.RightToLeft)
+            
+            # Populate months with Persian names
+            self.month_combo.clear()
+            self.month_combo.addItems([
+                f"{to_persian_digits(str(i+1))} - {name}" for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS)
+            ])
+            # Set current month and day
+            self.month_combo.setCurrentIndex(today_jalali.month - 1)
+            self._update_day_dropdown(to_persian_digits(str(today_jalali.day)))
+
+        else: # میلادی به شمسی
+            today_gregorian = datetime.date.today()
+            self.year_input.setText(str(today_gregorian.year))
+            self.year_validator.setRange(MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR)
+            self.month_combo.view().setLayoutDirection(Qt.LeftToRight)
+            self.day_combo.view().setLayoutDirection(Qt.LeftToRight)
+
+            # Populate months with Gregorian names
+            self.month_combo.clear()
+            self.month_combo.addItems([
+                f"{i+1:02d} - {name}" for i, name in enumerate(APP_CONFIG.GREGORIAN_MONTHS)
+            ])
+            # Set current month and day
+            self.month_combo.setCurrentIndex(today_gregorian.month - 1)
+            self._update_day_dropdown(str(today_gregorian.day))
+
+        self.year_input.setValidator(self.year_validator)
+        self.month_combo.update()
+        self.day_combo.update()
+        self.year_input.update()
+        self.repaint()
+        QApplication.processEvents()
 
     def _clear_results(self):
         self.jalali_date_value_1.setText("...")
@@ -456,95 +515,89 @@ class DateConverterWindow(QWidget):
         self.setFixedSize(650, self._initial_height)
         self.repaint()
 
-    def _set_initial_year_and_dropdown_direction(self):
-        conversion_type_text = self.conversion_type_combo.currentText()
-        if conversion_type_text == "شمسی به میلادی":
-            self.year_input.setText(str(jdatetime.date.today().year))
-            self.year_validator.setRange(MIN_JALALI_YEAR, MAX_JALALI_YEAR)
-            self.month_combo.view().setLayoutDirection(Qt.RightToLeft)
-            self.day_combo.view().setLayoutDirection(Qt.RightToLeft)
-        else:
-            self.year_input.setText(str(datetime.date.today().year))
-            self.year_validator.setRange(MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR)
-            self.month_combo.view().setLayoutDirection(Qt.LeftToRight)
-            self.day_combo.view().setLayoutDirection(Qt.LeftToRight)
-        self.year_input.setValidator(self.year_validator)
-        self.month_combo.update()
-        self.day_combo.update()
-        self.year_input.update()
-        self.repaint()
-
-    def _update_month_dropdown(self):
-        self.month_combo.clear()
-        conversion_type_text = self.conversion_type_combo.currentText()
-        if conversion_type_text == "شمسی به میلادی":
-            self.month_combo.addItems([
-                f"{to_persian_digits(str(i+1))} - {name}" for i, name in enumerate(Config.PERSIAN_MONTHS)
-            ])
-        else:
-            self.month_combo.addItems([
-                f"{i+1:02d} - {name}" for i, name in enumerate(Config.GREGORIAN_MONTHS)
-            ])
-        if self.month_combo.count() > 0:
-            self.month_combo.setCurrentIndex(0)
-        self._set_initial_year_and_dropdown_direction()
-        self._update_day_dropdown()
-        self.month_combo.update()
-        self.repaint()
-        QApplication.processEvents()
-
-    def _update_day_dropdown(self):
-        current_day_text = self.day_combo.currentText()
-        current_day_int = -1
-        if current_day_text and current_day_text != '...':
-            english_str = from_persian_digits(current_day_text)
-            if english_str.isdigit():
-                current_day_int = int(english_str)
+    def _update_day_dropdown(self, prev_day_text: str = ""):
         self.day_combo.clear()
         self.status_message.setText("")
+
         year_text = self.year_input.text().strip()
         year_text_english = from_persian_digits(year_text)
-        year = int(year_text_english) if year_text_english.isdigit() else (
-            jdatetime.date.today().year if self.conversion_type_combo.currentText() == "شمسی به میلادی"
-            else datetime.date.today().year
-        )
-        month_index = self.month_combo.currentIndex()
-        month = month_index + 1 if month_index != -1 else 1
+        
+        # Get current date based on conversion type to set default year if input is invalid/empty
         conversion_type_text = self.conversion_type_combo.currentText()
-        days_in_month = 31
+        if not year_text_english.isdigit():
+            year = jdatetime.date.today().year if conversion_type_text == "شمسی به میلادی" else datetime.date.today().year
+        else:
+            year = int(year_text_english)
+
+        month_index = self.month_combo.currentIndex()
+        month = month_index + 1 if month_index != -1 else 1 # Default to 1 if no month selected
+
+        days_in_month = 31 # Default to 31
         try:
             if conversion_type_text == "شمسی به میلادی":
                 if month == 12:
                     days_in_month = 30 if is_jalali_leap_year(year) else 29
-                elif month <= 6:
+                elif month <= 6: # Farvardin to Shahrivar (6 months) always have 31 days
                     days_in_month = 31
-                else:
+                else: # Mehr to Bahman (5 months) always have 30 days
                     days_in_month = 30
-            else:
+            else: # Gregorian
                 if month in [1, 3, 5, 7, 8, 10, 12]:
                     days_in_month = 31
                 elif month in [4, 6, 9, 11]:
                     days_in_month = 30
-                else:
-                    days_in_month = 29 if not is_gregorian_leap_year(year) else 28
-        except Exception:
-            days_in_month = 31
+                elif month == 2: # February
+                    days_in_month = 29 if is_gregorian_leap_year(year) else 28
+        except Exception as e:
+            # Log the error but don't exit, fall back to default
+            print(f"Error calculating days in month: {e}. Defaulting to 31.")
+            days_in_month = 31 # Fallback in case of an unexpected error
+
         for day_num in range(1, days_in_month + 1):
-            display = to_persian_digits(str(day_num)) if conversion_type_text == "شمسی به میلادی" else str(day_num)
+            display = to_persian_digits(str(day_num)) if conversion_type_text == "شمسی به میلadi" else str(day_num)
             self.day_combo.addItem(display)
-        if current_day_int != -1 and 1 <= current_day_int <= days_in_month:
-            day_to_find = to_persian_digits(str(current_day_int)) if conversion_type_text == "شمسی به میلادی" else str(current_day_int)
-            index = self.day_combo.findText(day_to_find)
-            if index != -1:
-                self.day_combo.setCurrentIndex(index)
-            elif self.day_combo.count() > 0:
-                self.day_combo.setCurrentIndex(0)
-        elif self.day_combo.count() > 0:
+        
+        # Try to restore previous day selection or select a valid one
+        day_to_select_index = -1
+        if prev_day_text:
+            english_str = from_persian_digits(prev_day_text)
+            if english_str.isdigit():
+                prev_day_int = int(english_str)
+                if 1 <= prev_day_int <= days_in_month:
+                    # Find the exact text in the combobox, which might be Persian or English digits
+                    day_to_find = to_persian_digits(str(prev_day_int)) if conversion_type_text == "شمسی به میلادی" else str(prev_day_int)
+                    index = self.day_combo.findText(day_to_find)
+                    if index != -1:
+                        day_to_select_index = index
+        
+        # Fallback to today's day if possible, or first day
+        if day_to_select_index == -1 and self.day_combo.count() > 0:
+            current_day = None
+            if conversion_type_text == "شمسی به میلادی":
+                current_day = jdatetime.date.today().day
+            else:
+                current_day = datetime.date.today().day
+            
+            if current_day is not None and 1 <= current_day <= days_in_month:
+                day_to_find = to_persian_digits(str(current_day)) if conversion_type_text == "شمسی به میلادی" else str(current_day)
+                index = self.day_combo.findText(day_to_find)
+                if index != -1:
+                    day_to_select_index = index
+        
+        if day_to_select_index != -1:
+            self.day_combo.setCurrentIndex(day_to_select_index)
+            self.day_combo.lineEdit().setText(self.day_combo.currentText()) # Ensure text is set
+            self.day_combo.lineEdit().home(False) # Keep cursor at start
+        elif self.day_combo.count() > 0: # If nothing else, select the first item
             self.day_combo.setCurrentIndex(0)
+            self.day_combo.lineEdit().setText(self.day_combo.currentText())
+            self.day_combo.lineEdit().home(False)
+
         self.day_combo.update()
         self.year_input.update()
         self.repaint()
         QApplication.processEvents()
+
 
     def _convert_date(self):
         self._clear_results()
@@ -613,7 +666,7 @@ class DateConverterWindow(QWidget):
             jalali_month_pd = to_persian_digits(f"{target_jalali_date.month:02d}")
             jalali_day_pd = to_persian_digits(f"{target_jalali_date.day:02d}")
             jalali_weekday_name = persian_weekday_name(target_jalali_date.weekday())
-            jalali_month_name = Config.PERSIAN_MONTHS[target_jalali_date.month - 1]
+            jalali_month_name = APP_CONFIG.PERSIAN_MONTHS[target_jalali_date.month - 1]
             self.jalali_date_value_1.setText(f"{jalali_year_pd}/{jalali_month_pd}/{jalali_day_pd}")
             self.jalali_date_value_2.setText(f"{jalali_weekday_name} - {jalali_day_pd} {jalali_month_name} {jalali_year_pd}")
         else:
@@ -660,11 +713,13 @@ class DateConverterWindow(QWidget):
             else:
                 is_input_year_leap = is_gregorian_leap_year(input_year_val)
             leap_year_status_full = f"سال {calendar_type_str} {to_persian_digits(str(input_year_val))} یک سال {'کبیسه است' if is_input_year_leap else 'کبیسه نیست'}"
-            if delta.days == 0:
-                elapsed_text_full = "تاریخ انتخاب شده، امروز است."
-                leap_year_status_full = ""
+            
+            # Removed: if delta.days == 0: ... leap_year_status_full = ""
+            # Now, leap_year_status_full will correctly show even for today's date
+
         self.elapsed_text.setText(elapsed_text_full)
         self.leap_year_status.setText(leap_year_status_full)
+        # Ensure alpha value is between 0.0 and 1.0
         self.leap_year_status_opacity_effect.setOpacity(1.0 if is_input_year_leap else 0.5)
         self.repaint()
 
@@ -675,15 +730,17 @@ class DateConverterWindow(QWidget):
         self.status_message.repaint()
 
     def _build_stylesheet(self):
+        # Update QToolTip and QScrollBar styles with theme-aware colors
         return (
-            f"QToolTip {{ background-color: {Config.INPUT_BG_COLOR}; color: {Config.ACCENT_COLOR}; border: 1px solid #606060; "
-            f"border-radius: 8px; padding: 5px 8px; font-size: 14px; font-weight: bold; font-family: '{Config.FONT_FAMILY}'; }}\n"
-            f"QScrollBar:vertical {{ background-color: {Config.SCROLLBAR_GROOVE_COLOR}; width: 10px; border-radius: 5px; }}"
-            f"QScrollBar::handle:vertical {{ background-color: {Config.SCROLLBAR_HANDLE_COLOR}; border-radius: 5px; }}"
+            f"QToolTip {{ background-color: {APP_CONFIG.current_palette['INPUT_BG_COLOR']}; color: {APP_CONFIG.current_palette['ACCENT_COLOR']}; border: 1px solid {APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']}; "
+            f"border-radius: 8px; padding: 5px 8px; font-size: 14px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }}\n"
+            f"QScrollBar:vertical {{ background-color: {APP_CONFIG.current_palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; border-radius: 5px; }}"
+            f"QScrollBar::handle:vertical {{ background-color: {APP_CONFIG.current_palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}"
             f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}"
         )
 
+# Main function for standalone execution (for testing DateConverterWindow)
 def main():
     import logging
     logging.basicConfig(level=logging.INFO)
@@ -692,18 +749,22 @@ def main():
         sys.exit(1)
     app = QApplication(sys.argv)
     load_fonts()
+    
+    # Set initial theme based on Windows settings before creating the window
+    APP_CONFIG.set_theme(APP_CONFIG.get_windows_theme())
+
     app.setStyleSheet(
-        f"QToolTip {{ background-color: {Config.INPUT_BG_COLOR}; color: {Config.ACCENT_COLOR}; border: 1px solid #606060; "
-        f"border-radius: 8px; padding: 5px 8px; font-size: 14px; font-weight: bold; font-family: '{Config.FONT_FAMILY}'; }}"
+        f"QToolTip {{ background-color: {APP_CONFIG.current_palette['INPUT_BG_COLOR']}; color: {APP_CONFIG.current_palette['ACCENT_COLOR']}; border: 1px solid {APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']}; "
+        f"border-radius: 8px; padding: 5px 8px; font-size: 14px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }}"
         f"QScrollBar:vertical {{"
         f"    border: none;"
-        f"    background-color: {Config.SCROLLBAR_GROOVE_COLOR};"
+        f"    background-color: {APP_CONFIG.current_palette['SCROLLBAR_GROOVE_COLOR']};"
         f"    width: 10px;"
         f"    margin: 0px;"
         f"    border-radius: 5px;"
         f"}}"
         f"QScrollBar::handle:vertical {{"
-        f"    background-color: {Config.SCROLLBAR_HANDLE_COLOR};"
+        f"    background-color: {APP_CONFIG.current_palette['SCROLLBAR_HANDLE_COLOR']};"
         f"    border-radius: 5px;"
         f"    min-height: 20px;"
         f"}}"
