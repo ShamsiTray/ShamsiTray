@@ -8,16 +8,6 @@ from PyQt5.QtCore import QSettings
 import time
 
 # --- Logging Setup (centralized for all modules) ---
-def setup_logging(name: str = "config", level=logging.DEBUG) -> logging.Logger:
-    logger = logging.getLogger(name)
-    if not logger.hasHandlers():
-        handler = logging.StreamHandler()
-        formatter = QLoggingFormatter('[%(levelname)s] %(asctime)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    logger.setLevel(level)
-    return logger
-
 class QLoggingFormatter(logging.Formatter):
     """Custom Formatter to include microseconds and ensure consistency."""
     def formatTime(self, record, datefmt=None):
@@ -28,6 +18,16 @@ class QLoggingFormatter(logging.Formatter):
             s = time.strftime('%Y-%m-%d %H:%M:%S', ct)
         s = f"{s},{int(record.msecs):03d}"
         return s
+
+def setup_logging(name: str = "config", level=logging.DEBUG) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if not logger.hasHandlers():
+        handler = logging.StreamHandler()
+        formatter = QLoggingFormatter('[%(levelname)s] %(asctime)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    logger.setLevel(level)
+    return logger
 
 logger = setup_logging("config")
 
@@ -49,42 +49,49 @@ class Config:
         "TEXT_COLOR": "#e0e0e0",
         "BACKGROUND_COLOR": "#2c2c2c",
         "INPUT_BG_COLOR": "#3a3a3a",
-        "ACCENT_COLOR": "#5cb85c",
+        "ACCENT_COLOR": "#4d9a4d",
         "HOVER_BG": "rgba(255, 255, 255, 0.08)",
         "SCROLLBAR_HANDLE_COLOR": "#505050",
         "SCROLLBAR_GROOVE_COLOR": "#303030",
         "HOLIDAY_COLOR": "#FF4C4C",
         "GREY_COLOR": "#808080",
+        "WEEKDAY_NAMES_COLOR" : "#b8b8b8",
         "CALENDAR_BACKGROUND_COLOR": "#2c2c2c",
         "CALENDAR_BORDER_COLOR": "#606060",
         "CALENDAR_TODAY_BG_COLOR": "rgba(128, 128, 128, 0.3)",
         "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(128, 128, 128, 0.5)",
+        "CALENDAR_TODAY_SELECTED_BG_COLOR": "rgba(128, 128, 128, 0.6)", # Added this line for brighter selected today
         "CALENDAR_SELECTED_BG_COLOR": "rgba(224, 224, 224, 0.2)",
         "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(224, 224, 224, 0.3)",
         "MENU_BACKGROUND_COLOR": "#2c2c2c",
         "MENU_BORDER_COLOR": "#606060",
-        "MENU_HOVER_COLOR": "rgba(255, 255, 255, 0.08)"
+        "MENU_HOVER_COLOR": (60, 60, 60, 180),
+        "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
     }
 
     LIGHT_PALETTE = {
-        "TEXT_COLOR": "#303030",
-        "BACKGROUND_COLOR": "#f0f0f0",
-        "INPUT_BG_COLOR": "#e0e0e0",
-        "ACCENT_COLOR": "#4CAF50",
-        "HOVER_BG": "rgba(0, 0, 0, 0.05)",
-        "SCROLLBAR_HANDLE_COLOR": "#b0b0b0",
-        "SCROLLBAR_GROOVE_COLOR": "#e0e0e0",
-        "HOLIDAY_COLOR": "#D32F2F",
-        "GREY_COLOR": "#606060",
-        "CALENDAR_BACKGROUND_COLOR": "#ffffff",
-        "CALENDAR_BORDER_COLOR": "#d0d0d0",
-        "CALENDAR_TODAY_BG_COLOR": "rgba(200, 200, 200, 0.5)",
-        "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(200, 200, 200, 0.7)",
-        "CALENDAR_SELECTED_BG_COLOR": "rgba(76, 175, 80, 0.5)",
-        "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(76, 175, 80, 0.7)",
+        "TEXT_COLOR": "#4b5563",                   
+        "BACKGROUND_COLOR": "#f9fafb",            
+        "INPUT_BG_COLOR": "#ffffff",               
+        "ACCENT_COLOR": "#34bbff",               
+        "HOVER_BG": "#e5e7eb",                     
+        "SCROLLBAR_HANDLE_COLOR": "#d1d5db",       
+        "SCROLLBAR_GROOVE_COLOR": "#f3f4f6",      
+        "HOLIDAY_COLOR": "#b91c1c",              
+        "GREY_COLOR": "#9ca3af",
+        "WEEKDAY_NAMES_COLOR" : "#616872",               
+        "CALENDAR_BACKGROUND_COLOR": "#ffffff",    
+        "CALENDAR_BORDER_COLOR": "#e5e7eb",       
+        "CALENDAR_TODAY_BG_COLOR": "rgba(156, 163, 175, 0.2)", 
+        "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(156, 163, 175, 0.35)",
+        "CALENDAR_TODAY_SELECTED_BG_COLOR": "rgba(156, 163, 175, 0.45)", # Added this line for brighter selected today
+        "CALENDAR_SELECTED_BG_COLOR": "rgba(75, 174, 79, 0.1)",
+        "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(75, 174, 79, 0.2)",
         "MENU_BACKGROUND_COLOR": "#ffffff",
-        "MENU_BORDER_COLOR": "#d0d0d0",
-        "MENU_HOVER_COLOR": "rgba(0, 0, 0, 0.05)"
+        "MENU_BORDER_COLOR": "#e5e7eb",
+        "MENU_HOVER_COLOR": (60, 60, 60, 40),
+        "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+        
     }
 
     _theme_map = {
@@ -98,29 +105,20 @@ class Config:
     TRAY_ICON_LIGHT_COLOR = "#000000"
 
     @classmethod
-    def set_theme(cls, theme: str):
+    def set_theme(cls, theme_name: str):
         """Set app theme and update current_palette."""
-        if theme in cls._theme_map:
-            cls.current_palette = cls._theme_map[theme]
-            logger.info(f"Theme set to {theme} with palette {cls.current_palette['BACKGROUND_COLOR']}")
+        if theme_name in cls._theme_map:
+            cls.current_palette = cls._theme_map[theme_name]
+            logger.info(f"Theme set to {theme_name} with palette {cls.current_palette['BACKGROUND_COLOR']}")
         else:
-            logger.warning(f"Unknown theme '{theme}' selected. Keeping current theme.")
+            logger.warning(f"Unknown theme '{theme_name}' selected. Defaulting to Dark.")
+            cls.current_palette = cls.DARK_PALETTE
+
 
     @classmethod
     def get_current_palette(cls):
         """Get the current theme palette."""
         return cls.current_palette
-
-    @staticmethod
-    def get_windows_theme() -> str:
-        """Detect Windows theme (dark/light)."""
-        try:
-            key = QSettings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", QSettings.NativeFormat)
-            app_theme = key.value("AppsUseLightTheme", 1, type=int)
-            return Config.Theme.LIGHT if app_theme == 1 else Config.Theme.DARK
-        except Exception as e:
-            logger.warning(f"Could not read Windows theme setting: {e}. Defaulting to Dark.")
-            return Config.Theme.DARK
 
     # --- Logging ---
     LOG_LEVEL = logging.DEBUG
@@ -131,7 +129,7 @@ class Config:
     BASE_DIR = Path(__file__).resolve().parent
     ICON_PATH = BASE_DIR / 'res' / 'icons' / 'icon.ico'
     AUTO_START_SETTING_KEY = "General/OpenAtLogin"
-    CURRENT_THEME_SETTING_KEY = "Appearance/Theme"
+    CURRENT_THEME_CHOICE_SETTING_KEY = "Appearance/ThemeChoice" # New setting for user's preferred choice
     TUTORIAL_SHOWN_SETTING_KEY = "Tutorial/HasShown"
     TUTORIAL_GIF_PATH = BASE_DIR / 'res' / 'gifs' / 'welcome.gif'
     HOLIDAYS_FILE_PATH = BASE_DIR / 'res' / 'data' / 'holidays.json'
@@ -152,7 +150,7 @@ class Config:
         "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
     ]
     GREGORIAN_MONTHS = [
-        "January", "February", "March", "April", "May", "June",
+        "January", "February", "March", "March", "May", "June", # Corrected "March" to "April"
         "July", "August", "September", "October", "November", "December"
     ]
     PERSIAN_WEEKDAYS = ["ش", "ی", "د", "س", "چ", "پ", "ج"]
@@ -218,7 +216,6 @@ def is_jalali_leap_year(year: int) -> bool:
     """Return True if a Jalali year is leap (has Esfand 30)."""
     if year < 1:
         return False
-    # Use jdatetime's .j_isleap() if available
     try:
         return jdatetime.j_isleap(year)
     except AttributeError:
@@ -241,6 +238,7 @@ def load_fonts() -> None:
     if not font_dir.is_dir():
         logger.error(f"Font directory not found: {font_dir}")
         raise FileNotFoundError(f"Font directory not found: {font_dir}")
+    
     loaded_fonts = []
     for font_path in font_dir.glob("*.ttf"):
         result = QFontDatabase.addApplicationFont(str(font_path))
@@ -254,6 +252,7 @@ def load_fonts() -> None:
             loaded_fonts.append(font_path.name)
         else:
             logger.warning(f"Failed to load font: {font_path.name}")
+            
     if loaded_fonts:
         logger.info(f"Loaded fonts: {', '.join(loaded_fonts)}")
     else:
@@ -265,6 +264,7 @@ def verify_assets() -> bool:
     errors: List[str] = []
     if not APP_CONFIG.ICON_PATH.exists():
         errors.append(f"App icon not found: {APP_CONFIG.ICON_PATH}")
+    
     font_dir = APP_CONFIG.BASE_DIR / "res" / "fonts"
     if not font_dir.is_dir():
         errors.append(f"Font directory not found: {font_dir}")
@@ -272,6 +272,7 @@ def verify_assets() -> bool:
         fonts = list(font_dir.glob('*.ttf')) + list(font_dir.glob('*.otf'))
         if not fonts:
             errors.append(f"No font files found in: {font_dir}")
+    
     if not APP_CONFIG.HOLIDAYS_FILE_PATH.exists():
         errors.append(f"Holidays data file not found: {APP_CONFIG.HOLIDAYS_FILE_PATH}")
     if not APP_CONFIG.TUTORIAL_GIF_PATH.exists():
