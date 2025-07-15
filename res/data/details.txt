@@ -17,11 +17,11 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'RaySoft'),
           StringStruct('FileDescription', 'ShamsiTray'),
-          StringStruct('FileVersion', '1.0.0.0'),
+          StringStruct('FileVersion', '1.1.0.0'),
           StringStruct('LegalCopyright', 'Copyright © 2025 - RaySoft'),
           StringStruct('OriginalFilename', 'ShamsiTray.exe'),
           StringStruct('ProductName', 'ShamsiTray'),
-          StringStruct('ProductVersion', '1.0.0.0'),
+          StringStruct('ProductVersion', '1.1.0.0'),
         ]
       )
     ]),

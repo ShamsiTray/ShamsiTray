@@ -7,7 +7,7 @@
   },
   {
    "optionDest": "filenames",
-   "value": "D:/ShamsiTray/v1.0-Release/main.py"
+   "value": "D:/ShamsiTray/v1.1-UserEvents/main.py"
   },
   {
    "optionDest": "onefile",
@@ -19,7 +19,7 @@
   },
   {
    "optionDest": "icon_file",
-   "value": "D:/ShamsiTray/v1.0-Release/res/icons/icon.ico"
+   "value": "D:/ShamsiTray/v1.1-UserEvents/res/icons/icon.ico"
   },
   {
    "optionDest": "name",
@@ -47,7 +47,7 @@
   },
   {
    "optionDest": "version_file",
-   "value": "D:/ShamsiTray/v1.0-Release/res/data/details.txt"
+   "value": "D:/ShamsiTray/v1.1-UserEvents/res/data/details.txt"
   },
   {
    "optionDest": "uac_admin",
@@ -75,7 +75,7 @@
   },
   {
    "optionDest": "datas",
-   "value": "D:/ShamsiTray/v1.0-Release/res;res/"
+   "value": "D:/ShamsiTray/v1.1-UserEvents/res;res/"
   }
  ],
  "nonPyinstallerOptions": {
