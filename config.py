@@ -39,7 +39,7 @@ class Config:
 
     # --- App Info ---
     APP_NAME = "ShamsiTray"
-    COMPANY_NAME = "Rayden"
+    COMPANY_NAME = "RaySoft"
     BASE_DIR = Path(__file__).resolve().parent
 
     # --- Resource Paths ---

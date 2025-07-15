@@ -1,32 +1,27 @@
 import ctypes.wintypes
 import datetime
 import json
-import logging
 import os
 import sys
 import winreg
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt5.QtCore import (QAbstractNativeEventFilter, QCoreApplication, QEvent,
-                          QPoint, QRectF, QSettings, Qt, QTimer, pyqtSignal, QObject) # QObject is still imported but not used for TimeChangeEventFilter
+from PyQt5.QtCore import (QAbstractNativeEventFilter, QCoreApplication,
+                          QPoint, QRectF, QSettings, Qt, QTimer, pyqtSignal)
 from PyQt5.QtGui import (QColor, QFont, QIcon, QMouseEvent, QMovie, QPainter,
                          QPainterPath, QPixmap)
 from PyQt5.QtWidgets import (QApplication, QBoxLayout, QGridLayout,
                              QHBoxLayout, QLabel, QMenu, QMessageBox,
-                             QPushButton, QSizePolicy, QSystemTrayIcon,
+                             QPushButton, QSystemTrayIcon,
                              QVBoxLayout, QWidget, QWidgetAction)
 
 from config import (APP_CONFIG, is_jalali_leap_year,
                     load_fonts, persian_month_name, persian_weekday_name,
                     setup_logging, to_persian_digits, verify_assets)
-# This is a conditional import. If dateconverter.py is not found,
-# the app will still run, but the converter feature will be disabled.
 try:
     from dateconverter import DateConverterWindow
 except ImportError:
-    # If DateConverterWindow is not available, provide a placeholder class
-    # to avoid breaking the application, and log a warning.
     logger = setup_logging(__name__)
     logger.warning("dateconverter.py not found. Date conversion feature will be disabled.")
     class DateConverterWindow(QWidget):
@@ -39,7 +34,6 @@ except ImportError:
             QMessageBox.warning(None, "Feature Unavailable", "The date conversion feature is not available. Please ensure 'dateconverter.py' is in the correct directory.")
             super().show()
         def update_styles(self):
-            # Placeholder for theme updates
             pass
 
 
@@ -81,14 +75,12 @@ class BaseFramelessWindow(QWidget):
             new_pos = event.globalPos() - self._drag_position
             screen_geometry = QApplication.screenAt(event.globalPos()).availableGeometry()
             
-            # Clamp X
             min_x = screen_geometry.left()
             max_x = screen_geometry.right() - self.width()
             clamped_x = max(min_x, min(new_pos.x(), max_x))
 
-            # Clamp Y, with a buffer to keep it above the taskbar
             min_y = screen_geometry.top()
-            max_y = screen_geometry.bottom() - 50 # Buffer from bottom
+            max_y = screen_geometry.bottom() - 50
             clamped_y = max(min_y, min(new_pos.y(), max_y))
 
             self.move(clamped_x, clamped_y)
@@ -99,14 +91,13 @@ class BaseFramelessWindow(QWidget):
         self._drag_position = None
         event.accept()
 
-class TimeChangeEventFilter(QAbstractNativeEventFilter): # Removed QObject inheritance, as it's not needed for direct callback
+class TimeChangeEventFilter(QAbstractNativeEventFilter):
     """
     Native event filter to detect system time changes (WM_TIMECHANGE on Windows).
     Uses a direct callback for reliability.
     """
-    # Removed pyqtSignal timeChanged as we are using a direct callback
     
-    def __init__(self, on_time_change_callback): # Accepts the callback function directly
+    def __init__(self, on_time_change_callback):
         super().__init__()
         self.on_time_change_callback = on_time_change_callback
         logger.debug("TimeChangeEventFilter initialized with direct callback.")
@@ -255,7 +246,7 @@ class ThemeToggleActionWidget(MenuActionWidget):
         
         layout.addStretch()
         layout.addWidget(self.icon_label)
-        layout.addSpacing(8)
+        layout.addSpacing(0)
         layout.addWidget(self.label)
         layout.addStretch()
         
@@ -268,7 +259,7 @@ class ThemeToggleActionWidget(MenuActionWidget):
     def update_display(self):
         theme = self.current_theme_getter()
         icon = APP_CONFIG.FAS.FA_MOON_SOLID if theme == APP_CONFIG.Theme.DARK else APP_CONFIG.FAS.FA_SUN_SOLID
-        text = "تم برنامه: تیره" if theme == APP_CONFIG.Theme.DARK else "تم برنامه: روشن"
+        text = "    تم برنامه: تیره" if theme == APP_CONFIG.Theme.DARK else "    تم برنامه: روشن"
         
         self.icon_label.setText(icon)
         self.label.setText(text)
@@ -390,6 +381,31 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.day_labels.append(week_labels)
         return grid_layout
     
+    def _get_nav_button_style(self, bg_color: str, is_today_button: bool = False) -> str:
+        """
+        Helper to generate stylesheet for navigation buttons.
+        Added is_today_button flag to apply specific hover/pressed effects.
+        """
+        palette = APP_CONFIG.get_current_palette()
+        text_color = palette['TEXT_COLOR']
+
+        if is_today_button:
+            base_color = QColor(bg_color)
+            hover_color = base_color.lighter(120).name()
+            pressed_color = base_color.darker(120).name()
+            
+            return (
+                f"QPushButton {{ background-color: {base_color.name()}; color: white; border: none; border-radius: 8px; }}"
+                f"QPushButton:hover {{ background-color: {hover_color}; }}"
+                f"QPushButton:pressed {{ background-color: {pressed_color}; }}"
+            )
+        else:
+            hover_color = QColor(bg_color).darker(120).name() if bg_color != "transparent" else palette['HOVER_BG']
+            return (
+                f"QPushButton {{ background-color: {bg_color}; color: {text_color}; border: none; border-radius: 8px; }}"
+                f"QPushButton:hover {{ background-color: {hover_color}; }}"
+            )
+
     def update_styles(self):
         """Apply theme-specific colors and fonts to all widgets."""
         palette = APP_CONFIG.get_current_palette()
@@ -398,22 +414,15 @@ class PersianCalendarWidget(BaseFramelessWindow):
         nav_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Bold)
         today_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Bold)
 
-        def get_nav_button_style(bg_color: str) -> str:
-            hover_color = QColor(bg_color).darker(120).name() if bg_color != "transparent" else palette['HOVER_BG']
-            return (
-                f"QPushButton {{ background-color: {bg_color}; color: {text_color}; border: none; border-radius: 8px; }}"
-                f"QPushButton:hover {{ background-color: {hover_color}; }}"
-            )
-
         self.left_arrow_btn.setFont(nav_button_font)
         self.right_arrow_btn.setFont(nav_button_font)
-        self.left_arrow_btn.setStyleSheet(get_nav_button_style("transparent"))
-        self.right_arrow_btn.setStyleSheet(get_nav_button_style("transparent"))
+        self.left_arrow_btn.setStyleSheet(self._get_nav_button_style("transparent"))
+        self.right_arrow_btn.setStyleSheet(self._get_nav_button_style("transparent"))
         self.left_arrow_btn.setFixedSize(30, 30)
         self.right_arrow_btn.setFixedSize(30, 30)
         
         self.today_btn.setFont(today_button_font)
-        self.today_btn.setStyleSheet(get_nav_button_style(accent_color))
+        self.today_btn.setStyleSheet(self._get_nav_button_style(accent_color, is_today_button=True))
         self.today_btn.setFixedSize(60, 30)
 
         header_style = f"color: {text_color}; font-size: {APP_CONFIG.FONT_SIZE_HEADER}px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}';"
@@ -542,7 +551,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
             if is_today:
                 font_size = 17
 
-            # this ensures red border for today-holiday even if not selected
             if is_today and (is_holiday or is_friday):
                 border_style = f"1px solid {palette['HOLIDAY_COLOR']}"
 
@@ -645,7 +653,7 @@ class TutorialWindow(BaseFramelessWindow):
             self.gif_label.setMovie(self.movie)
             self.movie.setCacheMode(QMovie.CacheAll)
             self.movie.setSpeed(100)
-            self.movie.setLoopCount(-1)
+            self.movie.loopCount = -1
             self.movie.start()
         else:
             logger.warning(f"Failed to load GIF from {gif_path}.")
@@ -724,19 +732,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.minute_timer.timeout.connect(lambda: self.update_tray_icon(force=False))
         self.minute_timer.start(60 * 1000)
 
-        # FIX APPLIED HERE: Reverted TimeChangeEventFilter to use a direct callback
-        self.event_filter = TimeChangeEventFilter(self._handle_system_time_change) # Direct callback here
+        self.event_filter = TimeChangeEventFilter(self._handle_system_time_change)
         QCoreApplication.instance().installNativeEventFilter(self.event_filter)
 
-        # Also re-added the explicit midnight timer which was missing from this version
         self.schedule_next_midnight_check()
 
-    # Re-added the midnight timer logic as it was missing from the provided 'main.py'
     def _on_midnight_timer_triggered(self):
         """Triggered at midnight to update the tray icon and reschedule."""
         logger.info("Midnight timer triggered. Updating tray icon for new day.")
         self.update_tray_icon(force=True)
-        self.schedule_next_midnight_check() # Reschedule for the next midnight
+        self.schedule_next_midnight_check()
 
     def schedule_next_midnight_check(self):
         """Schedules a single shot timer to trigger at midnight for date update."""
@@ -744,14 +749,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         tomorrow = now + datetime.timedelta(days=1)
         midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
         
-        # Calculate milliseconds until midnight, add a small buffer to ensure it triggers after midnight
         millis_until_midnight = int((midnight - now).total_seconds() * 1000)
-        buffer_ms = 500 # A small buffer to ensure we are past midnight
+        buffer_ms = 500
 
-        # Stop any existing midnight timer before starting a new one
         if hasattr(self, '_midnight_timer') and self._midnight_timer.isActive():
             self._midnight_timer.stop()
-            del self._midnight_timer # Clear reference
+            del self._midnight_timer
 
         self._midnight_timer = QTimer(self)
         self._midnight_timer.setSingleShot(True)
@@ -759,12 +762,11 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._midnight_timer.start(millis_until_midnight + buffer_ms)
         logger.debug(f"Next midnight check scheduled in {millis_until_midnight + buffer_ms} ms.")
 
-    # Re-added the system time change handler as it was missing from the provided 'main.py'
     def _handle_system_time_change(self):
         """Handles system time changes detected by the native event filter."""
         logger.info("System time change detected. Forcing tray icon update and rescheduling midnight check.")
         self.update_tray_icon(force=True)
-        self.schedule_next_midnight_check() # Re-align midnight timer after manual time change
+        self.schedule_next_midnight_check()
 
 
     def _build_global_stylesheet(self) -> str:
@@ -806,7 +808,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         except (IOError, json.JSONDecodeError, ValueError) as e:
             logger.error(f"Failed to load or parse holidays file: {e}")
             return {}
-
+    
     def update_tray_icon(self, force: bool = False):
         """Updates the tray icon if the date has changed or if forced."""
         new_date = jdatetime.date.today()
@@ -818,7 +820,21 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self.calendar_widget.isVisible():
             self.calendar_widget.fill_calendar_grid()
 
-        pixmap = QPixmap(36, 36)
+        screen = QApplication.primaryScreen()
+        if screen:
+            dpi = screen.logicalDotsPerInch()
+            
+            if dpi >= 110:
+                icon_size = 36
+                font_size = 20
+            else:
+                icon_size = 38
+                font_size = 26
+        else:
+            icon_size = 38
+            font_size = 26
+        
+        pixmap = QPixmap(icon_size, icon_size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -829,9 +845,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         color = APP_CONFIG.TRAY_ICON_DARK_COLOR if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.TRAY_ICON_LIGHT_COLOR
         if is_holiday:
             color = APP_CONFIG.current_palette['HOLIDAY_COLOR']
-
+        
         painter.setPen(QColor(color))
-        painter.setFont(QFont(APP_CONFIG.FONT_FAMILY, 20, QFont.Bold))
+        painter.setFont(QFont(APP_CONFIG.FONT_FAMILY, font_size, QFont.Bold))
         painter.drawText(pixmap.rect(), Qt.AlignCenter, day_str)
         painter.end()
         self.setIcon(QIcon(pixmap))
@@ -911,15 +927,13 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def show_calendar(self):
         """Positions and shows the calendar widget."""
-        # Ensure calendar's current_date and display_date are in sync with today
         self.calendar_widget.current_date = jdatetime.date.today()
-        # If no specific date was selected previously, default to today for display
         if self.calendar_widget.selected_date is None or self.calendar_widget.selected_date.month != self.calendar_widget.display_date.month:
              self.calendar_widget.display_date = jdatetime.date.today()
              self.calendar_widget.selected_date = jdatetime.date.today()
 
-        self.calendar_widget.fill_calendar_grid() # Re-render the grid based on potentially new current/display dates
-        self.calendar_widget.update_styles() # Re-apply styles in case theme changed
+        self.calendar_widget.fill_calendar_grid()
+        self.calendar_widget.update_styles()
 
         screen = QApplication.primaryScreen().availableGeometry()
         tray_geom = self.geometry()
@@ -958,7 +972,6 @@ class SystemTrayIcon(QSystemTrayIcon):
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
             if checked:
-                # Use sys.argv[0] to get the path of the script/executable being run
                 executable_path = f'"{sys.argv[0]}"'
                 winreg.SetValueEx(key, APP_CONFIG.APP_NAME, 0, winreg.REG_SZ, executable_path)
             else:
@@ -993,6 +1006,7 @@ def main():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps,    True)
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     
@@ -1008,7 +1022,6 @@ def main():
 
     tray_icon = SystemTrayIcon()
     tray_icon.show()
-
     settings = QSettings(APP_CONFIG.COMPANY_NAME, APP_CONFIG.APP_NAME)
     if not settings.value(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, False, type=bool):
         logger.info("First run: Showing tutorial.")

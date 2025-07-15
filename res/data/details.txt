@@ -15,10 +15,10 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [
-          StringStruct('CompanyName', 'Rayden'),
+          StringStruct('CompanyName', 'RaySoft'),
           StringStruct('FileDescription', 'ShamsiTray'),
           StringStruct('FileVersion', '1.0.0.0'),
-          StringStruct('LegalCopyright', '© 2025 Rayden'),
+          StringStruct('LegalCopyright', 'Copyright © 2025 - RaySoft'),
           StringStruct('OriginalFilename', 'ShamsiTray.exe'),
           StringStruct('ProductName', 'ShamsiTray'),
           StringStruct('ProductVersion', '1.0.0.0'),

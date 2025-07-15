@@ -27,7 +27,7 @@
   },
   {
    "optionDest": "contents_directory",
-   "value": "lib"
+   "value": "."
   },
   {
    "optionDest": "clean_build",
