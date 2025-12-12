@@ -16,8 +16,8 @@ ShamsiTray is a lightweight application for Windows that displays the current Pe
 </div>
 
 ## Pictures
-<img src="https://github.com/user-attachments/assets/4a0501bf-529e-44e6-b642-dde29f9c46e2" width="320" />
-<img src="https://github.com/user-attachments/assets/728aea9c-590f-438c-a878-c6c4033ea32e" width="500" />
+<img src="https://github.com/user-attachments/assets/16873e50-b1f1-4cae-8ccb-2407847159a8" width="320" />
+<img src="https://github.com/user-attachments/assets/f7a33070-9abc-4ff7-88c8-b08f57b78770" width="500" />
 
 ## Features
 
