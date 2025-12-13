@@ -1,5 +1,12 @@
+<div dir="ltr" align=center>
+    
+[**فارسی**](README.fa.md)
+</div>
+
 <div align="center" >
-	<img src="assets/icons/Logo.png" width="128px" height="128px"/>
+	<a href="https://github.com/ShamsiTray/ShamsiTray">
+  <img src="assets/icons/Logo.png" width="128px" height="128px"/>
+</a>
 </div>
 
 <h1 align="center">
@@ -7,11 +14,15 @@
 </h1>
 
 <div align="center">
-ShamsiTray is a lightweight application for Windows that displays the current Persian (Jalali/Shamsi) day of the month in the system tray as an icon. It provides an intuitive calendar popup, a date conversion tool, holiday tracking, and the ability to add user events to dates.
+ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows that displays the current day of the month in the system tray as an icon. It provides an intuitive calendar popup, a date conversion tool, holiday tracking, and the ability to add user events to dates.
 
-###
+### 
 <a href="https://github.com/ShamsiTray/ShamsiTray/releases/download/v1.2/ShamsiTraySetup-1.2.exe">
   <img src="https://img.shields.io/badge/Download-Green?style=flat" width="150" />
+</a>
+<br>
+<a href="https://github.com/ShamsiTray/ShamsiTray/releases/tag/v1.2">
+  <img src="https://img.shields.io/github/downloads/ShamsiTray/ShamsiTray/total?style=flat&logo=github&label=Total%20Downloads&labelColor=27303D&color=0D1117" width="130" />
 </a>
 </div>
 
