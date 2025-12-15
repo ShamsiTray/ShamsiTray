@@ -9,7 +9,7 @@ interaction for navigation, date selection, and event management.
 import datetime
 from dataclasses import dataclass
 from html import escape
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import jdatetime
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -201,8 +201,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 color = palette['HOLIDAY_COLOR'] if is_friday else palette['WEEKDAY_NAMES_COLOR']
                 day_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 16px; background: transparent; font-family: '{APP_CONFIG.FONT_FAMILY}';")
         
-        if self.event_input_widget: self.event_input_widget.update_styles()
-        if self.go_to_window: self.go_to_window.update_styles()
+        if self.event_input_widget: 
+            self.event_input_widget.update_styles()
+        if self.go_to_window: 
+            self.go_to_window.update_styles()
         self.fill_calendar_grid()
 
     def _get_user_event_for_date(self, jdate: jdatetime.date) -> Tuple[Optional[str], bool, bool]:
@@ -221,6 +223,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def fill_calendar_grid(self):
         self._update_header()
+        self._fill_grid_cells()
+
+    def _fill_grid_cells(self):
         first_day = self.display_date.replace(day=1)
         start_day_of_week = first_day.weekday()
 
@@ -251,6 +256,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
         return f"rgba({color.red()}, {color.green()}, {color.blue()}, {int(alpha * 255)})"
 
     def _determine_day_style(self, jdate: jdatetime.date, is_in_month: bool) -> DayStyle:
+        """Determines visual styling for a calendar cell based on: current day, selected day,
+        holidays (official + Fridays), user-defined events and whether the day belongs to the displayed month
+        his function intentionally centralizes all day-state logic to keep rendering consistent across the grid.
+        """
         palette = APP_CONFIG.get_current_palette()
         style = DayStyle(text_color=palette['TEXT_COLOR'], hover_background_color=palette['HOVER_BG'])
 
@@ -265,7 +274,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
         is_holiday = bool(holiday_reasons)
         is_special_day = is_user_event or is_holiday or is_friday
 
-        # Build tooltip
         tooltip_parts = []
         if holiday_reasons:
             html_reasons = "<br>".join(escape(r) for r in holiday_reasons)
@@ -273,14 +281,16 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if is_user_event:
             html_event_text = escape(user_event_text).replace('\n', '<br>')
             tooltip_parts.append(f'<span style="color:{palette["ACCENT_COLOR"]};">{html_event_text}</span>')
+        # Tooltips are rendered as rich text to allow color-coded holiday and event info
         if tooltip_parts:
             style.tooltip = f"<qt>{'<br>'.join(tooltip_parts)}</qt>"
 
-        # Determine colors and styles
         base_color_hex = palette['TEXT_COLOR']
         if is_in_month:
-            if is_user_event: base_color_hex = palette['ACCENT_COLOR']
-            elif is_holiday or is_friday: base_color_hex = palette['HOLIDAY_COLOR']
+            if is_user_event:
+                base_color_hex = palette['ACCENT_COLOR']
+            elif is_holiday or is_friday:
+                base_color_hex = palette['HOLIDAY_COLOR']
             style.text_color = base_color_hex
 
             if is_today and is_selected:
@@ -291,7 +301,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 if is_special_day:
                     style.background_color = self._get_rgba_string(base_color_hex, 0.45)
                     style.hover_background_color = self._get_rgba_string(base_color_hex, 0.55)
-                else: # BUG FIX: Use direct palette values for normal selected days
+                else: 
                     style.background_color = palette['CALENDAR_SELECTED_BG_COLOR']
                     style.hover_background_color = palette['CALENDAR_SELECTED_HOVER_BG_COLOR']
             elif is_today:
@@ -303,8 +313,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 style.background_color = self._get_rgba_string(base_color_hex, 0.15)
                 style.hover_background_color = self._get_rgba_string(base_color_hex, 0.3)
 
-            if is_today or is_selected: style.border_style = f"1px solid {base_color_hex}"
-            if is_today: style.font_size = 17
+            if is_today or is_selected:
+                style.border_style = f"1px solid {base_color_hex}"
+            if is_today:
+                style.font_size = 17
         else:
             style.text_color = palette['GREY_COLOR']
             if is_user_event:
@@ -328,14 +340,19 @@ class PersianCalendarWidget(BaseFramelessWindow):
         return stylesheet, style.tooltip
 
     def _navigate(self, months: int):
-        new_year, new_month = self.display_date.year, self.display_date.month + months
-        while new_month < 1: new_month += 12; new_year -= 1
-        while new_month > 12: new_month -= 12; new_year += 1
-        try:
-            self.display_date = jdatetime.date(new_year, new_month, self.display_date.day)
-        except ValueError:
-            last_day = 31 if 1 <= new_month <= 6 else (30 if 7 <= new_month <= 11 else (30 if is_jalali_leap_year(new_year) else 29))
-            self.display_date = jdatetime.date(new_year, new_month, last_day)
+        year = self.display_date.year
+        month = self.display_date.month + months
+        while month < 1:
+                month += 12
+                year -= 1
+        while month > 12:
+                month -= 12
+                year += 1
+
+        max_day = 31 if month <= 6 else (30 if month <= 11 else (30 if is_jalali_leap_year(year) else 29))
+        day = min(self.display_date.day, max_day)
+
+        self.display_date = jdatetime.date(year, month, day)
         self.fill_calendar_grid()
 
     def prev_month(self): self._navigate(-1)
@@ -349,15 +366,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def go_to_date(self, year, month):
         try:
-            day = min(self.display_date.day, 29)
+            max_day = 31 if month <= 6 else (30 if month <= 11 else (30 if is_jalali_leap_year(year) else 29))
+            day = min(self.display_date.day, max_day)
             self.display_date = jdatetime.date(year, month, day)
             self.fill_calendar_grid()
         except (ValueError, TypeError):
-            try:
-                self.display_date = jdatetime.date(year, month, 1)
-                self.fill_calendar_grid()
-            except (ValueError, TypeError):
-                pass
+            pass
 
     def _on_day_clicked(self, jdate: Optional[jdatetime.date]):
         if jdate and not self.event_input_widget.isVisible():
@@ -394,12 +408,15 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.go_to_window.show()
 
     def _show_event_input_widget(self, jdate: jdatetime.date):
-        if not jdate: return
+        if not jdate or self.event_input_widget.isVisible():
+            return
         self.editing_date = jdate
         existing_text, is_yearly, remove_after_finish = self._get_user_event_for_date(jdate)
         self.event_input_widget.set_data(existing_text or "", is_yearly, remove_after_finish)
-        width = self.width() - 40; height = 220
-        x = (self.width() - width) // 2; y = (self.height() - height) // 2
+        width = self.width() - 40
+        height = 220
+        x = (self.width() - width) // 2
+        y = (self.height() - height) // 2
         self.event_input_widget.setGeometry(x, y, width, height)
         self.event_input_widget.show()
         self.event_input_widget.raise_()
@@ -407,9 +424,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _handle_event_saved(self, text: str, is_yearly: bool, remove_after_finish: bool):
         if self.editing_date:
             if text: 
-                self.event_added.emit(self.editing_date, text, is_yearly, remove_after_finish)
+                self.event_added.emit(jdatetime.date(self.editing_date.year, self.editing_date.month, self.editing_date.day), text, is_yearly, remove_after_finish)
             else: 
-                self.event_removed.emit(self.editing_date)
+                self.event_removed.emit(jdatetime.date(self.editing_date.year, self.editing_date.month, self.editing_date.day))
         self._hide_event_input_widget()
 
     def _handle_event_canceled(self):
@@ -420,6 +437,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.event_input_widget.hide()
 
     def _remove_event(self, jdate: jdatetime.date):
-        if not jdate: return
+        if not jdate: 
+            return
         self.event_removed.emit(jdate)
 
