@@ -9,8 +9,8 @@ cells to handle date selection and event management.
 from typing import Optional
 
 import jdatetime
-from PyQt5.QtCore import QTimer, pyqtSignal
-from PyQt5.QtGui import QMouseEvent
+from PyQt5.QtCore import QTimer, pyqtSignal, Qt
+from PyQt5.QtGui import QContextMenuEvent, QMouseEvent
 from PyQt5.QtWidgets import QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
@@ -29,12 +29,13 @@ class ClickableLabel(QLabel):
         self.has_user_event = False
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == 1: # Qt.LeftButton
+        if event.button() == Qt.LeftButton:
             self.clicked.emit(self.jalali_date)
         super().mousePressEvent(event)
 
-    def contextMenuEvent(self, event: QMouseEvent):
-        if not self.jalali_date or not self.text(): return
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        if not self.jalali_date or not self.text():
+            return
 
         menu = QMenu(self)
         palette = APP_CONFIG.get_current_palette()
@@ -68,6 +69,7 @@ class ClickableLabel(QLabel):
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
+            # Delay emission slightly to ensure the context menu fully closes before opening any new dialogs or widgets.
         QTimer.singleShot(50, lambda: self.add_event_requested.emit(jdate))
 
     def _trigger_remove_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
