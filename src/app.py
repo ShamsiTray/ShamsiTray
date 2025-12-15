@@ -22,26 +22,25 @@ logger = setup_logging(__name__)
 
 def main():
     """Initializes and runs the ShamsiTray application."""
-    try:
-        verify_assets()
-    except FileNotFoundError as e:
-        # We need a temporary QApplication to show the error message if assets are missing.
-        temp_app = QApplication.instance() or QApplication(sys.argv)
-        QMessageBox.critical(None, "Application File Error", str(e))
-        sys.exit(1)
-
-    # Set the AppUserModelID for Windows to ensure the icon is displayed correctly in the taskbar.
-    if sys.platform == 'win32':
-        myappid = f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}.1"
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-
-    # Configure high-DPI scaling for better visuals on modern displays.
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     app = QApplication(sys.argv)
-    # The application should not exit when the last window is closed, as it lives in the system tray.
     app.setQuitOnLastWindowClosed(False)
+
+    try:
+        verify_assets()
+    except FileNotFoundError as e:
+        QMessageBox.critical(None, "Application File Error", str(e))
+        sys.exit(1)
+
+
+    if sys.platform == 'win32':
+        try:
+            myappid = f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}.1"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            logger.warning(f"Failed to set AppUserModelID: {e}")
 
     try:
         load_fonts()
@@ -56,7 +55,6 @@ def main():
     tray_icon = SystemTrayIcon()
     tray_icon.show()
 
-    # Check if this is the first time the application is running to show the tutorial.
     settings = QSettings(APP_CONFIG.COMPANY_NAME, APP_CONFIG.APP_NAME)
     if not settings.value(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, False, type=bool):
         logger.info("First run: Showing tutorial.")
@@ -64,7 +62,6 @@ def main():
         tray_icon.tutorial_window = tutorial
         tutorial.show()
         
-        # Safely center the tutorial window on the primary screen.
         screen = QApplication.primaryScreen()
         if screen:
             screen_center = screen.availableGeometry().center()
