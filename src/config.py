@@ -106,7 +106,7 @@ class Config:
     CALENDAR_WIDTH = 305
     CALENDAR_HEIGHT = 395
     CALENDAR_BORDER_RADIUS_PX = 25
-    DRAGGABLE_AREA_HEIGHT = 40 # For frameless windows
+    DRAGGABLE_AREA_HEIGHT = 40
 
     # --- Date & Time Data ---
     PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹']
@@ -131,5 +131,4 @@ class Config:
         FA_MOON_SOLID = '\uf186'
 
 # Create a single, globally accessible instance of the configuration.
-
 APP_CONFIG = Config()
