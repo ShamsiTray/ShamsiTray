@@ -49,7 +49,6 @@ def is_jalali_leap_year(year: int) -> bool:
     try:
         return jdatetime.date.is_leap(year)
     except AttributeError:
-        # Fallback for older jdatetime versions
         try:
             jdatetime.date(year, 12, 30)
             return True

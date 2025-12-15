@@ -11,7 +11,7 @@ import sys
 from typing import Optional
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QMovie
+from PyQt5.QtGui import QFont, QMovie, QColor
 from PyQt5.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
@@ -21,7 +21,8 @@ from .base_window import BaseFramelessWindow
 logger = setup_logging(__name__)
 
 try:
-    import win32con, win32gui
+    import win32con
+    import win32gui
     WIN32_AVAILABLE = True
 except ImportError:
     logger.warning("win32api not available. Window style modifications will be skipped.")
@@ -62,6 +63,10 @@ class TutorialWindow(BaseFramelessWindow):
         main_layout.addWidget(self.close_button)
 
     def _load_gif(self):
+        """
+        Loads and starts the tutorial GIF.
+        Falls back to text if the file is missing or invalid.
+        """
         gif_path = str(APP_CONFIG.TUTORIAL_GIF_PATH)
         if not os.path.exists(gif_path):
             logger.error(f"Tutorial GIF not found: {gif_path}")
@@ -78,7 +83,6 @@ class TutorialWindow(BaseFramelessWindow):
             logger.warning(f"Failed to load GIF from {gif_path}.")
 
     def update_styles(self):
-        from PyQt5.QtGui import QColor
         palette = APP_CONFIG.get_current_palette()
         self.message_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
         self.message_label.setStyleSheet(f"color: {palette['TEXT_COLOR']};")
@@ -89,8 +93,10 @@ class TutorialWindow(BaseFramelessWindow):
         )
 
     def _close_tutorial(self):
-        if hasattr(self, 'movie') and self.movie:
+        if hasattr(self, "movie") and self.movie:
             self.movie.stop()
+            self.movie.deleteLater()
+            self.movie = None
         self.tutorial_closed.emit()
         self.close()
 

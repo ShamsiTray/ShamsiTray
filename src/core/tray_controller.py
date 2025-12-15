@@ -16,7 +16,7 @@ import datetime
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt5.QtCore import QCoreApplication, QSettings, QTimer, Qt
+from PyQt5.QtCore import QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QApplication, QMenu, QSystemTrayIcon,
                              QWidgetAction)
@@ -28,7 +28,7 @@ from ui.widgets.menu_widgets import (MenuActionWidget,
                                        ThemeToggleActionWidget)
 from ui.widgets.custom_checkbox import IconCheckboxActionWidget
 from utils.date_helpers import (persian_month_name, persian_weekday_name,
-                                  to_persian_digits, from_persian_digits)
+                                  to_persian_digits)
 from utils.logging_setup import setup_logging
 from utils.native_events import TimeChangeEventFilter
 from utils.ui_helpers import create_tray_pixmap
@@ -47,7 +47,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.settings = QSettings(APP_CONFIG.COMPANY_NAME, APP_CONFIG.APP_NAME)
         self.holidays_cache = self._load_holidays_from_file()
         self.user_events = self._load_user_events()
-        self._clean_expired_events() # Clean up on startup
+        self._clean_expired_events()
         
         self.calendar_widget = PersianCalendarWidget(self.holidays_cache, self.user_events)
         self.calendar_widget.event_added.connect(self.add_user_event)
@@ -92,9 +92,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         QApplication.instance().setStyleSheet(self._build_global_stylesheet())
         self.update_tray_icon(force=True)
         self._setup_context_menu()
-        if self.calendar_widget: self.calendar_widget.update_styles()
-        if self.converter_window and self.converter_window.isVisible(): self.converter_window.update_styles()
-        if self.tutorial_window and self.tutorial_window.isVisible(): self.tutorial_window.update_styles()
+        if self.calendar_widget:
+            self.calendar_widget.update_styles()
+        if self.converter_window and self.converter_window.isVisible():
+            self.converter_window.update_styles()
+        if self.tutorial_window and self.tutorial_window.isVisible():
+            self.tutorial_window.update_styles()
     
     def _setup_timers(self):
         self.minute_timer = QTimer(self)
@@ -116,7 +119,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         tomorrow = now + datetime.timedelta(days=1)
         midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
         millis_until_midnight = int((midnight - now).total_seconds() * 1000)
-        buffer_ms = 500
+        buffer_ms = 500 # Small buffer to ensure we pass midnight even if the timer fires slightly early
         if hasattr(self, '_midnight_timer') and self._midnight_timer.isActive():
             self._midnight_timer.stop()
             del self._midnight_timer
@@ -127,6 +130,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.debug(f"Next midnight check scheduled in {millis_until_midnight + buffer_ms} ms.")
 
     def _handle_system_time_change(self):
+        # System time changes (manual adjustment, DST) can invalidate the current date and scheduled midnight timers, so we force a full refresh and reschedule.
         logger.info("System time change detected. Forcing tray icon update and rescheduling midnight check.")
         self._clean_expired_events()
         self.calendar_widget.go_to_today()
@@ -155,6 +159,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info("Holidays loaded successfully.")
             return holidays_data
         except (IOError, json.JSONDecodeError, ValueError) as e:
+            # If holidays fail to load, continue without them rather than blocking the app
             logger.error(f"Failed to load or parse holidays file: {e}")
             return {}
 
@@ -180,10 +185,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.info(f"Saved {len(self.user_events)} user events.")
 
     def add_user_event(self, jdate: jdatetime.date, text: str, is_yearly: bool, remove_after_finish: bool):
-        if not jdate: return
+        if not jdate:
+            return
         self.remove_user_event(jdate, save=False)
         
         if is_yearly:
+        # Yearly events are stored with year "0000" so they match the same month/day across all years when rendering and cleaning events.
             remove_after_finish = False
             key = jdate.strftime("0000-%m-%d")
         else:
@@ -195,7 +202,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.update_tray_icon(force=True)
 
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
-        if not jdate: return
+        if not jdate:
+            return
         specific_key = jdate.strftime("%Y-%m-%d")
         yearly_key = jdate.strftime("0000-%m-%d")
         event_removed = False
@@ -258,7 +266,6 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         weekday_name = persian_weekday_name(new_date.weekday())
         month_name = persian_month_name(new_date.month)
-        year_str_persian = to_persian_digits(new_date.year)
         
         date_str = f"{new_date.year}/{new_date.month:02d}/{new_date.day:02d}"
         month_written_persian = f"\u200F{new_date.day:02d} {month_name} {new_date.year}"
@@ -307,7 +314,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(action)
 
     def _add_startup_action(self, menu):
-        if not sys.platform.startswith('win'): return
+        if not sys.platform.startswith('win'):
+            return
         action = QWidgetAction(self)
         widget = IconCheckboxActionWidget("راه اندازی همراه با سیستم", self.is_open_at_login, parent=menu)
         widget.toggled.connect(self._toggle_open_at_boot)
@@ -325,7 +333,6 @@ class SystemTrayIcon(QSystemTrayIcon):
                 self.show_calendar()
 
     def show_calendar(self):
-        # Bug Fix 4: Ensure calendar opens to the correct day
         if self.calendar_widget.selected_date != jdatetime.date.today():
              self.calendar_widget.go_to_today()
         
@@ -335,8 +342,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         screen = QApplication.primaryScreen().availableGeometry()
         tray_geom = self.geometry()
         widget_size = self.calendar_widget.size()
-        x = screen.right() - widget_size.width() - 10
-        y = screen.bottom() - widget_size.height() - 45 
+        x = screen.right() - widget_size.width() - 10 # Small gap so the widget doesn't touch the tray icon
+        y = screen.bottom() - widget_size.height() - 45 # Fallback offset to keep widget above taskbar
         if tray_geom.isValid():
             x = tray_geom.center().x() - widget_size.width() // 2
             y = tray_geom.top() - widget_size.height() - 5
@@ -361,6 +368,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
             if enable:
                 executable_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+                # Path must be quoted to support spaces when the app is frozen or installed in Program Files
                 winreg.SetValueEx(key, APP_CONFIG.APP_NAME, 0, winreg.REG_SZ, f'"{executable_path}"')
                 logger.info(f"Set startup registry key to: {executable_path}")
             else:
