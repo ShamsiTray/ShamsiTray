@@ -29,12 +29,12 @@ def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
     pixmap.fill(Qt.transparent)
     
     painter = QPainter(pixmap)
+    if not painter.isActive():
+        return pixmap
     painter.setRenderHint(QPainter.Antialiasing)
-    
     painter.setPen(QColor(color_hex))
     painter.setFont(QFont(APP_CONFIG.FONT_FAMILY, font_size, QFont.Bold))
     
-    # Draw text centered in the pixmap rectangle
     painter.drawText(pixmap.rect(), Qt.AlignCenter, day_str)
     painter.end()
     

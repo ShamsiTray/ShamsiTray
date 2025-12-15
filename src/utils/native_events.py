@@ -25,7 +25,9 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
         logger.debug("TimeChangeEventFilter initialized.")
 
     def nativeEventFilter(self, eventType, message):
-        if eventType == "windows_generic_MSG":
+        if eventType in ("windows_generic_MSG", "windows_dispatcher_MSG"):
+            if not message:
+                return False, 0
             try:
                 msg = ctypes.cast(int(message), ctypes.POINTER(ctypes.wintypes.MSG)).contents
                 WM_TIMECHANGE = 0x001E

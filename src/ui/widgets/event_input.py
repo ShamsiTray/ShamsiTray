@@ -8,7 +8,7 @@ a checkbox for yearly recurrence, and save/cancel buttons.
 """
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QTextOption
-from PyQt5.QtWidgets import (QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
+from PyQt5.QtWidgets import (QHBoxLayout, QLabel,
                              QPushButton, QTextEdit, QVBoxLayout, QWidget)
 
 from config import APP_CONFIG
@@ -21,19 +21,26 @@ class RTLTextEdit(QTextEdit):
         super().__init__()
         self.placeholder_text = placeholder_text
         self.setLayoutDirection(Qt.RightToLeft)
+
+        # Ensure placeholder disappears immediately when text changes programmatically
+        self.textChanged.connect(self.viewport().update)
     
     def paintEvent(self, event):
         super().paintEvent(event)
-        
-        if self.toPlainText() == "" and self.placeholder_text:
+        # QTextEdit does not support placeholders in RTL reliably, so we manually draw it when the document is empty.
+        if not self.toPlainText() and self.placeholder_text:
             painter = QPainter(self.viewport())
-            painter.setPen(QColor(128, 128, 128)) # Grey color for placeholder
+            painter.setPen(QColor(128, 128, 128))
             rect = self.viewport().rect()
-            rect.adjust(5, 5, -5, -5) # Text padding
+            rect.adjust(5, 5, -5, -5)
             painter.drawText(rect, Qt.AlignRight | Qt.AlignTop, self.placeholder_text)
 
 class EventInputWidget(QWidget):
     """An integrated widget for adding or editing a user event."""
+    # Arguments:
+    # text (str): event description
+    # is_yearly (bool): whether the event repeats every year
+    # remove_after_finish (bool): auto-remove after date passes
     saved = pyqtSignal(str, bool, bool)
     canceled = pyqtSignal()
 
@@ -42,7 +49,7 @@ class EventInputWidget(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setLayoutDirection(Qt.RightToLeft)
-
+        
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
@@ -109,10 +116,6 @@ class EventInputWidget(QWidget):
                              f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
                              f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
         self.save_button.setStyleSheet(save_button_style)
-        
-        # The shadow effect was causing rendering errors on Windows, so it's removed.
-        # shadow = QGraphicsDropShadowEffect(blurRadius=25, xOffset=0, yOffset=5, color=QColor(0, 0, 0, 50))
-        # self.setGraphicsEffect(shadow)
 
     def set_data(self, text, is_yearly, remove_after_finish):
         self.text_edit.setText(text)
@@ -121,9 +124,13 @@ class EventInputWidget(QWidget):
         self.remove_after_finish_checkbox.setEnabled(not is_yearly)
 
     def _on_yearly_toggled(self, is_checked):
+        # Yearly events cannot be auto-removed
         self.remove_after_finish_checkbox.setEnabled(not is_checked)
         if is_checked:
             self.remove_after_finish_checkbox.setChecked(False)
 
     def _on_save(self):
+        text = self.text_edit.toPlainText().strip()
+        if not text:
+            return
         self.saved.emit(self.text_edit.toPlainText().strip(), self.yearly_checkbox.isChecked(), self.remove_after_finish_checkbox.isChecked())
