@@ -25,32 +25,24 @@ class CustomCheckbox(QWidget):
         self._is_checked = is_checked
         self.setMouseTracking(True)
         self.setCursor(Qt.PointingHandCursor)
-        # By not setting a layout direction, it will inherit from its parent (RTL in this case).
-
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)  # Reduced spacing for a tighter look
-
+        layout.setSpacing(4) 
         self.icon_label = QLabel()
         fa_font = QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 14)
         self.icon_label.setFont(fa_font)
         self.icon_label.setFixedWidth(22)
-        
         self.text_label = QLabel(text)
-
-        # In an RTL layout, widgets are added from right to left.
-        # A stretch item is added last (on the far left) to consume extra space
-        # and keep the text and icon grouped together on the right.
         layout.addWidget(self.text_label)
         layout.addWidget(self.icon_label)
         layout.addStretch()
-
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
-            self.setChecked(not self._is_checked)
-            self.toggled.emit(self._is_checked)
+            new_state = not self._is_checked
+            self.setChecked(new_state)
+            self.toggled.emit(new_state)
         super().mousePressEvent(event)
 
     def isChecked(self) -> bool:
@@ -79,7 +71,7 @@ class IconCheckboxActionWidget(HoverWidget):
 
     def __init__(self, text: str, is_checked: bool, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.is_checked = is_checked
+        self._is_checked = is_checked
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(8)
@@ -93,19 +85,21 @@ class IconCheckboxActionWidget(HoverWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        super().mousePressEvent(event)
         if event.button() == Qt.LeftButton:
-            self.is_checked = not self.is_checked
-            self.toggled.emit(self.is_checked)
+            new_state = not self._is_checked
+            self.setChecked(new_state)
+            self.toggled.emit(new_state)
             self.update_visuals()
+        super().mousePressEvent(event)
+
 
     def setChecked(self, checked: bool):
-        if self.is_checked != checked:
-            self.is_checked = checked
+        if self._is_checked != checked:
+            self._is_checked = checked
             self.update_visuals()
 
     def update_visuals(self):
-        icon = APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID if self.is_checked else APP_CONFIG.FAS.FA_SQUARE_REGULAR
+        icon = APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID if self._is_checked else APP_CONFIG.FAS.FA_SQUARE_REGULAR
         self.icon_label.setText(icon)
         color = APP_CONFIG.current_palette['TEXT_COLOR']
         self.icon_label.setStyleSheet(f"color: {color}; background: transparent;")
