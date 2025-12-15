@@ -26,6 +26,8 @@ class HoverWidget(QWidget):
         self.setStyleSheet("background-color: transparent; border-radius: 6px;")
 
     def paintEvent(self, event):
+        # Draw a rounded hover background only when the widget is enabled.
+        # Disabled items must not show hover feedback to match native menu behavior.
         if self._is_hovered and self.isEnabled():
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
@@ -34,10 +36,22 @@ class HoverWidget(QWidget):
             painter.fillPath(path, QColor(*APP_CONFIG.current_palette["MENU_HOVER_COLOR"]))
         super().paintEvent(event)
         
-    def enterEvent(self, event): self._is_hovered = True; self.update()
-    def leaveEvent(self, event): self._is_hovered = False; self.update()
+    def enterEvent(self, event):
+        self._is_hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._is_hovered = False
+        self.update()
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton: self.triggered.emit()
+        if event.button() == Qt.LeftButton and self.isEnabled():
+            self.triggered.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
 class MenuActionWidget(HoverWidget):
     """Custom widget for a simple text-based menu action."""
@@ -53,6 +67,7 @@ class MenuActionWidget(HoverWidget):
         self._update_style()
 
     def setEnabled(self, enabled: bool):
+        # Re-apply styles on enable/disable because this widget uses custom rendering instead of native QAction styling.
         super().setEnabled(enabled)
         self._update_style()
 
@@ -70,9 +85,12 @@ class ThemeToggleActionWidget(MenuActionWidget):
         super().__init__("", parent)
         self.current_theme_getter = current_theme_getter
         layout = self.layout()
+        # Replace MenuActionWidget's default layout content with icon + label because this action requires dynamic text and an icon.
         while layout.count():
             item = layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
         self.icon_label = QLabel()
         self.icon_label.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 14))
         self.icon_label.setFixedWidth(22)
@@ -84,14 +102,10 @@ class ThemeToggleActionWidget(MenuActionWidget):
         layout.addStretch()
         self.update_display()
 
-    def paintEvent(self, event):
-        self.update_display()
-        super().paintEvent(event)
-
     def update_display(self):
         theme = self.current_theme_getter()
         icon = APP_CONFIG.FAS.FA_MOON_SOLID if theme == APP_CONFIG.Theme.DARK else APP_CONFIG.FAS.FA_SUN_SOLID
-        text = "    تم برنامه: تیره" if theme == APP_CONFIG.Theme.DARK else "    تم برنامه: روشن"
+        text = "    تم برنامه: تیره" if theme == APP_CONFIG.Theme.DARK else "    تم برنامه: روشن" # Leading spaces are intentional to visually align text with the icon
         self.icon_label.setText(icon)
         self.label.setText(text)
         color = APP_CONFIG.current_palette['TEXT_COLOR']
