@@ -5,9 +5,9 @@ UI Helper Functions
 This module contains utility functions related to creating or manipulating
 UI elements, such as dynamically drawing pixmaps.
 """
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG
 
@@ -26,16 +26,16 @@ def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
     icon_size, font_size = (36, 20) if dpi >= 110 else (38, 26)
     
     pixmap = QPixmap(icon_size, icon_size)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     
     painter = QPainter(pixmap)
     if not painter.isActive():
         return pixmap
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor(color_hex))
-    painter.setFont(QFont(APP_CONFIG.FONT_FAMILY, font_size, QFont.Bold))
+    painter.setFont(QFont(APP_CONFIG.FONT_FAMILY, font_size, QFont.Weight.Bold))
     
-    painter.drawText(pixmap.rect(), Qt.AlignCenter, day_str)
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, day_str)
     painter.end()
     
     return pixmap

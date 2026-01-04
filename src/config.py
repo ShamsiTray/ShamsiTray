@@ -18,6 +18,7 @@ class Config:
     # --- App Info ---
     APP_NAME = "ShamsiTray"
     COMPANY_NAME = "ShamsiTray"
+    APP_VERSION = "1.3.0"
     
     # --- Paths (dynamically calculated) ---
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):

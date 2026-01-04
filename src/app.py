@@ -9,8 +9,8 @@ loads necessary resources like fonts, and launches the system tray icon controll
 import sys
 import ctypes
 
-from PyQt5.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
-from PyQt5.QtCore import Qt, QSettings
+from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
+from PyQt6.QtCore import Qt, QSettings
 
 from config import APP_CONFIG
 from utils.assets import verify_assets, load_fonts
@@ -22,8 +22,7 @@ logger = setup_logging(__name__)
 
 def main():
     """Initializes and runs the ShamsiTray application."""
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -69,4 +68,4 @@ def main():
         
         settings.setValue(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, True)
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

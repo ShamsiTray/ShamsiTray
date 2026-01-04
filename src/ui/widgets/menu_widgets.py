@@ -8,9 +8,9 @@ the default QAction, such as items with icons, hover effects, and custom text.
 """
 from typing import Optional
 
-from PyQt5.QtCore import Qt, QRectF, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt6.QtCore import Qt, QRectF, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from config import APP_CONFIG
 
@@ -30,7 +30,7 @@ class HoverWidget(QWidget):
         # Disabled items must not show hover feedback to match native menu behavior.
         if self._is_hovered and self.isEnabled():
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             path = QPainterPath()
             path.addRoundedRect(QRectF(self.rect()), 6, 6)
             painter.fillPath(path, QColor(*APP_CONFIG.current_palette["MENU_HOVER_COLOR"]))
@@ -47,7 +47,7 @@ class HoverWidget(QWidget):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton and self.isEnabled():
+        if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
             self.triggered.emit()
             event.accept()
             return
@@ -60,7 +60,7 @@ class MenuActionWidget(HoverWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 6, 15, 6)
         self.label = QLabel(text)
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addStretch()
         layout.addWidget(self.label)
         layout.addStretch()

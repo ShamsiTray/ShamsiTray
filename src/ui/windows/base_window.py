@@ -12,9 +12,9 @@ It handles common functionality such as:
 """
 from typing import Optional
 
-from PyQt5.QtCore import QPoint, QRectF, Qt
-from PyQt5.QtGui import QColor, QPainter, QPainterPath
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt6.QtCore import QPoint, QRectF, Qt
+from PyQt6.QtGui import QColor, QPainter, QPainterPath
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from config import APP_CONFIG
 
@@ -24,15 +24,15 @@ class BaseFramelessWindow(QWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._drag_position: Optional[QPoint] = None
-        #FramelessWindowHint removes native title bar, WindowStaysOnTopHint keeps the window above others for quick access and Qt.Tool prevents taskbar entry.
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        #FramelessWindowHint removes native title bar, WindowStaysOnTopHint keeps the window above others for quick access and Qt.WindowType.Tool prevents taskbar entry.
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
     def paintEvent(self, event):
         if self.rect().isEmpty():
             return
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
         radius = APP_CONFIG.CALENDAR_BORDER_RADIUS_PX
         path.addRoundedRect(QRectF(self.rect()), radius, radius)
@@ -43,16 +43,16 @@ class BaseFramelessWindow(QWidget):
         super().paintEvent(event)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.y() < APP_CONFIG.DRAGGABLE_AREA_HEIGHT:
-            self._drag_position = event.globalPos() - self.frameGeometry().topLeft()
+        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < APP_CONFIG.DRAGGABLE_AREA_HEIGHT:
+            self._drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
             return 
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton and self._drag_position is not None:
-            new_pos = event.globalPos() - self._drag_position
-            screen = QApplication.screenAt(event.globalPos())
+        if event.buttons() == Qt.MouseButton.LeftButton and self._drag_position is not None:
+            new_pos = event.globalPosition().toPoint() - self._drag_position
+            screen = QApplication.screenAt(event.globalPosition().toPoint())
             if screen is None:
                 return
             screen_geometry = screen.availableGeometry()

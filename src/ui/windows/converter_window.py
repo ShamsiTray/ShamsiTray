@@ -11,9 +11,9 @@ import datetime
 from typing import Tuple
 
 import jdatetime
-from PyQt5.QtCore import QEvent, Qt, QTimer
-from PyQt5.QtGui import (QColor, QFont, QIcon, QIntValidator, QPalette)
-from PyQt5.QtWidgets import (QComboBox, QFrame, QGridLayout,
+from PyQt6.QtCore import QEvent, Qt, QTimer
+from PyQt6.QtGui import (QColor, QFont, QIcon, QIntValidator, QPalette)
+from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
                              QSizePolicy, QSpacerItem, QVBoxLayout, QWidget,
                              QGraphicsOpacityEffect)
@@ -53,9 +53,9 @@ class DateConverterWindow(BaseFramelessWindow):
         self._initial_height = 260
         self.setWindowTitle("Date Converter")
         self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(650, self._initial_height)
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         
         self._setup_ui()
         self.update_styles()
@@ -70,12 +70,17 @@ class DateConverterWindow(BaseFramelessWindow):
 
     def eventFilter(self, obj, event):
         """Force QComboBox popup on click, even when its line edit is read-only."""
-        if event.type() == QEvent.MouseButtonRelease:
-            if obj in (self.conversion_type_combo.lineEdit(), self.day_combo.lineEdit(), self.month_combo.lineEdit()):
-                parent_combo = obj.parent()
-                if parent_combo and not parent_combo.view().isVisible():
-                    parent_combo.showPopup()
-                return True
+        target_line_edits = (self.conversion_type_combo.lineEdit(), self.day_combo.lineEdit(), self.month_combo.lineEdit())
+        if obj in target_line_edits:
+                    if event.type() in (QEvent.Type.MouseButtonRelease, QEvent.Type.MouseMove, QEvent.Type.MouseButtonDblClick):
+                        if event.type() == QEvent.Type.MouseButtonRelease:
+                            parent_combo = obj.parent()
+                            if parent_combo:
+                                if parent_combo.view().isVisible():
+                                    parent_combo.hidePopup()
+                                else:
+                                    parent_combo.showPopup()
+                        return True
         return super().eventFilter(obj, event)
 
     def _setup_ui(self):
@@ -100,7 +105,7 @@ class DateConverterWindow(BaseFramelessWindow):
         main_layout.addWidget(self.output_widget)
         
         self.status_message = QLabel("")
-        self.status_message.setAlignment(Qt.AlignCenter)
+        self.status_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_message)
         main_layout.addStretch(1)
 
@@ -112,8 +117,8 @@ class DateConverterWindow(BaseFramelessWindow):
         self.exit_button = QPushButton("✕")
         self.minimize_button = QPushButton("—")
         button_layout = QHBoxLayout()
-        button_layout.addWidget(self.exit_button, alignment=Qt.AlignTop)
-        button_layout.addWidget(self.minimize_button, alignment=Qt.AlignTop)
+        button_layout.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignTop)
+        button_layout.addWidget(self.minimize_button, alignment=Qt.AlignmentFlag.AlignTop)
         button_layout.addStretch(1)
         return button_layout
 
@@ -125,7 +130,7 @@ class DateConverterWindow(BaseFramelessWindow):
         self.input_labels = []
         for text, pos in labels.items():
             label = QLabel(text)
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             grid.addWidget(label, pos[0], pos[1])
             self.input_labels.append(label)
 
@@ -136,11 +141,11 @@ class DateConverterWindow(BaseFramelessWindow):
         for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
             combo.setEditable(True)
             combo.lineEdit().setReadOnly(True)
-            combo.lineEdit().setAlignment(Qt.AlignCenter)
+            combo.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
             combo.lineEdit().installEventFilter(self)
 
         self.year_input = QLineEdit()
-        self.year_input.setAlignment(Qt.AlignCenter)
+        self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.year_validator = QIntValidator(1, 9999, self)
         self.year_input.setValidator(self.year_validator)
         grid.addWidget(self.conversion_type_combo, 1, 0)
@@ -160,18 +165,18 @@ class DateConverterWindow(BaseFramelessWindow):
         layout.setSpacing(10)
         output_grid = QHBoxLayout()
         output_grid.setSpacing(10)
-        output_grid.setAlignment(Qt.AlignCenter)
+        output_grid.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.gregorian_date_value_1, self.gregorian_date_value_2, greg_group = self._create_output_group("تاریخ میلادی")
         self.jalali_date_value_1, self.jalali_date_value_2, jalali_group = self._create_output_group("تاریخ شمسی")
         output_grid.addLayout(greg_group)
-        output_grid.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        output_grid.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
         output_grid.addLayout(jalali_group)
         layout.addLayout(output_grid)
         layout.addSpacing(10)
         self.elapsed_text = QLabel("...")
-        self.elapsed_text.setAlignment(Qt.AlignCenter)
+        self.elapsed_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.leap_year_status = QLabel("...")
-        self.leap_year_status.setAlignment(Qt.AlignCenter)
+        self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
         self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
         layout.addWidget(self.elapsed_text)
@@ -180,15 +185,15 @@ class DateConverterWindow(BaseFramelessWindow):
 
     def _create_output_group(self, title: str) -> Tuple[QLabel, QLabel, QVBoxLayout]:
         layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(0)
         title_label = QLabel(title)
         title_label.setObjectName("OutputTitleLabel")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         value_label_1 = QLabel("...")
         value_label_2 = QLabel("...")
         for label in [value_label_1, value_label_2]:
-             label.setAlignment(Qt.AlignCenter)
+             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
              label.setWordWrap(True)
         layout.addWidget(title_label)
         layout.addWidget(value_label_1)
@@ -197,16 +202,16 @@ class DateConverterWindow(BaseFramelessWindow):
 
     def _create_divider(self) -> QFrame:
         divider = QFrame()
-        divider.setFrameShape(QFrame.HLine)
-        divider.setFrameShadow(QFrame.Sunken)
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setFrameShadow(QFrame.Shadow.Sunken)
         return divider
 
     def update_styles(self):
         palette = self.palette()
         p = APP_CONFIG.get_current_palette()
         text_color = p['TEXT_COLOR']
-        palette.setColor(QPalette.WindowText, QColor(text_color))
-        palette.setColor(QPalette.Text, QColor(text_color))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(text_color))
+        palette.setColor(QPalette.ColorRole.Text, QColor(text_color))
         self.setPalette(palette)
         for label in self.findChildren(QLabel):
             if not label.objectName():
@@ -219,10 +224,14 @@ class DateConverterWindow(BaseFramelessWindow):
         scrollbar_style = (f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {p['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px; }}"
                            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {p['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px; }}"
                            f"QAbstractItemView::add-line:vertical, QAbstractItemView::sub-line:vertical {{ height: 0px; }} QAbstractItemView::add-page:vertical, QAbstractItemView::sub-page:vertical {{ background: none; }}")
-        combo_style = (f"QComboBox {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; }}"
+        combo_style = (f"QComboBox {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}}"
                        f"QComboBox:focus, QComboBox::on {{ border: 1px solid {accent_color}; }}"
                        f"QComboBox::drop-down {{ border: 0px; width: 0px; height: 0px; }}"
-                       f"QComboBox QAbstractItemView {{ background-color: {input_bg}; color: {text_color}; selection-background-color: {accent_color}; border: 1px solid {border_color}; border-radius: 8px; }}" + scrollbar_style)
+                       f"QComboBox QAbstractItemView {{ background-color: {input_bg}; color: {text_color}; selection-background-color: {accent_color}; border: 1px solid {border_color}; border-radius: 8px; outline: none;}}"
+                       f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none; }}"
+                       f"QComboBox QAbstractItemView::item:hover {{ background-color: {p['HOVER_BG']}; border-radius: 4px; }}"
+                       f"QComboBox QAbstractItemView::item:selected {{ background-color: {p['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
+                       f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {p['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
         
         base_button_style = f"border: 1px solid {border_color}; border-radius: 8px; font-size: 18px; font-weight: bold; color: {text_color};"
         self.exit_button.setFixedSize(30, 30)
@@ -238,17 +247,17 @@ class DateConverterWindow(BaseFramelessWindow):
         for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
         self.year_input.setFixedSize(100, input_field_height)
-        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; }} QLineEdit:focus {{ border: 1px solid {accent_color}; }}")
+        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}} QLineEdit:focus {{ border: 1px solid {accent_color}; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }}")
         self.convert_button.setFixedHeight(50)
         self.convert_button.setStyleSheet(f"QPushButton {{ background-color: {accent_color}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }} QPushButton:hover {{ background-color: {QColor(accent_color).lighter(110).name()}; }} QPushButton:pressed {{ background-color: {QColor(accent_color).darker(120).name()}; }}")
         self.middle_divider.setStyleSheet(f"color: {border_color};")
         for label in self.output_widget.findChildren(QLabel):
             if label.objectName() == "OutputTitleLabel":
-                 label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 16, QFont.Bold))
+                 label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 16, QFont.Weight.Bold))
                  label.setStyleSheet(f"color: {accent_color}; padding: 5px;")
-        self.jalali_date_value_1.setFont(QFont(APP_CONFIG.FONT_FAMILY, 15, QFont.Bold))
+        self.jalali_date_value_1.setFont(QFont(APP_CONFIG.FONT_FAMILY, 15, QFont.Weight.Bold))
         self.jalali_date_value_2.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
-        self.gregorian_date_value_1.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 15, QFont.Bold))
+        self.gregorian_date_value_1.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 15, QFont.Weight.Bold))
         self.gregorian_date_value_2.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 14))
         self.elapsed_text.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.leap_year_status.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
@@ -286,14 +295,14 @@ class DateConverterWindow(BaseFramelessWindow):
             self.year_input.setText(to_persian_digits(str(today.year)))
             self.year_validator.setRange(self.MIN_JALALI_YEAR, self.MAX_JALALI_YEAR)
             months = [f"{to_persian_digits(i+1)} - {name}" for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS)]
-            self.month_combo.view().setLayoutDirection(Qt.RightToLeft)
-            self.day_combo.view().setLayoutDirection(Qt.RightToLeft)
+            self.month_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            self.day_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         else:
             self.year_input.setText(str(today.year))
             self.year_validator.setRange(self.MIN_GREGORIAN_YEAR, self.MAX_GREGORIAN_YEAR)
             months = [f"{i+1:02d} - {name}" for i, name in enumerate(APP_CONFIG.GREGORIAN_MONTHS)]
-            self.month_combo.view().setLayoutDirection(Qt.LeftToRight)
-            self.day_combo.view().setLayoutDirection(Qt.LeftToRight)
+            self.month_combo.view().setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+            self.day_combo.view().setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         
         self.month_combo.clear()
         self.month_combo.addItems(months)

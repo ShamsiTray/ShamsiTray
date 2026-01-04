@@ -10,9 +10,9 @@ import os
 import sys
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QMovie, QColor
-from PyQt5.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QMovie, QColor
+from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
 from utils.logging_setup import setup_logging
@@ -49,12 +49,12 @@ class TutorialWindow(BaseFramelessWindow):
             "برای دسترسی آسان، می‌توانید آیکون برنامه را از بخش آیکون‌های پنهان ویندوز، به نوار وظیفه اصلی بکشید."
         )
         self.message_label.setWordWrap(True)
-        self.message_label.setAlignment(Qt.AlignCenter)
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.message_label)
         
         self.gif_label = QLabel()
-        self.gif_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(self.gif_label, alignment=Qt.AlignCenter)
+        self.gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.gif_label, alignment=Qt.AlignmentFlag.AlignCenter)
         self._load_gif()
         
         main_layout.addStretch(1)
