@@ -9,9 +9,9 @@ cells to handle date selection and event management.
 from typing import Optional
 
 import jdatetime
-from PyQt5.QtCore import QTimer, pyqtSignal, Qt
-from PyQt5.QtGui import QContextMenuEvent, QMouseEvent
-from PyQt5.QtWidgets import QLabel, QMenu, QWidget, QWidgetAction
+from PyQt6.QtCore import QTimer, pyqtSignal, Qt
+from PyQt6.QtGui import QContextMenuEvent, QMouseEvent
+from PyQt6.QtWidgets import QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from .menu_widgets import MenuActionWidget
@@ -29,7 +29,7 @@ class ClickableLabel(QLabel):
         self.has_user_event = False
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.jalali_date)
         super().mousePressEvent(event)
 
@@ -40,8 +40,7 @@ class ClickableLabel(QLabel):
         menu = QMenu(self)
         palette = APP_CONFIG.get_current_palette()
         menu.setStyleSheet(
-            f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']};"
-            f"  border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
+            f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
             f"QMenu::item:disabled {{ color: {palette['GREY_COLOR']}; }}"
             f"QMenu::item:selected {{ background-color: {palette['HOVER_BG']}; }}"
             f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}"
@@ -65,7 +64,7 @@ class ClickableLabel(QLabel):
         add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
         remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
 
-        menu.exec_(self.mapToGlobal(event.pos()))
+        menu.exec(self.mapToGlobal(event.pos()))
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()

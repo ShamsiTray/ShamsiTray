@@ -1,4 +1,4 @@
-pyqt5
+pyqt6
 jdatetime
 python-dateutil
 pywin32

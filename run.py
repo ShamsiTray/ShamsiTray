@@ -1,5 +1,8 @@
 import sys
 from pathlib import Path
+import os
+os.environ['QT_SCALE_FACTOR'] = '0.9'
+
 
 def main():
     """Configures the system path and launches the application."""

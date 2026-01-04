@@ -6,9 +6,9 @@ This module contains custom dialog-like widgets used in the application,
 such as the 'Go To Date' panel for the calendar.
 """
 import jdatetime
-from PyQt5.QtCore import QEvent, Qt, pyqtSignal, QRectF
-from PyQt5.QtGui import QColor, QIntValidator, QPainter, QPainterPath
-from PyQt5.QtWidgets import (QComboBox, QLabel, QLineEdit, QPushButton,
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal, QRectF
+from PyQt6.QtGui import QColor, QIntValidator, QPainter, QPainterPath
+from PyQt6.QtWidgets import (QComboBox, QLabel, QLineEdit, QPushButton,
                              QVBoxLayout, QWidget, QHBoxLayout)
 
 from config import APP_CONFIG
@@ -21,19 +21,19 @@ class GoToDateWindow(QWidget):
     MAX_YEAR = 1600
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.setWindowTitle("برو به تاریخ")
         self.setFixedSize(200, 230) # Fixed size prevents layout shifts and keeps the dialog compact
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self._setup_ui()
         self.update_styles()
         
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
         radius = 15 # Corner radius tuned for small dialog size
         path.addRoundedRect(QRectF(self.rect()), radius, radius)
@@ -47,9 +47,14 @@ class GoToDateWindow(QWidget):
 
     def eventFilter(self, obj, event):
         """Force QComboBox popup on click, even when its line edit is read-only."""
-        if event.type() == QEvent.MouseButtonPress and obj is self.month_combo.lineEdit():
-            if not self.month_combo.view().isVisible():
-                self.month_combo.showPopup()
+        if event.type() in (QEvent.Type.MouseButtonRelease, QEvent.Type.MouseMove, QEvent.Type.MouseButtonDblClick):
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                parent_combo = obj.parent()
+                if parent_combo:
+                    if parent_combo.view().isVisible():
+                        parent_combo.hidePopup()
+                    else:
+                        parent_combo.showPopup()
             return True
         return super().eventFilter(obj, event)
 
@@ -59,26 +64,26 @@ class GoToDateWindow(QWidget):
         main_layout.setSpacing(10)
 
         self.title_label = QLabel("برو به تاریخ")
-        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.title_label)
         
         self.month_combo = QComboBox()
         month_names = [f"{to_persian_digits(str(i).zfill(2))} - {persian_month_name(i)}" for i in range(1, 13)]
         self.month_combo.addItems(month_names)
-        self.month_combo.view().setLayoutDirection(Qt.RightToLeft)
+        self.month_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         
         line_edit = QLineEdit(self)
-        line_edit.setAlignment(Qt.AlignCenter)
+        line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         line_edit.setReadOnly(True)
-        line_edit.setContextMenuPolicy(Qt.NoContextMenu)
+        line_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         line_edit.installEventFilter(self)
         self.month_combo.setLineEdit(line_edit)
         main_layout.addWidget(self.month_combo)
         self.year_input = QLineEdit()
         self.year_input.setPlaceholderText("سال")
         self.year_input.setValidator(QIntValidator(self.MIN_YEAR, self.MAX_YEAR))
-        self.year_input.setAlignment(Qt.AlignCenter)
-        self.year_input.setContextMenuPolicy(Qt.NoContextMenu)
+        self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.year_input.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         main_layout.addWidget(self.year_input)
         today = jdatetime.date.today()
         self.month_combo.setCurrentIndex(today.month - 1)
@@ -114,15 +119,16 @@ class GoToDateWindow(QWidget):
                        f"QComboBox::drop-down {{ border: 0px; }}"
                        f"QComboBox QLineEdit {{ background-color: transparent; border: none; }}"
                        f"QComboBox QAbstractItemView {{ background-color: {p['BACKGROUND_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['MENU_BORDER_COLOR']}; border-radius: 8px; outline: 0px; }}"
-                       f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; }}"
+                       f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none }}"
                        f"QComboBox QAbstractItemView::item:hover {{ background-color: {p['HOVER_BG']}; border-radius: 4px; }}"
-                       f"QComboBox QAbstractItemView::item:selected {{ background-color: {p['ACCENT_COLOR']}; color: white; border-radius: 4px; }}" + scrollbar_style)
+                       f"QComboBox QAbstractItemView::item:selected {{ background-color: {p['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
+                       f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {p['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
 
         self.month_combo.setStyleSheet(combo_style)
         self.month_combo.view().setStyleSheet(f"QListView {{ background-color: {p['BACKGROUND_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['MENU_BORDER_COLOR']}; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }}")
         self.month_combo.lineEdit().setStyleSheet(f"color: {p['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: {input_font_size}px;")
 
-        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {p['INPUT_BG_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: {input_font_size}px; }}"
+        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {p['INPUT_BG_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: {input_font_size}px; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }}"
                                       f"QLineEdit::placeholder {{ color: {p['GREY_COLOR']}; }}"
                                       f"QLineEdit:focus {{ border: 1px solid {p['ACCENT_COLOR']}; }}")
 

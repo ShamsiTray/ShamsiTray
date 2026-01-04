@@ -5,8 +5,8 @@ Main entry point for the ShamsiTray application.
 import ctypes
 import sys
 
-from PyQt5.QtCore import QSettings, Qt
-from PyQt5.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
+from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from config import APP_CONFIG
 from utils import load_fonts, setup_logging, verify_assets
@@ -28,8 +28,7 @@ def run_app():
         myappid = f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}.1"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -58,4 +57,4 @@ def run_app():
         tutorial.move(screen_center - tutorial.rect().center())
         settings.setValue(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, True)
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
