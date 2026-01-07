@@ -66,6 +66,9 @@ class ClickableLabel(QLabel):
 
         menu.exec(self.mapToGlobal(event.pos()))
 
+        self.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
+        self.update()
+        
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
             # Delay emission slightly to ensure the context menu fully closes before opening any new dialogs or widgets.
