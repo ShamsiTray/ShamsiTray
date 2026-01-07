@@ -390,6 +390,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         menu.setStyleSheet(f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}")
         go_to_action = MenuActionWidget("برو به تاریخ", menu)
         go_to_action.triggered.connect(self._open_go_to_date_window)
+        go_to_action.triggered.connect(menu.close)
         action = QWidgetAction(self)
         action.setDefaultWidget(go_to_action)
         menu.addAction(action)
@@ -399,13 +400,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if self.go_to_window is None or not self.go_to_window.isVisible():
             self.go_to_window = GoToDateWindow(self)
             self.go_to_window.date_selected.connect(self.go_to_date)
-            parent_pos = self.pos()
             parent_size = self.size()
             child_size = self.go_to_window.size()
-            x = parent_pos.x() + (parent_size.width() - child_size.width()) // 2
-            y = parent_pos.y() + (parent_size.height() - child_size.height()) // 2
+            x = (parent_size.width() - child_size.width()) // 2
+            y = (parent_size.height() - child_size.height()) // 2
             self.go_to_window.move(x, y)
             self.go_to_window.show()
+            self.go_to_window.raise_()
 
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
@@ -440,4 +441,3 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if not jdate: 
             return
         self.event_removed.emit(jdate)
-

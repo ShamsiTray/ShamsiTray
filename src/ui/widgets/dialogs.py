@@ -7,7 +7,7 @@ such as the 'Go To Date' panel for the calendar.
 """
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QRegularExpression
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValidator
+from PyQt6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValidator, QPen
 from PyQt6.QtWidgets import (QComboBox, QLabel, QLineEdit, QPushButton,
                              QVBoxLayout, QWidget, QHBoxLayout)
 
@@ -22,7 +22,7 @@ class GoToDateWindow(QWidget):
     MAX_YEAR = 1600
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
@@ -36,15 +36,14 @@ class GoToDateWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
+        rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         radius = 15 # Corner radius tuned for small dialog size
-        path.addRoundedRect(QRectF(self.rect()), radius, radius)
-        
+        path.addRoundedRect(rect, radius, radius)
         painter.fillPath(path, QColor(APP_CONFIG.current_palette['BACKGROUND_COLOR']))
-        painter.setPen(QColor(APP_CONFIG.current_palette['MENU_BORDER_COLOR']))
+        pen = QPen(QColor(APP_CONFIG.current_palette['MENU_BORDER_COLOR']))
+        pen.setWidth(1)
+        painter.setPen(pen)
         painter.drawPath(path)
-        
-        painter.setClipPath(path)
-        super().paintEvent(event)
 
 
     def _setup_ui(self):
@@ -122,9 +121,11 @@ class GoToDateWindow(QWidget):
                                           f"QPushButton:hover {{ background-color: {QColor(p['ACCENT_COLOR']).lighter(110).name()}; }}"
                                           f"QPushButton:pressed {{ background-color: {QColor(p['ACCENT_COLOR']).darker(120).name()}; }}")
         
-        cancel_button_style = (f"QPushButton {{ background-color: transparent; color: {p['TEXT_COLOR']}; border: 1px solid {p['GREY_COLOR']}; "
+        cancel_button_style = (f"QPushButton {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none;"
                                f"border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-                               f"QPushButton:hover {{ background-color: {p['HOVER_BG']}; border-color: {p['TEXT_COLOR']}; }}")
+                               f"QPushButton:hover {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(110).name()}; }}"
+                               f"QPushButton:pressed {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(140).name()}; }}")
+        
         self.cancel_button.setStyleSheet(cancel_button_style)
         
     def _on_confirm(self):
