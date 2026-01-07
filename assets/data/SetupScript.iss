@@ -1,6 +1,6 @@
 #define MyAppName      "ShamsiTray"
-#define MyAppVersion   "1.1"
-#define MyAppPublisher "RaySoft"
+#define MyAppVersion   "1.2"
+#define MyAppPublisher "ShamsiTray"
 #define MyAppExeName   "ShamsiTray.exe"
 
 [Setup]
@@ -16,9 +16,9 @@ DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=D:\Output\Installer
+OutputDir=D:\ShamsiTray-1.2\Installer
 OutputBaseFilename=ShamsiTraySetup-{#MyAppVersion}
-SetupIconFile=D:\Output\ShamsiTray\res\icons\icon.ico
+SetupIconFile=D:\ShamsiTray-1.2\assets\icons\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=100
@@ -34,8 +34,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
       GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\Output\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\Output\ShamsiTray\*";          DestDir: "{app}"; \
+Source: "D:\ShamsiTray-1.2\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "D:\ShamsiTray-1.2*";          DestDir: "{app}"; \
         Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -217,4 +217,6 @@ begin
       DelTree(ExpandConstant('{app}'), True, True, True);
     end;
   end;
+
 end;
+

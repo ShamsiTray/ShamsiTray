@@ -15,16 +15,17 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [
-          StringStruct('CompanyName', 'RaySoft'),
+          StringStruct('CompanyName', 'ShamsiTray'),
           StringStruct('FileDescription', 'ShamsiTray'),
-          StringStruct('FileVersion', '1.1.0.0'),
-          StringStruct('LegalCopyright', 'Copyright © 2025 - RaySoft'),
+          StringStruct('FileVersion', '1.2.0.0'),
+          StringStruct('LegalCopyright', 'Copyright © 2025 - ShamsiTray'),
           StringStruct('OriginalFilename', 'ShamsiTray.exe'),
           StringStruct('ProductName', 'ShamsiTray'),
-          StringStruct('ProductVersion', '1.1.0.0'),
+          StringStruct('ProductVersion', '1.2.0.0'),
         ]
       )
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
 )
+

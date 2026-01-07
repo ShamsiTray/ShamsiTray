@@ -7,7 +7,7 @@
   },
   {
    "optionDest": "filenames",
-   "value": "D:/ShamsiTray/v1.1-UserEvents/main.py"
+   "value": "D:/ShamsiTray-1.2/run.py"
   },
   {
    "optionDest": "onefile",
@@ -19,7 +19,7 @@
   },
   {
    "optionDest": "icon_file",
-   "value": "D:/ShamsiTray/v1.1-UserEvents/res/icons/icon.ico"
+   "value": "D:/ShamsiTray-1.2/assets/icons/icon.ico"
   },
   {
    "optionDest": "name",
@@ -47,7 +47,7 @@
   },
   {
    "optionDest": "version_file",
-   "value": "D:/ShamsiTray/v1.1-UserEvents/res/data/details.txt"
+   "value": "D:/ShamsiTray-1.2/assets/data/details.txt"
   },
   {
    "optionDest": "uac_admin",
@@ -66,20 +66,17 @@
    "value": false
   },
   {
-   "optionDest": "hiddenimports",
-   "value": "config"
-  },
-  {
-   "optionDest": "hiddenimports",
-   "value": "dateconverter"
-  },
-  {
    "optionDest": "datas",
-   "value": "D:/ShamsiTray/v1.1-UserEvents/res;res/"
+   "value": "D:/ShamsiTray-1.2/assets;assets/"
+  },
+  {
+   "optionDest": "pathex",
+   "value": "D:/ShamsiTray-1.2/src"
   }
  ],
  "nonPyinstallerOptions": {
   "increaseRecursionLimit": true,
   "manualArguments": ""
  }
+
 }
