@@ -58,6 +58,7 @@ class GoToDateWindow(QWidget):
         
         self.month_combo = QComboBox()
         apply_combo_style(self.month_combo)
+        self.month_combo.setMaxVisibleItems(5)
         month_names = [f"{to_persian_digits(str(i).zfill(2))} - {persian_month_name(i)}" for i in range(1, 13)]
         for name in month_names:
             self.month_combo.addItem(name)
