@@ -12,9 +12,9 @@ from html import escape
 from typing import List, Optional, Tuple
 
 import jdatetime
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QFont
-from PyQt5.QtWidgets import (QBoxLayout, QGridLayout, QHBoxLayout, QLabel,
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtWidgets import (QBoxLayout, QGridLayout, QHBoxLayout, QLabel,
                              QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu)
 
 from config import APP_CONFIG
@@ -99,13 +99,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
         month_year_layout = QHBoxLayout()
         month_year_layout.setSpacing(5)
         month_year_layout.setContentsMargins(0, 0, 0, 0)
-        month_year_layout.setAlignment(Qt.AlignCenter)
+        month_year_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         month_year_layout.addWidget(self.year_label)
         month_year_layout.addWidget(self.month_label)
         
         month_year_container = QWidget()
         month_year_container.setLayout(month_year_layout)
-        month_year_container.setContextMenuPolicy(Qt.CustomContextMenu)
+        month_year_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         month_year_container.customContextMenuRequested.connect(self._show_go_to_date_menu)
 
         header_layout = QHBoxLayout()
@@ -134,11 +134,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
         layout = QHBoxLayout()
         layout.setSpacing(5)
         layout.setContentsMargins(0, 0, 0, 10)
-        layout.setDirection(QBoxLayout.RightToLeft)
+        layout.setDirection(QBoxLayout.Direction.RightToLeft)
         for day_name in APP_CONFIG.PERSIAN_WEEKDAYS_SHORT:
             label = QLabel(day_name)
             label.setObjectName("WeekdayLabel")
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setFixedSize(APP_CONFIG.DAY_LABEL_SIZE, APP_CONFIG.DAY_LABEL_SIZE)
             layout.addWidget(label)
         return layout
@@ -146,12 +146,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _create_calendar_grid(self):
         grid_layout = QGridLayout()
         grid_layout.setSpacing(5)
-        grid_layout.setOriginCorner(Qt.TopRightCorner)
+        grid_layout.setOriginCorner(Qt.Corner.TopRightCorner)
         for row in range(self.ROWS):
             week_labels = []
             for col in range(self.COLS):
                 label = ClickableLabel()
-                label.setAlignment(Qt.AlignCenter)
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 label.setFixedSize(APP_CONFIG.DAY_LABEL_SIZE, APP_CONFIG.DAY_LABEL_SIZE)
                 label.clicked.connect(self._on_day_clicked)
                 label.add_event_requested.connect(self._show_event_input_widget)
@@ -179,8 +179,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         text_color, accent_color = palette['TEXT_COLOR'], palette['ACCENT_COLOR']
-        nav_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Bold)
-        today_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Bold)
+        nav_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Weight.Bold)
+        today_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Weight.Bold)
         self.left_arrow_btn.setFont(nav_button_font)
         self.right_arrow_btn.setFont(nav_button_font)
         self.left_arrow_btn.setStyleSheet(self._get_nav_button_style("transparent"))
@@ -390,22 +390,23 @@ class PersianCalendarWidget(BaseFramelessWindow):
         menu.setStyleSheet(f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}")
         go_to_action = MenuActionWidget("برو به تاریخ", menu)
         go_to_action.triggered.connect(self._open_go_to_date_window)
+        go_to_action.triggered.connect(menu.close)
         action = QWidgetAction(self)
         action.setDefaultWidget(go_to_action)
         menu.addAction(action)
-        menu.exec_(self.mapToGlobal(pos))
+        menu.exec(self.mapToGlobal(pos))
     
     def _open_go_to_date_window(self):
         if self.go_to_window is None or not self.go_to_window.isVisible():
             self.go_to_window = GoToDateWindow(self)
             self.go_to_window.date_selected.connect(self.go_to_date)
-            parent_pos = self.pos()
             parent_size = self.size()
             child_size = self.go_to_window.size()
-            x = parent_pos.x() + (parent_size.width() - child_size.width()) // 2
-            y = parent_pos.y() + (parent_size.height() - child_size.height()) // 2
+            x = (parent_size.width() - child_size.width()) // 2
+            y = (parent_size.height() - child_size.height()) // 2
             self.go_to_window.move(x, y)
             self.go_to_window.show()
+            self.go_to_window.raise_()
 
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
@@ -440,4 +441,3 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if not jdate: 
             return
         self.event_removed.emit(jdate)
-

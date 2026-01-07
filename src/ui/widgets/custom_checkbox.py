@@ -8,9 +8,9 @@ and themes.
 """
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QMouseEvent
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QMouseEvent
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from config import APP_CONFIG
 from .menu_widgets import HoverWidget
@@ -24,7 +24,7 @@ class CustomCheckbox(QWidget):
         super().__init__(parent)
         self._is_checked = is_checked
         self.setMouseTracking(True)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4) 
@@ -39,7 +39,7 @@ class CustomCheckbox(QWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)
@@ -85,7 +85,7 @@ class IconCheckboxActionWidget(HoverWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)

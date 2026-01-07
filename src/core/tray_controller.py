@@ -16,9 +16,9 @@ import datetime
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt5.QtCore import QCoreApplication, QSettings, QTimer
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (QApplication, QMenu, QSystemTrayIcon,
+from PyQt6.QtCore import QCoreApplication, QSettings, QTimer
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import (QApplication, QMenu, QSystemTrayIcon,
                              QWidgetAction)
 
 from config import APP_CONFIG
@@ -323,7 +323,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(action)
 
     def on_tray_icon_activated(self, reason):
-        if reason == QSystemTrayIcon.Trigger:
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
             if self.calendar_widget.isVisible():
                 if self.calendar_widget.event_input_widget.isVisible():
                     self.calendar_widget._hide_event_input_widget()

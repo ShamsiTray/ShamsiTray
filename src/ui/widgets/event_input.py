@@ -6,9 +6,9 @@ This module provides `EventInputWidget`, an overlay panel used within the
 calendar window for adding or editing user events. It includes a text area,
 a checkbox for yearly recurrence, and save/cancel buttons.
 """
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QTextOption
-from PyQt5.QtWidgets import (QHBoxLayout, QLabel,
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QPainter, QTextOption
+from PyQt6.QtWidgets import (QHBoxLayout, QLabel,
                              QPushButton, QTextEdit, QVBoxLayout, QWidget)
 
 from config import APP_CONFIG
@@ -20,7 +20,7 @@ class RTLTextEdit(QTextEdit):
     def __init__(self, placeholder_text=""):
         super().__init__()
         self.placeholder_text = placeholder_text
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         # Ensure placeholder disappears immediately when text changes programmatically
         self.textChanged.connect(self.viewport().update)
@@ -33,7 +33,7 @@ class RTLTextEdit(QTextEdit):
             painter.setPen(QColor(128, 128, 128))
             rect = self.viewport().rect()
             rect.adjust(5, 5, -5, -5)
-            painter.drawText(rect, Qt.AlignRight | Qt.AlignTop, self.placeholder_text)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, self.placeholder_text)
 
 class EventInputWidget(QWidget):
     """An integrated widget for adding or editing a user event."""
@@ -46,9 +46,9 @@ class EventInputWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
@@ -59,7 +59,7 @@ class EventInputWidget(QWidget):
         
         self.text_edit = RTLTextEdit("رویداد خود را وارد کنید")
         text_option = QTextOption()
-        text_option.setTextDirection(Qt.RightToLeft)
+        text_option.setTextDirection(Qt.LayoutDirection.RightToLeft)
         self.text_edit.document().setDefaultTextOption(text_option)
         main_layout.addWidget(self.text_edit)
 
@@ -87,34 +87,37 @@ class EventInputWidget(QWidget):
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
+        p = palette
         self.setStyleSheet(f"""
             EventInputWidget {{
-                background-color: {palette['BACKGROUND_COLOR']};
-                border: 1px solid {palette['MENU_BORDER_COLOR']};
+                background-color: {p['BACKGROUND_COLOR']};
+                border: 1px solid {p['MENU_BORDER_COLOR']};
                 border-radius: 15px;
             }}
         """)
         
-        self.title_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 16px; font-weight: bold; border: none;")
+        self.title_label.setStyleSheet(f"color: {p['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 16px; font-weight: bold; border: none;")
         self.text_edit.setStyleSheet(
-            f"background-color: {palette['INPUT_BG_COLOR']};"
-            f"color: {palette['TEXT_COLOR']};"
-            f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']};"
+            f"background-color: {p['INPUT_BG_COLOR']};"
+            f"color: {p['TEXT_COLOR']};"
+            f"border: 1px solid {p['CALENDAR_BORDER_COLOR']};"
             f"border-radius: 8px; padding: 5px;"
             f"font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px;"
+            f"selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;"
         )
         self.yearly_checkbox.update_visuals()
         self.remove_after_finish_checkbox.update_visuals()
         
-        button_style = (f"QPushButton {{ background-color: transparent; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['GREY_COLOR']}; "
+        button_style = (f"QPushButton {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none; "
                         f"border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-                        f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; border-color: {palette['TEXT_COLOR']}; }}")
+                        f"QPushButton:hover {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(110).name()}; }}"
+                        f"QPushButton:pressed {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(140).name()}; }}")
         self.cancel_button.setStyleSheet(button_style)
         
-        save_button_style = (f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; "
+        save_button_style = (f"QPushButton {{ background-color: {p['ACCENT_COLOR']}; color: white; border: none; "
                              f"border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-                             f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
-                             f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
+                             f"QPushButton:hover {{ background-color: {QColor(p['ACCENT_COLOR']).lighter(110).name()}; }}"
+                             f"QPushButton:pressed {{ background-color: {QColor(p['ACCENT_COLOR']).darker(120).name()}; }}")
         self.save_button.setStyleSheet(save_button_style)
 
     def set_data(self, text, is_yearly, remove_after_finish):
