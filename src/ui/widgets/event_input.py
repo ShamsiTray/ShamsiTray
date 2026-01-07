@@ -87,35 +87,37 @@ class EventInputWidget(QWidget):
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
+        p = palette
         self.setStyleSheet(f"""
             EventInputWidget {{
-                background-color: {palette['BACKGROUND_COLOR']};
-                border: 1px solid {palette['MENU_BORDER_COLOR']};
+                background-color: {p['BACKGROUND_COLOR']};
+                border: 1px solid {p['MENU_BORDER_COLOR']};
                 border-radius: 15px;
             }}
         """)
         
-        self.title_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 16px; font-weight: bold; border: none;")
+        self.title_label.setStyleSheet(f"color: {p['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 16px; font-weight: bold; border: none;")
         self.text_edit.setStyleSheet(
-            f"background-color: {palette['INPUT_BG_COLOR']};"
-            f"color: {palette['TEXT_COLOR']};"
-            f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']};"
+            f"background-color: {p['INPUT_BG_COLOR']};"
+            f"color: {p['TEXT_COLOR']};"
+            f"border: 1px solid {p['CALENDAR_BORDER_COLOR']};"
             f"border-radius: 8px; padding: 5px;"
             f"font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px;"
-            f"selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;"
+            f"selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;"
         )
         self.yearly_checkbox.update_visuals()
         self.remove_after_finish_checkbox.update_visuals()
         
-        button_style = (f"QPushButton {{ background-color: transparent; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['GREY_COLOR']}; "
+        button_style = (f"QPushButton {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none; "
                         f"border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-                        f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; border-color: {palette['TEXT_COLOR']}; }}")
+                        f"QPushButton:hover {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(110).name()}; }}"
+                        f"QPushButton:pressed {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(140).name()}; }}")
         self.cancel_button.setStyleSheet(button_style)
         
-        save_button_style = (f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; "
+        save_button_style = (f"QPushButton {{ background-color: {p['ACCENT_COLOR']}; color: white; border: none; "
                              f"border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-                             f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
-                             f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
+                             f"QPushButton:hover {{ background-color: {QColor(p['ACCENT_COLOR']).lighter(110).name()}; }}"
+                             f"QPushButton:pressed {{ background-color: {QColor(p['ACCENT_COLOR']).darker(120).name()}; }}")
         self.save_button.setStyleSheet(save_button_style)
 
     def set_data(self, text, is_yearly, remove_after_finish):
