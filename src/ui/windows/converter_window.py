@@ -8,15 +8,13 @@ dynamic day/month population, and calculates elapsed time from the present.
 """
 import sys
 import datetime
-from typing import Tuple
 
 import jdatetime
 from PyQt6.QtCore import Qt, QTimer, QRegularExpression
 from PyQt6.QtGui import (QColor, QFont, QIcon, QPalette, QRegularExpressionValidator)
 from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                             QSizePolicy, QSpacerItem, QVBoxLayout, QWidget,
-                             QGraphicsOpacityEffect)
+                              QVBoxLayout, QWidget, QGraphicsOpacityEffect)
 
 from config import APP_CONFIG
 from utils.date_helpers import (from_persian_digits, to_persian_digits,
@@ -154,46 +152,59 @@ class DateConverterWindow(BaseFramelessWindow):
         return wrapper_layout
 
     def _create_output_section(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        output_grid = QHBoxLayout()
-        output_grid.setSpacing(10)
-        output_grid.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.gregorian_date_value_1, self.gregorian_date_value_2, greg_group = self._create_output_group("تاریخ میلادی")
-        self.jalali_date_value_1, self.jalali_date_value_2, jalali_group = self._create_output_group("تاریخ شمسی")
-        output_grid.addLayout(greg_group)
-        output_grid.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-        output_grid.addLayout(jalali_group)
-        layout.addLayout(output_grid)
-        layout.addSpacing(10)
-        self.elapsed_text = QLabel("...")
-        self.elapsed_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.leap_year_status = QLabel("...")
-        self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
-        self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
-        layout.addWidget(self.elapsed_text)
-        layout.addWidget(self.leap_year_status)
-        return widget
+            widget = QWidget()
+            layout = QVBoxLayout(widget)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(10)
 
-    def _create_output_group(self, title: str) -> Tuple[QLabel, QLabel, QVBoxLayout]:
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(0)
-        title_label = QLabel(title)
-        title_label.setObjectName("OutputTitleLabel")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value_label_1 = QLabel("...")
-        value_label_2 = QLabel("...")
-        for label in [value_label_1, value_label_2]:
-             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-             label.setWordWrap(True)
-        layout.addWidget(title_label)
-        layout.addWidget(value_label_1)
-        layout.addWidget(value_label_2)
-        return value_label_1, value_label_2, layout
+            self.output_grid = QGridLayout()
+            self.output_grid.setContentsMargins(20, 0, 20, 0)
+            self.output_grid.setVerticalSpacing(0) 
+            self.output_grid.setHorizontalSpacing(20)
+
+            greg_title = QLabel("تاریخ میلادی")
+            greg_title.setObjectName("OutputTitleLabel")
+            greg_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            jalali_title = QLabel("تاریخ شمسی")
+            jalali_title.setObjectName("OutputTitleLabel")
+            jalali_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.gregorian_date_value_1 = QLabel("...")
+            self.gregorian_date_value_2 = QLabel("...")
+            self.jalali_date_value_1 = QLabel("...")
+            self.jalali_date_value_2 = QLabel("...")
+
+            for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2, 
+                    self.jalali_date_value_1, self.jalali_date_value_2]:
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lbl.setWordWrap(False)
+
+            self.output_grid.addWidget(greg_title, 0, 0)
+            self.output_grid.addWidget(jalali_title, 0, 2)
+
+            self.output_grid.addWidget(self.gregorian_date_value_1, 1, 0)
+            self.output_grid.addWidget(self.jalali_date_value_1, 1, 2)
+
+            self.output_grid.addWidget(self.gregorian_date_value_2, 2, 0)
+            self.output_grid.addWidget(self.jalali_date_value_2, 2, 2)
+
+            self.output_grid.setColumnStretch(1, 1)
+
+            layout.addLayout(self.output_grid)
+            layout.addSpacing(10)
+
+            self.elapsed_text = QLabel("...")
+            self.elapsed_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.leap_year_status = QLabel("...")
+            self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
+            self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
+            
+            layout.addWidget(self.elapsed_text)
+            layout.addWidget(self.leap_year_status)
+            
+            return widget
 
     def _create_divider(self) -> QFrame:
         divider = QFrame()
@@ -431,7 +442,7 @@ class DateConverterWindow(BaseFramelessWindow):
         self.leap_year_status_opacity_effect.setOpacity(1.0 if is_leap else 0.5)
         self.middle_divider.show()
         self.output_widget.show()
-        self.setFixedSize(650, 550)
+        self.setFixedSize(650, 470)
 
     def _update_elapsed_time(self, target_date: datetime.date):
         """
