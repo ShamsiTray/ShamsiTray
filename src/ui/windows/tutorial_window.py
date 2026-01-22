@@ -76,7 +76,7 @@ class TutorialWindow(BaseFramelessWindow):
         self.movie = QMovie(gif_path)
         if self.movie.isValid():
             self.gif_label.setMovie(self.movie)
-            self.movie.setCacheMode(QMovie.CacheAll)
+            self.movie.setCacheMode(QMovie.CacheMode.CacheAll)
             self.movie.setSpeed(100)
             self.movie.start()
         else:
