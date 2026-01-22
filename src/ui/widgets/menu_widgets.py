@@ -97,7 +97,7 @@ class ThemeToggleActionWidget(MenuActionWidget):
         self.label = QLabel("") 
         layout.addStretch()
         layout.addWidget(self.icon_label)
-        layout.addSpacing(0)
+        layout.addSpacing(-7)
         layout.addWidget(self.label)
         layout.addStretch()
         self.update_display()
@@ -105,7 +105,7 @@ class ThemeToggleActionWidget(MenuActionWidget):
     def update_display(self):
         theme = self.current_theme_getter()
         icon = APP_CONFIG.FAS.FA_MOON_SOLID if theme == APP_CONFIG.Theme.DARK else APP_CONFIG.FAS.FA_SUN_SOLID
-        text = "    تم برنامه: تیره" if theme == APP_CONFIG.Theme.DARK else "    تم برنامه: روشن" # Leading spaces are intentional to visually align text with the icon
+        text = "تم برنامه: تاریک" if theme == APP_CONFIG.Theme.DARK else "تم برنامه: روشن"
         self.icon_label.setText(icon)
         self.label.setText(text)
         color = APP_CONFIG.current_palette['TEXT_COLOR']
