@@ -34,8 +34,9 @@ class BaseFramelessWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
+        rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         radius = APP_CONFIG.CALENDAR_BORDER_RADIUS_PX
-        path.addRoundedRect(QRectF(self.rect()), radius, radius)
+        path.addRoundedRect(rect, radius, radius)
         painter.fillPath(path, QColor(APP_CONFIG.current_palette['BACKGROUND_COLOR']))
         painter.setPen(QColor(APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']))
         painter.drawPath(path)
