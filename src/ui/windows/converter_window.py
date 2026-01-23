@@ -230,7 +230,7 @@ class DateConverterWindow(BaseFramelessWindow):
         scrollbar_style = (f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {p['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px; }}"
                            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {p['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px; }}"
                            f"QAbstractItemView::add-line:vertical, QAbstractItemView::sub-line:vertical {{ height: 0px; }} QAbstractItemView::add-page:vertical, QAbstractItemView::sub-page:vertical {{ background: none; }}")
-        combo_style = (f"QComboBox {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}}"
+        combo_style = (f"QComboBox {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}}"
                        f"QComboBox:hover {{ border: 1px solid {accent_color}; }}"
                        f"QComboBox:focus, QComboBox::on {{ border: 1px solid {accent_color}; }}"
                        f"QComboBox::drop-down {{ border: 0px; width: 0px; height: 0px; }}"
@@ -254,7 +254,7 @@ class DateConverterWindow(BaseFramelessWindow):
         for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
         self.year_input.setFixedSize(100, input_field_height)
-        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}} QLineEdit:focus {{ border: 1px solid {accent_color}; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }} QLineEdit:hover {{ border: 1px solid {accent_color}; }}")
+        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}} QLineEdit:focus {{ border: 1px solid {accent_color}; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }} QLineEdit:hover {{ border: 1px solid {accent_color}; }}")
         self.convert_button.setFixedHeight(50)
         self.convert_button.setStyleSheet(f"QPushButton {{ background-color: {accent_color}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }} QPushButton:hover {{ background-color: {QColor(accent_color).lighter(110).name()}; }} QPushButton:pressed {{ background-color: {QColor(accent_color).darker(120).name()}; }}")
         self.middle_divider.setStyleSheet(f"color: {border_color};")
