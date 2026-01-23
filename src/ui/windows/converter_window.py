@@ -281,6 +281,10 @@ class DateConverterWindow(BaseFramelessWindow):
         self.year_input.textChanged.connect(self._clear_results)
         self.convert_button.clicked.connect(self._convert_date)
         self.year_input.returnPressed.connect(self._convert_date)
+        self.conversion_type_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.day_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.month_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.year_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def _apply_windows_styles(self):
         if sys.platform == "win32" and WIN32_AVAILABLE:
