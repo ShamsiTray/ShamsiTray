@@ -139,8 +139,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _build_global_stylesheet(self) -> str:
         palette = APP_CONFIG.get_current_palette()
-        return (f"QToolTip {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; font-size: 14px;}}"
-                f"QScrollBar:vertical {{ border: none; background: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px;}}"
+        return (f"QScrollBar:vertical {{ border: none; background: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px;}}"
                 f"QScrollBar::handle:vertical {{ background: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px;}}"
                 f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}"
                 f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}")

@@ -10,11 +10,12 @@ from typing import Optional
 
 import jdatetime
 from PyQt6.QtCore import QTimer, pyqtSignal, Qt
-from PyQt6.QtGui import QContextMenuEvent, QMouseEvent
+from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QCursor
 from PyQt6.QtWidgets import QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from .menu_widgets import MenuActionWidget
+from .custom_tooltip import CustomTooltip
 
 
 class ClickableLabel(QLabel):
@@ -27,23 +28,51 @@ class ClickableLabel(QLabel):
         super().__init__(parent)
         self.jalali_date: Optional[jdatetime.date] = None
         self.has_user_event = False
+        self._tooltip_text = ""
+        self._tooltip_timer = QTimer(self)
+        self._tooltip_timer.setSingleShot(True)
+        self._tooltip_timer.timeout.connect(self._show_custom_tooltip)
+        self._context_menu_open = False
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.jalali_date)
         super().mousePressEvent(event)
 
+    def setToolTip(self, text: str):
+        self._tooltip_text = text
+        
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if self._tooltip_text and not self._context_menu_open:
+            self._tooltip_timer.start(500)
+            
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self._tooltip_timer.stop()
+        CustomTooltip.instance().hide()
+        
+    def _show_custom_tooltip(self):
+        if self._tooltip_text and self.underMouse() and not self._context_menu_open:
+            palette = APP_CONFIG.get_current_palette()
+            global_pos = QCursor.pos()
+            CustomTooltip.instance().show_tooltip(self._tooltip_text, global_pos, palette)
+
     def contextMenuEvent(self, event: QContextMenuEvent):
         if not self.jalali_date or not self.text():
             return
+        
+        self._context_menu_open = True
+        CustomTooltip.instance().hide()
 
         menu = QMenu(self)
         palette = APP_CONFIG.get_current_palette()
+        p = palette
         menu.setStyleSheet(
-            f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QMenu::item:disabled {{ color: {palette['GREY_COLOR']}; }}"
-            f"QMenu::item:selected {{ background-color: {palette['HOVER_BG']}; }}"
-            f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}"
+            f"QMenu {{ background-color: {p['BACKGROUND_COLOR']}; border: 1px solid {p['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {p['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
+            f"QMenu::item:disabled {{ color: {p['GREY_COLOR']}; }}"
+            f"QMenu::item:selected {{ background-color: {p['HOVER_BG']}; }}"
+            f"QMenu::separator {{ height: 1px; background-color: {p['MENU_BORDER_COLOR']}; margin: 5px 0px; }}"
         )
 
         add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
@@ -66,6 +95,7 @@ class ClickableLabel(QLabel):
 
         menu.exec(self.mapToGlobal(event.pos()))
 
+        self._context_menu_open = False
         self.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
         self.update()
         
