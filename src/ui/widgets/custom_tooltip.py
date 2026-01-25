@@ -26,7 +26,6 @@ class CustomTooltip(QWidget):
         self._layout.setContentsMargins(0, 0, 0, 0)
         
         self._label = QLabel()
-        self._label.setWordWrap(True)
         self._label.setTextFormat(Qt.TextFormat.RichText)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._layout.addWidget(self._label)
