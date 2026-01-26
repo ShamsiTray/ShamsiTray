@@ -415,9 +415,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         existing_text, is_yearly, remove_after_finish = self._get_user_event_for_date(jdate)
         self.event_input_widget.set_data(existing_text or "", is_yearly, remove_after_finish)
         width = self.width() - 40
-        height = 220
+        height = 230
         x = (self.width() - width) // 2
-        y = (self.height() - height) // 2
+        y = (self.height() - height) // 2 + 15
         self.event_input_widget.setGeometry(x, y, width, height)
         self.event_input_widget.show()
         self.event_input_widget.raise_()
