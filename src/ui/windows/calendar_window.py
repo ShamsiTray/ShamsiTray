@@ -83,6 +83,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
         main_layout.addLayout(self.weekdays_layout)
         self.calendar_grid_layout = self._create_calendar_grid()
         main_layout.addLayout(self.calendar_grid_layout)
+
+        self.overlay_blocker = QWidget(self)
+        self.overlay_blocker.setStyleSheet("background-color: rgba(0, 0, 0, 75); border-radius: 26px; margin: 1px;")
+        self.overlay_blocker.hide()
         
         self.event_input_widget = EventInputWidget(self)
         self.event_input_widget.saved.connect(self._handle_event_saved)
@@ -160,6 +164,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 week_labels.append(label)
             self.day_labels.append(week_labels)
         return grid_layout
+    
+    def resizeEvent(self, event):
+        self.overlay_blocker.resize(self.size())
+        super().resizeEvent(event)
     
     def _get_nav_button_style(self, bg_color: str, is_today_button: bool = False) -> str:
         palette = APP_CONFIG.get_current_palette()
@@ -372,6 +380,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.fill_calendar_grid()
         except (ValueError, TypeError):
             pass
+        self.overlay_blocker.hide()
 
     def _on_day_clicked(self, jdate: Optional[jdatetime.date]):
         if jdate and not self.event_input_widget.isVisible():
@@ -398,8 +407,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
     
     def _open_go_to_date_window(self):
         if self.go_to_window is None or not self.go_to_window.isVisible():
+            self.overlay_blocker.setGeometry(self.rect())
+            self.overlay_blocker.show()
+            self.overlay_blocker.raise_()
             self.go_to_window = GoToDateWindow(self)
             self.go_to_window.date_selected.connect(self.go_to_date)
+            self.go_to_window.destroyed.connect(lambda: self.overlay_blocker.hide())
+            self.go_to_window.cancel_button.clicked.connect(self.overlay_blocker.hide)
             parent_size = self.size()
             child_size = self.go_to_window.size()
             x = (parent_size.width() - child_size.width()) // 2
@@ -414,6 +428,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.editing_date = jdate
         existing_text, is_yearly, remove_after_finish = self._get_user_event_for_date(jdate)
         self.event_input_widget.set_data(existing_text or "", is_yearly, remove_after_finish)
+        self.overlay_blocker.resize(self.size())
+        self.overlay_blocker.show()
+        self.overlay_blocker.raise_()
         width = self.width() - 40
         height = 230
         x = (self.width() - width) // 2
@@ -436,6 +453,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _hide_event_input_widget(self):
         self.editing_date = None
         self.event_input_widget.hide()
+        self.overlay_blocker.hide()
 
     def _remove_event(self, jdate: jdatetime.date):
         if not jdate: 
