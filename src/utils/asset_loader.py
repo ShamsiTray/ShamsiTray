@@ -9,7 +9,7 @@ its required resources before starting up.
 from PyQt6.QtGui import QFontDatabase
 
 from config import APP_CONFIG
-from .logging_setup import setup_logging
+from .logger import setup_logging
 
 logger = setup_logging(__name__)
 

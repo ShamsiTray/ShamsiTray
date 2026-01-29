@@ -60,10 +60,7 @@ class CustomCheckbox(QWidget):
         
         self.icon_label.setText(icon)
         self.icon_label.setStyleSheet(f"color: {icon_color}; background: transparent;")
-        self.text_label.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
-            "font-size: 13px; font-weight: bold; background: transparent;"
-        )
+        self.text_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; background: transparent;")
 
 class IconCheckboxActionWidget(HoverWidget):
     """A context menu checkbox using FontAwesome icons."""
@@ -103,7 +100,4 @@ class IconCheckboxActionWidget(HoverWidget):
         self.icon_label.setText(icon)
         color = APP_CONFIG.current_palette['TEXT_COLOR']
         self.icon_label.setStyleSheet(f"color: {color}; background: transparent;")
-        self.text_label.setStyleSheet(
-            f"color: {color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
-            "font-size: 14px; font-weight: bold; background: transparent;"
-        )
+        self.text_label.setStyleSheet(f"color: {color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; background: transparent;")

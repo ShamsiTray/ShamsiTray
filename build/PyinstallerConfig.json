@@ -7,7 +7,7 @@
   },
   {
    "optionDest": "filenames",
-   "value": "D:/ShamsiTray-1.2/run.py"
+   "value": "D:/Torrent/ShamsiTray/v1.3-PyQT6/run.py"
   },
   {
    "optionDest": "onefile",
@@ -19,7 +19,7 @@
   },
   {
    "optionDest": "icon_file",
-   "value": "D:/ShamsiTray-1.2/assets/icons/icon.ico"
+   "value": "D:/Torrent/ShamsiTray/v1.3-PyQT6/assets/icons/icon.ico"
   },
   {
    "optionDest": "name",
@@ -47,7 +47,7 @@
   },
   {
    "optionDest": "version_file",
-   "value": "D:/ShamsiTray-1.2/assets/data/details.txt"
+   "value": "D:/Torrent/ShamsiTray/v1.3-PyQT6/assets/data/details.txt"
   },
   {
    "optionDest": "uac_admin",
@@ -67,16 +67,15 @@
   },
   {
    "optionDest": "datas",
-   "value": "D:/ShamsiTray-1.2/assets;assets/"
+   "value": "D:/Torrent/ShamsiTray/v1.3-PyQT6/assets;assets/"
   },
   {
    "optionDest": "pathex",
-   "value": "D:/ShamsiTray-1.2/src"
+   "value": "D:/Torrent/ShamsiTray/v1.3-PyQT6/src"
   }
  ],
  "nonPyinstallerOptions": {
   "increaseRecursionLimit": true,
   "manualArguments": ""
  }
-
 }

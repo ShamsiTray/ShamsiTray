@@ -18,20 +18,17 @@ from typing import Dict, List, Optional, Tuple
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QSettings, QTimer
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (QApplication, QMenu, QSystemTrayIcon,
-                             QWidgetAction)
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
-from ui.widgets.menu_widgets import (MenuActionWidget,
-                                       ThemeToggleActionWidget)
+from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget
 from ui.widgets.custom_checkbox import IconCheckboxActionWidget
-from utils.date_helpers import (persian_month_name, persian_weekday_name,
-                                  to_persian_digits)
-from utils.logging_setup import setup_logging
+from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
+from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
-from utils.ui_helpers import create_tray_pixmap
+from utils.ui_utils import create_tray_pixmap
 from ui.windows.tutorial_window import TutorialWindow
 
 if sys.platform == 'win32':

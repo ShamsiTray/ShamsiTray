@@ -13,7 +13,7 @@ import ctypes.wintypes
 
 from PyQt6.QtCore import QAbstractNativeEventFilter
 
-from .logging_setup import setup_logging
+from .logger import setup_logging
 
 logger = setup_logging(__name__)
 
