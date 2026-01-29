@@ -25,6 +25,11 @@ logger = setup_logging(__name__)
 def main():
     """Initialize and run the ShamsiTray application."""
 
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
     logger.info(f"Starting {APP_CONFIG.APP_NAME} v{APP_CONFIG.APP_VERSION}")
     
     try:
@@ -41,11 +46,6 @@ def main():
         except Exception as e:
             logger.warning(f"Failed to set Windows AppUserModelID: {e}")
     
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    
-    app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)
-
     try:
         load_fonts()
     except (RuntimeError, FileNotFoundError) as e:
