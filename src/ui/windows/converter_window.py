@@ -11,14 +11,14 @@ import datetime
 
 import jdatetime
 from PyQt6.QtCore import Qt, QTimer, QRegularExpression
-from PyQt6.QtGui import (QColor, QFont, QIcon, QPalette, QRegularExpressionValidator, QCursor)
-from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect)
+from PyQt6.QtGui import QColor, QFont, QIcon, QPalette, QRegularExpressionValidator, QCursor
+from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
 
 from config import APP_CONFIG
-from utils.date_helpers import (from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, persian_month_name, gregorian_month_name, persian_weekday_name)
-from utils.logging_setup import setup_logging
+from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, persian_month_name, gregorian_month_name, persian_weekday_name
+from utils.logger import setup_logging
 from .base_window import BaseFramelessWindow
-from utils.ui_helpers import apply_combo_style
+from utils.ui_utils import apply_combo_style
 from ui.widgets.custom_tooltip import CustomTooltip
 
 logger = setup_logging(__name__)
@@ -209,38 +209,38 @@ class DateConverterWindow(BaseFramelessWindow):
         return divider
 
     def update_styles(self):
-        palette = self.palette()
-        p = APP_CONFIG.get_current_palette()
-        text_color = p['TEXT_COLOR']
-        palette.setColor(QPalette.ColorRole.WindowText, QColor(text_color))
-        palette.setColor(QPalette.ColorRole.Text, QColor(text_color))
-        self.setPalette(palette)
+        widget_palette = self.palette()
+        palette = APP_CONFIG.get_current_palette()
+        widget_palette.setColor(QPalette.ColorRole.WindowText, QColor(palette['TEXT_COLOR']))
+        widget_palette.setColor(QPalette.ColorRole.Text, QColor(palette['TEXT_COLOR']))
+        self.setPalette(widget_palette)
         for label in self.findChildren(QLabel):
             if not label.objectName():
-                label.setStyleSheet(f"color: {text_color};")
+                label.setStyleSheet(f"color: {palette['TEXT_COLOR']};")
         
         input_field_height = 40
-        input_bg = p['INPUT_BG_COLOR']
-        border_color = p['CALENDAR_BORDER_COLOR']
-        accent_color = p['ACCENT_COLOR']
-        scrollbar_style = (f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {p['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px; }}"
-                           f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {p['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px; }}"
-                           f"QAbstractItemView::add-line:vertical, QAbstractItemView::sub-line:vertical {{ height: 0px; }} QAbstractItemView::add-page:vertical, QAbstractItemView::sub-page:vertical {{ background: none; }}")
-        combo_style = (f"QComboBox {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}}"
-                       f"QComboBox:hover {{ border: 1px solid {accent_color}; }}"
-                       f"QComboBox:focus, QComboBox::on {{ border: 1px solid {accent_color}; }}"
-                       f"QComboBox::drop-down {{ border: 0px; width: 0px; height: 0px; }}"
-                       f"QComboBox QAbstractItemView {{ background-color: {input_bg}; color: {text_color}; selection-background-color: {accent_color}; border: 1px solid {border_color}; border-radius: 8px; outline: none;}}"
-                       f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none; }}"
-                       f"QComboBox QAbstractItemView::item:hover {{ background-color: {p['HOVER_BG']}; border-radius: 4px; }}"
-                       f"QComboBox QAbstractItemView::item:selected {{ background-color: {p['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
-                       f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {p['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
+
+        scrollbar_style = (
+            f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px; }}"
+            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px; }}"
+            f"QAbstractItemView::add-line:vertical, QAbstractItemView::sub-line:vertical {{ height: 0px; }} QAbstractItemView::add-page:vertical, QAbstractItemView::sub-page:vertical {{ background: none; }}")
         
-        base_button_style = f"border: 1px solid {border_color}; border-radius: 8px; font-size: 18px; font-weight: bold; color: {text_color};"
+        combo_style = (
+            f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;}}"
+            f"QComboBox:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
+            f"QComboBox:focus, QComboBox::on {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
+            f"QComboBox::drop-down {{ border: 0px; width: 0px; height: 0px; }}"
+            f"QComboBox QAbstractItemView {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; outline: none;}}"
+            f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none; }}"
+            f"QComboBox QAbstractItemView::item:hover {{ background-color: {palette['HOVER_BG']}; border-radius: 4px; }}"
+            f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
+            f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
+        
+        base_button_style = f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; font-size: 18px; font-weight: bold; color: {palette['TEXT_COLOR']};"
         self.exit_button.setFixedSize(30, 30)
         self.exit_button.setStyleSheet(f"QPushButton {{ background-color: #FF4C4C; {base_button_style} }} QPushButton:hover {{ background-color: #FF6666; }}")
         self.minimize_button.setFixedSize(30, 30)
-        self.minimize_button.setStyleSheet(f"QPushButton {{ background-color: {p['BACKGROUND_COLOR']}; {base_button_style} }} QPushButton:hover {{ background-color: {p['HOVER_BG']}; }}")
+        self.minimize_button.setStyleSheet(f"QPushButton {{ background-color: {palette['BACKGROUND_COLOR']}; {base_button_style} }} QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}")
         for label in self.input_labels:
              label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
              label.setFixedHeight(input_field_height)
@@ -250,14 +250,14 @@ class DateConverterWindow(BaseFramelessWindow):
         for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
         self.year_input.setFixedSize(100, input_field_height)
-        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {input_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white;}} QLineEdit:focus {{ border: 1px solid {accent_color}; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }} QLineEdit:hover {{ border: 1px solid {accent_color}; }}")
+        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;}} QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }} QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
         self.convert_button.setFixedHeight(50)
-        self.convert_button.setStyleSheet(f"QPushButton {{ background-color: {accent_color}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }} QPushButton:hover {{ background-color: {QColor(accent_color).lighter(110).name()}; }} QPushButton:pressed {{ background-color: {QColor(accent_color).darker(120).name()}; }}")
-        self.middle_divider.setStyleSheet(f"color: {border_color};")
+        self.convert_button.setStyleSheet(f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }} QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }} QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
+        self.middle_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
         for label in self.output_widget.findChildren(QLabel):
             if label.objectName() == "OutputTitleLabel":
                  label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 16, QFont.Weight.Bold))
-                 label.setStyleSheet(f"color: {accent_color}; padding: 5px;")
+                 label.setStyleSheet(f"color: {palette['ACCENT_COLOR']}; padding: 5px;")
         self.jalali_date_value_1.setFont(QFont(APP_CONFIG.FONT_FAMILY, 15, QFont.Weight.Bold))
         self.jalali_date_value_2.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.gregorian_date_value_1.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 15, QFont.Weight.Bold))

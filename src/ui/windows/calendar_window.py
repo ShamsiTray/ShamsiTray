@@ -14,15 +14,13 @@ from typing import List, Optional, Tuple
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import (QBoxLayout, QGridLayout, QHBoxLayout, QLabel,
-                             QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu)
+from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
-from utils.date_helpers import (is_jalali_leap_year, persian_month_name,
-                                   to_persian_digits)
-from ui.widgets.clickable_label import ClickableLabel
-from ui.widgets.dialogs import GoToDateWindow
-from ui.widgets.event_input import EventInputWidget
+from utils.date_utils import is_jalali_leap_year, persian_month_name, to_persian_digits
+from ui.widgets.calendar_day_cell import ClickableLabel
+from ui.widgets.go_to_date_dialog import GoToDateWindow
+from ui.widgets.event_input_panel import EventInputWidget
 from ui.widgets.menu_widgets import MenuActionWidget
 from .base_window import BaseFramelessWindow
 
@@ -341,8 +339,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _get_day_style(self, jdate: jdatetime.date, is_in_month: bool) -> Tuple[str, str]:
         style = self._determine_day_style(jdate, is_in_month)
         
-        base_style = (f"background-color: {style.background_color}; color: {style.text_color}; border: {style.border_style}; "
-                      f"border-radius: 8px; font-size: {style.font_size}px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}';")
+        base_style = (f"background-color: {style.background_color}; color: {style.text_color}; border: {style.border_style}; border-radius: 8px; font-size: {style.font_size}px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}';")
         
         stylesheet = f"QLabel {{ {base_style} }} QLabel:hover {{ background-color: {style.hover_background_color}; }}"
         return stylesheet, style.tooltip
@@ -459,3 +456,4 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if not jdate: 
             return
         self.event_removed.emit(jdate)
+

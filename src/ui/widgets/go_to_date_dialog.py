@@ -8,12 +8,11 @@ such as the 'Go To Date' panel for the calendar.
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QRegularExpression
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValidator, QPen
-from PyQt6.QtWidgets import (QComboBox, QLabel, QLineEdit, QPushButton,
-                             QVBoxLayout, QWidget, QHBoxLayout)
+from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout
 
 from config import APP_CONFIG
-from utils.date_helpers import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_helpers import apply_combo_style
+from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
+from utils.ui_utils import apply_combo_style
 
 class GoToDateWindow(QWidget):
     """A small, non-movable window to jump to a specific month and year."""
@@ -84,7 +83,7 @@ class GoToDateWindow(QWidget):
         self.year_input.setText(to_persian_digits(today.year))
         
         main_layout.addStretch(1)
-
+        
         button_layout = QHBoxLayout()
         self.confirm_button = QPushButton("تایید")
         self.cancel_button = QPushButton("لغو")
@@ -114,53 +113,44 @@ class GoToDateWindow(QWidget):
         
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
-        p = palette
         self.setStyleSheet("GoToDateWindow { background-color: transparent; }")
 
-        self.title_label.setStyleSheet(f"color: {p['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 18px; font-weight: bold; border: none; background: transparent;")
+        self.title_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 18px; font-weight: bold; border: none; background: transparent;")
         
-        self.error_label.setStyleSheet(f"color: red; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; border: none; background: transparent;")
+        self.error_label.setStyleSheet(f"color: red; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
 
         scrollbar_style = (
-            f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {p['SCROLLBAR_GROOVE_COLOR']}; width: 8px; margin: 0px; border-radius: 4px; }}"
-            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {p['SCROLLBAR_HANDLE_COLOR']}; border-radius: 4px; min-height: 20px; }}"
-        )
-        
-        input_font_size = 14
+            f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 8px; margin: 0px; border-radius: 4px; }}"
+            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 4px; min-height: 20px; }}")
         
         combo_style = (
-            f"QComboBox {{ background-color: {p['INPUT_BG_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: {input_font_size}px; }}"
-            f"QComboBox:focus, QComboBox::on, QComboBox:hover {{ border: 1px solid {p['ACCENT_COLOR']}; }}"
+            f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; }}"
+            f"QComboBox:focus, QComboBox::on, QComboBox:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
             f"QComboBox::drop-down {{ border: 0px; }}"
-            f"QComboBox QAbstractItemView {{ background-color: {p['BACKGROUND_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['MENU_BORDER_COLOR']}; border-radius: 8px; outline: 0px; }}"
+            f"QComboBox QAbstractItemView {{ background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; outline: 0px; }}"
             f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none }}"
-            f"QComboBox QAbstractItemView::item:hover {{ background-color: {p['HOVER_BG']}; border-radius: 4px; }}"
-            f"QComboBox QAbstractItemView::item:selected {{ background-color: {p['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
-            f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {p['ACCENT_COLOR']}; color: white; }}" + scrollbar_style
-        )
+            f"QComboBox QAbstractItemView::item:hover {{ background-color: {palette['HOVER_BG']}; border-radius: 4px; }}"
+            f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
+            f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
 
         self.month_combo.setStyleSheet(combo_style)
-        self.month_combo.view().setStyleSheet(f"QListView {{ background-color: {p['BACKGROUND_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['MENU_BORDER_COLOR']}; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }}")
+        self.month_combo.view().setStyleSheet(f"QListView {{ background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}")
         
         self.year_input.setStyleSheet(
-            f"QLineEdit {{ background-color: {p['INPUT_BG_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: {input_font_size}px; selection-background-color: {p['ACCENT_COLOR']}; selection-color: white; }}"
-            f"QLineEdit:hover {{ border: 1px solid {p['ACCENT_COLOR']}; }}"
-            f"QLineEdit::placeholder {{ color: {p['GREY_COLOR']}; }}"
-            f"QLineEdit:focus {{ border: 1px solid {p['ACCENT_COLOR']}; }}"
-        )
+            f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
+            f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
+            f"QLineEdit::placeholder {{ color: {palette['GREY_COLOR']}; }}"
+            f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
 
         self.confirm_button.setStyleSheet(
-            f"QPushButton {{ background-color: {p['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {QColor(p['ACCENT_COLOR']).lighter(110).name()}; }}"
-            f"QPushButton:pressed {{ background-color: {QColor(p['ACCENT_COLOR']).darker(120).name()}; }}"
-        )
+            f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
+            f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
         
         cancel_button_style = (
-            f"QPushButton {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(110).name()}; }}"
-            f"QPushButton:pressed {{ background-color: {QColor(p['HOLIDAY_COLOR']).darker(140).name()}; }}"
-        )
-        
+            f"QPushButton {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(110).name()}; }}"
+            f"QPushButton:pressed {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(140).name()}; }}")
         self.cancel_button.setStyleSheet(cancel_button_style)
         
     def _on_confirm(self):

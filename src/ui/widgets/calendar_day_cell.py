@@ -67,13 +67,11 @@ class ClickableLabel(QLabel):
 
         menu = QMenu(self)
         palette = APP_CONFIG.get_current_palette()
-        p = palette
         menu.setStyleSheet(
-            f"QMenu {{ background-color: {p['BACKGROUND_COLOR']}; border: 1px solid {p['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {p['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QMenu::item:disabled {{ color: {p['GREY_COLOR']}; }}"
-            f"QMenu::item:selected {{ background-color: {p['HOVER_BG']}; }}"
-            f"QMenu::separator {{ height: 1px; background-color: {p['MENU_BORDER_COLOR']}; margin: 5px 0px; }}"
-        )
+            f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
+            f"QMenu::item:disabled {{ color: {palette['GREY_COLOR']}; }}"
+            f"QMenu::item:selected {{ background-color: {palette['HOVER_BG']}; }}"
+            f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}")
 
         add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
         add_event_widget = MenuActionWidget(add_action_text, menu)

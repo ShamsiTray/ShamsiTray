@@ -74,10 +74,7 @@ class MenuActionWidget(HoverWidget):
     def _update_style(self):
         palette = APP_CONFIG.get_current_palette()
         text_color = palette['TEXT_COLOR'] if self.isEnabled() else palette['GREY_COLOR']
-        self.label.setStyleSheet(
-            f"color: {text_color}; font-family: '{APP_CONFIG.FONT_FAMILY}';"
-            f"font-size: 14px; font-weight: bold; background: transparent; border: none;"
-        )
+        self.label.setStyleSheet(f"color: {text_color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; background: transparent; border: none;")
 
 class ThemeToggleActionWidget(MenuActionWidget):
     """Widget for the 'App Theme' toggle in the context menu."""

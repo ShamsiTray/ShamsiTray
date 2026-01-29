@@ -26,9 +26,9 @@ class Config:
     else:
         PROJECT_ROOT = Path(__file__).resolve().parent.parent
     ASSETS_DIR = PROJECT_ROOT / 'assets'
-    ICON_PATH = ASSETS_DIR / 'icons' / 'icon.ico'
+    ICON_PATH = ASSETS_DIR / 'images' / 'icons' / 'icon.ico'
     FONT_DIR = ASSETS_DIR / 'fonts'
-    TUTORIAL_GIF_PATH = ASSETS_DIR / 'gifs' / 'welcome.gif'
+    TUTORIAL_GIF_PATH = ASSETS_DIR / 'images' / 'welcome.gif'
     HOLIDAYS_FILE_PATH = ASSETS_DIR / 'data' / 'holidays.json'
 
     # --- Settings Keys (for QSettings) ---
@@ -88,7 +88,7 @@ class Config:
     @classmethod
     def set_theme(cls, theme_name: str):
         """Set app theme and update the current_palette."""
-        from utils.logging_setup import setup_logging
+        from utils.logger import setup_logging
         logger = setup_logging(__name__)
         cls.current_palette = cls._theme_map.get(theme_name, cls.DARK_PALETTE)
         if theme_name not in cls._theme_map:

@@ -15,7 +15,7 @@ from PyQt6.QtGui import QFont, QMovie, QColor
 from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
-from utils.logging_setup import setup_logging
+from utils.logger import setup_logging
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -45,9 +45,7 @@ class TutorialWindow(BaseFramelessWindow):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
-        self.message_label = QLabel(
-            "برای دسترسی آسان، می‌توانید آیکون برنامه را از بخش آیکون‌های پنهان ویندوز، به نوار وظیفه اصلی بکشید."
-        )
+        self.message_label = QLabel("برای دسترسی آسان، می‌توانید آیکون برنامه را از بخش آیکون‌های پنهان ویندوز، به نوار وظیفه اصلی بکشید.")
         self.message_label.setWordWrap(True)
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.message_label)

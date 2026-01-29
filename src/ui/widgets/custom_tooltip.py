@@ -42,8 +42,7 @@ class CustomTooltip(QWidget):
             return
         
         palette = APP_CONFIG.get_current_palette()
-        p = palette
-        self._label.setStyleSheet(f"QLabel {{background-color: {p['BACKGROUND_COLOR']}; color: {p['TEXT_COLOR']}; border: 1px solid {p['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 6px 10px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold;}}")
+        self._label.setStyleSheet(f"QLabel {{background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 6px 10px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold;}}")
         
         self._label.setText(text)
         self.adjustSize()
