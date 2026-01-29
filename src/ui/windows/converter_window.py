@@ -11,19 +11,15 @@ import datetime
 
 import jdatetime
 from PyQt6.QtCore import Qt, QTimer, QRegularExpression
-from PyQt6.QtGui import (QColor, QFont, QIcon, QPalette, QRegularExpressionValidator)
-from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
-                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                              QVBoxLayout, QWidget, QGraphicsOpacityEffect)
+from PyQt6.QtGui import (QColor, QFont, QIcon, QPalette, QRegularExpressionValidator, QCursor)
+from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect)
 
 from config import APP_CONFIG
-from utils.date_helpers import (from_persian_digits, to_persian_digits,
-                                  is_gregorian_leap_year, is_jalali_leap_year,
-                                  persian_month_name, gregorian_month_name,
-                                  persian_weekday_name)
+from utils.date_helpers import (from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, persian_month_name, gregorian_month_name, persian_weekday_name)
 from utils.logging_setup import setup_logging
 from .base_window import BaseFramelessWindow
 from utils.ui_helpers import apply_combo_style
+from ui.widgets.custom_tooltip import CustomTooltip
 
 logger = setup_logging(__name__)
 
@@ -50,7 +46,7 @@ class DateConverterWindow(BaseFramelessWindow):
     def __init__(self):
         super().__init__()
         self._initial_height = 260
-        self.setWindowTitle("Date Converter")
+        self.setWindowTitle("تبدیل تاریخ")
         self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(650, self._initial_height)
@@ -106,8 +102,6 @@ class DateConverterWindow(BaseFramelessWindow):
     def _create_title_bar(self) -> QHBoxLayout:
         self.exit_button = QPushButton("✕")
         self.minimize_button = QPushButton("—")
-        self.exit_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.minimize_button.setCursor(Qt.CursorShape.PointingHandCursor)
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignTop)
         button_layout.addWidget(self.minimize_button, alignment=Qt.AlignmentFlag.AlignTop)
@@ -179,6 +173,8 @@ class DateConverterWindow(BaseFramelessWindow):
                     self.jalali_date_value_1, self.jalali_date_value_2]:
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 lbl.setWordWrap(False)
+                lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+                lbl.mousePressEvent = (lambda event, label=lbl: self._copy_to_clipboard(label) if event.button() == Qt.MouseButton.LeftButton else None)
 
             self.output_grid.addWidget(greg_title, 0, 0)
             self.output_grid.addWidget(jalali_title, 0, 2)
@@ -285,6 +281,17 @@ class DateConverterWindow(BaseFramelessWindow):
         self.day_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.month_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.year_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _copy_to_clipboard(self, label: QLabel):
+        """Copy the label's text to clipboard and show a brief confirmation."""
+        text = label.text()
+        if text and text != "...":
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            palette = APP_CONFIG.get_current_palette()
+            global_pos = QCursor.pos()
+            CustomTooltip.instance().show_tooltip("کپی شد", global_pos, palette)
+            QTimer.singleShot(600, CustomTooltip.instance().hide)
 
     def _apply_windows_styles(self):
         if sys.platform == "win32" and WIN32_AVAILABLE:
