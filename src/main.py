@@ -21,7 +21,6 @@ from ui.windows.tutorial_window import TutorialWindow
 
 logger = setup_logging(__name__)
 
-
 def main():
     """Initialize and run the ShamsiTray application."""
 
@@ -35,7 +34,7 @@ def main():
     try:
         verify_assets()
     except FileNotFoundError as e:
-        QMessageBox.critical(None, "خطا در فایل‌های برنامه", str(e))
+        QMessageBox.critical(None, "Application File Error", str(e))
         sys.exit(1)
     
     if sys.platform == 'win32':
@@ -49,11 +48,11 @@ def main():
     try:
         load_fonts()
     except (RuntimeError, FileNotFoundError) as e:
-        QMessageBox.critical(None, "خطای بارگیری فونت", str(e))
+        QMessageBox.critical(None, "Font Error", str(e))
         sys.exit(1)
     
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        QMessageBox.critical(None, "خطا", "هیچ نوار سیستم در این سیستم یافت نشد.")
+        QMessageBox.critical(None, "Error", "No system tray was found on this system.")
         sys.exit(1)
     
     tray_icon = SystemTrayIcon()

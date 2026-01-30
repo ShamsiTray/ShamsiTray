@@ -19,11 +19,10 @@ from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushB
 from config import APP_CONFIG
 from utils.date_utils import is_jalali_leap_year, persian_month_name, to_persian_digits
 from ui.widgets.calendar_day_cell import ClickableLabel
-from ui.widgets.go_to_date_dialog import GoToDateWindow
-from ui.widgets.event_input_panel import EventInputWidget
+from ui.widgets.go_to_date import GoToDateWindow
+from ui.widgets.event_input import EventInputWidget
 from ui.widgets.menu_widgets import MenuActionWidget
 from .base_window import BaseFramelessWindow
-
 
 @dataclass
 class DayStyle:
@@ -34,7 +33,6 @@ class DayStyle:
     border_style: str = "none"
     font_size: int = APP_CONFIG.FONT_SIZE_LABEL
     tooltip: str = ""
-
 
 class PersianCalendarWidget(BaseFramelessWindow):
     """Main calendar widget displaying a month of Persian (Jalali) dates."""
@@ -456,4 +454,3 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if not jdate: 
             return
         self.event_removed.emit(jdate)
-

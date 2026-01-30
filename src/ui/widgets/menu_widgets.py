@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from config import APP_CONFIG
 
-
 class HoverWidget(QWidget):
     """Base widget for menu items that handles hover effects."""
     triggered = pyqtSignal()

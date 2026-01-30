@@ -1,5 +1,5 @@
 """
-Clickable Label Widget
+Calendar Day Cell Widget
 ----------------------
 
 This module provides `ClickableLabel`, a QLabel subclass that emits signals
@@ -15,8 +15,7 @@ from PyQt6.QtWidgets import QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from .menu_widgets import MenuActionWidget
-from .custom_tooltip import CustomTooltip
-
+from .tooltip import CustomTooltip
 
 class ClickableLabel(QLabel):
     """A QLabel that emits signals for clicks and context menu actions."""

@@ -11,7 +11,6 @@ import jdatetime
 
 from config import APP_CONFIG
 
-
 def to_persian_digits(s: str) -> str:
     """Convert all English digits in a string to Persian digits."""
     s = str(s) if not isinstance(s, str) else s

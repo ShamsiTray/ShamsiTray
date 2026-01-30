@@ -1,5 +1,5 @@
 """
-System Tray Icon Controller
+App Controller
 ---------------------------
 
 This module contains the `SystemTrayIcon` class, which serves as the main
@@ -24,11 +24,11 @@ from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
 from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget
-from ui.widgets.custom_checkbox import IconCheckboxActionWidget
+from ui.widgets.checkbox import IconCheckboxActionWidget
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
-from utils.ui_utils import create_tray_pixmap
+from utils.ui_helpers import create_tray_pixmap
 from ui.windows.tutorial_window import TutorialWindow
 
 if sys.platform == 'win32':

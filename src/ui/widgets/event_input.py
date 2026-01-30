@@ -11,8 +11,7 @@ from PyQt6.QtGui import QColor, QPainter, QTextOption
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
-from .custom_checkbox import CustomCheckbox
-
+from .checkbox import CustomCheckbox
 
 class RTLTextEdit(QTextEdit):
     """A QTextEdit with right-to-left layout and placeholder text support."""

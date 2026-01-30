@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 from config import APP_CONFIG
 from .menu_widgets import HoverWidget
 
-
 class CustomCheckbox(QWidget):
     """A custom checkbox widget using a FontAwesome icon and a label."""
     toggled = pyqtSignal(bool)

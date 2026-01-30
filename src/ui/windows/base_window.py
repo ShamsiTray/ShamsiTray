@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 from config import APP_CONFIG
 
-
 class BaseFramelessWindow(QWidget):
     """A base class for frameless windows with custom drag and paint logic."""
     def __init__(self, *args, **kwargs):
