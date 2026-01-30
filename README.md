@@ -4,7 +4,7 @@
 </div>
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/ShamsiTray/ShamsiTray/main/assets/icons/Logo.png" width="128" height="128" />
+  <img src="https://raw.githubusercontent.com/ShamsiTray/ShamsiTray/main/assets/images/icons/Logo.png" width="128" height="128" />
 </div>
 
 <h1 align="center">
