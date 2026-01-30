@@ -36,7 +36,7 @@ class TutorialWindow(BaseFramelessWindow):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setWindowTitle("Welcome Guide")
-        self.setFixedSize(500, 400)
+        self.setFixedSize(500, 365)
         self._setup_ui()
         self.update_styles()
         self._apply_windows_styles()
