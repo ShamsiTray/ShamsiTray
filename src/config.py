@@ -18,6 +18,7 @@ class Config:
     # --- App Info ---
     APP_NAME = "ShamsiTray"
     COMPANY_NAME = "ShamsiTray"
+    APP_VERSION = "1.3.0"
     
     # --- Paths (dynamically calculated) ---
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -25,9 +26,9 @@ class Config:
     else:
         PROJECT_ROOT = Path(__file__).resolve().parent.parent
     ASSETS_DIR = PROJECT_ROOT / 'assets'
-    ICON_PATH = ASSETS_DIR / 'icons' / 'icon.ico'
+    ICON_PATH = ASSETS_DIR / 'images' / 'icons' / 'icon.ico'
     FONT_DIR = ASSETS_DIR / 'fonts'
-    TUTORIAL_GIF_PATH = ASSETS_DIR / 'gifs' / 'welcome.gif'
+    TUTORIAL_GIF_PATH = ASSETS_DIR / 'images' / 'welcome.gif'
     HOLIDAYS_FILE_PATH = ASSETS_DIR / 'data' / 'holidays.json'
 
     # --- Settings Keys (for QSettings) ---
@@ -52,7 +53,7 @@ class Config:
         "HOVER_BG": "rgba(255, 255, 255, 0.08)", "SCROLLBAR_HANDLE_COLOR": "#505050",
         "SCROLLBAR_GROOVE_COLOR": "#303030", "HOLIDAY_COLOR": "#FF4C4C",
         "GREY_COLOR": "#808080", "WEEKDAY_NAMES_COLOR": "#b8b8b8",
-        "CALENDAR_BACKGROUND_COLOR": "#2c2c2c", "CALENDAR_BORDER_COLOR": "#606060",
+        "CALENDAR_BACKGROUND_COLOR": "#2c2c2c", "CALENDAR_BORDER_COLOR": "#3B3B3B",
         "CALENDAR_TODAY_BG_COLOR": "rgba(128, 128, 128, 0.3)",
         "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(128, 128, 128, 0.5)",
         "CALENDAR_TODAY_SELECTED_BG_COLOR": "rgba(128, 128, 128, 0.6)",
@@ -87,7 +88,7 @@ class Config:
     @classmethod
     def set_theme(cls, theme_name: str):
         """Set app theme and update the current_palette."""
-        from utils.logging_setup import setup_logging
+        from utils.logger import setup_logging
         logger = setup_logging(__name__)
         cls.current_palette = cls._theme_map.get(theme_name, cls.DARK_PALETTE)
         if theme_name not in cls._theme_map:

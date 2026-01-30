@@ -1,0 +1,1 @@
+pyinstaller --noconfirm --onedir --windowed --icon "D:\ShamsiTray-main\assets\images\icons\icon.ico" --name "ShamsiTray" --contents-directory "." --clean --version-file "D:\ShamsiTray-main\build\details.txt" --add-data "D:\ShamsiTray-main\assets;assets/" --paths "D:\ShamsiTray-main\src"  "D:\ShamsiTray-main\run.py"

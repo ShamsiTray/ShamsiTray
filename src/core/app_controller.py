@@ -1,5 +1,5 @@
 """
-System Tray Icon Controller
+App Controller
 ---------------------------
 
 This module contains the `SystemTrayIcon` class, which serves as the main
@@ -16,20 +16,17 @@ import datetime
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt5.QtCore import QCoreApplication, QSettings, QTimer
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (QApplication, QMenu, QSystemTrayIcon,
-                             QWidgetAction)
+from PyQt6.QtCore import QCoreApplication, QSettings, QTimer
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
-from ui.widgets.menu_widgets import (MenuActionWidget,
-                                       ThemeToggleActionWidget)
-from ui.widgets.custom_checkbox import IconCheckboxActionWidget
-from utils.date_helpers import (persian_month_name, persian_weekday_name,
-                                  to_persian_digits)
-from utils.logging_setup import setup_logging
+from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget
+from ui.widgets.checkbox import IconCheckboxActionWidget
+from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
+from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
 from utils.ui_helpers import create_tray_pixmap
 from ui.windows.tutorial_window import TutorialWindow
@@ -139,8 +136,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _build_global_stylesheet(self) -> str:
         palette = APP_CONFIG.get_current_palette()
-        return (f"QToolTip {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; font-size: 14px;}}"
-                f"QScrollBar:vertical {{ border: none; background: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px;}}"
+        return (f"QScrollBar:vertical {{ border: none; background: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px;}}"
                 f"QScrollBar::handle:vertical {{ background: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px;}}"
                 f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}"
                 f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}")
@@ -323,7 +319,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(action)
 
     def on_tray_icon_activated(self, reason):
-        if reason == QSystemTrayIcon.Trigger:
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
             if self.calendar_widget.isVisible():
                 if self.calendar_widget.event_input_widget.isVisible():
                     self.calendar_widget._hide_event_input_widget()

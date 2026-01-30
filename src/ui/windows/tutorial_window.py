@@ -10,12 +10,12 @@ import os
 import sys
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QMovie, QColor
-from PyQt5.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QMovie, QColor
+from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
-from utils.logging_setup import setup_logging
+from utils.logger import setup_logging
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -36,7 +36,7 @@ class TutorialWindow(BaseFramelessWindow):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setWindowTitle("Welcome Guide")
-        self.setFixedSize(500, 400)
+        self.setFixedSize(500, 365)
         self._setup_ui()
         self.update_styles()
         self._apply_windows_styles()
@@ -45,16 +45,14 @@ class TutorialWindow(BaseFramelessWindow):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
-        self.message_label = QLabel(
-            "برای دسترسی آسان، می‌توانید آیکون برنامه را از بخش آیکون‌های پنهان ویندوز، به نوار وظیفه اصلی بکشید."
-        )
+        self.message_label = QLabel("برای دسترسی آسان، می‌توانید آیکون برنامه را از بخش آیکون‌های پنهان ویندوز، به نوار وظیفه اصلی بکشید.")
         self.message_label.setWordWrap(True)
-        self.message_label.setAlignment(Qt.AlignCenter)
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.message_label)
         
         self.gif_label = QLabel()
-        self.gif_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(self.gif_label, alignment=Qt.AlignCenter)
+        self.gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.gif_label, alignment=Qt.AlignmentFlag.AlignCenter)
         self._load_gif()
         
         main_layout.addStretch(1)
@@ -76,7 +74,7 @@ class TutorialWindow(BaseFramelessWindow):
         self.movie = QMovie(gif_path)
         if self.movie.isValid():
             self.gif_label.setMovie(self.movie)
-            self.movie.setCacheMode(QMovie.CacheAll)
+            self.movie.setCacheMode(QMovie.CacheMode.CacheAll)
             self.movie.setSpeed(100)
             self.movie.start()
         else:
