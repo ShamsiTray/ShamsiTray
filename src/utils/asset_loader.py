@@ -6,10 +6,10 @@ This module provides functions for verifying and loading application assets,
 such as fonts and data files. It helps ensure that the application has all
 its required resources before starting up.
 """
-from PyQt5.QtGui import QFontDatabase
+from PyQt6.QtGui import QFontDatabase
 
 from config import APP_CONFIG
-from .logging_setup import setup_logging
+from .logger import setup_logging
 
 logger = setup_logging(__name__)
 

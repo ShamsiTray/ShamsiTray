@@ -8,7 +8,7 @@ def main():
     sys.path.insert(0, str(src_path))
 
     try:
-        from app import main as run_app
+        from main import main as run_app
         run_app()
     except ImportError as e:
         print(f"Error: Could not import the application. Make sure the 'src' directory exists and is structured correctly.\nDetails: {e}", file=sys.stderr)
