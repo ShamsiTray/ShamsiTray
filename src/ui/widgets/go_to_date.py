@@ -1,5 +1,5 @@
 """
-Custom Dialog Widgets
+Go To Date Widget
 ---------------------
 
 This module contains custom dialog-like widgets used in the application,
@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayo
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_utils import apply_combo_style
+from utils.ui_helpers import apply_combo_style
 
 class GoToDateWindow(QWidget):
     """A small, non-movable window to jump to a specific month and year."""

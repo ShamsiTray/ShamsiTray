@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import QLabel, QWidget, QVBoxLayout, QApplication
 
 from config import APP_CONFIG
 
-
 class CustomTooltip(QWidget):
     """A custom tooltip widget that bypasses Qt6's native tooltip rendering."""
     
