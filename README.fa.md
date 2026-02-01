@@ -15,9 +15,8 @@
 برنامه ShamsiTray یک تقویم شمسی (جلالی) کوچک برای سیستم عامل ویندوز است که روز جاری را به صورت یک آیکون در نوار سیستم (System Tray) نمایش می‌دهد. این برنامه یک پنجره تقویم کوچک و کاربردی، ابزار تبدیل تاریخ، نمایش تعطیلات، و امکان افزودن رویداد توسط کاربر به تاریخ‌ها را ارائه می‌دهد.
 
 ###
-
 <a href="https://github.com/ShamsiTray/ShamsiTray/releases/download/v1.3/ShamsiTraySetup-1.3.exe">
-  <img src="https://github.com/user-attachments/assets/8a5171ce-1848-4399-a207-2e53b7478cf1" width="130" />
+  <img src="https://github.com/user-attachments/assets/1a2cb447-fa23-4366-aab8-8154cd0b70e9" width="130" />
 </a>
 <br>
 
