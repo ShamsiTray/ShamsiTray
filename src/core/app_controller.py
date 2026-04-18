@@ -50,6 +50,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.event_added.connect(self.add_user_event)
         self.calendar_widget.event_removed.connect(self.remove_user_event)
 
+        QTimer.singleShot(1000, self._prewarm_calendar)
+
         self.converter_window: Optional[DateConverterWindow] = None
         self.tutorial_window: Optional["TutorialWindow"] = None
 
@@ -348,6 +350,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.move(int(x), int(y))
         self.calendar_widget.show()
         self.calendar_widget.activateWindow()
+
+    def _prewarm_calendar(self):
+        self.calendar_widget.move(-10000, -10000)
+        self.calendar_widget.show()
+        QApplication.processEvents()
+        self.calendar_widget.hide()
 
     def _toggle_theme(self):
         self.current_theme = APP_CONFIG.Theme.LIGHT if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.Theme.DARK
