@@ -15,7 +15,7 @@
 ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows that displays the current day of the month in the system tray as an icon. It provides an intuitive calendar popup, a date conversion tool, holiday tracking, and the ability to add user events to dates.
 
 ### 
-<a href="https://github.com/ShamsiTray/ShamsiTray/releases/download/v1.3/ShamsiTraySetup-1.3.exe">
+<a href="https://github.com/ShamsiTray/ShamsiTray/releases/download/v1.3.1/ShamsiTraySetup-1.3.1.exe">
   <img src="https://img.shields.io/badge/Download-Green?style=flat" width="150" />
 </a>
 <br>
