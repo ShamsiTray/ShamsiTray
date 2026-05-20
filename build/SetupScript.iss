@@ -1,5 +1,5 @@
 #define MyAppName      "ShamsiTray"
-#define MyAppVersion   "1.3"
+#define MyAppVersion   "1.3.1"
 #define MyAppPublisher "ShamsiTray"
 #define MyAppExeName   "ShamsiTray.exe"
 
@@ -10,6 +10,8 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCopyright="Copyright © 2025 - ShamsiTray"
 ; • install location and icons
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
