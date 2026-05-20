@@ -8,13 +8,12 @@ and themes.
 """
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QMouseEvent
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QMouseEvent
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from config import APP_CONFIG
 from .menu_widgets import HoverWidget
-
 
 class CustomCheckbox(QWidget):
     """A custom checkbox widget using a FontAwesome icon and a label."""
@@ -24,7 +23,7 @@ class CustomCheckbox(QWidget):
         super().__init__(parent)
         self._is_checked = is_checked
         self.setMouseTracking(True)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4) 
@@ -39,7 +38,7 @@ class CustomCheckbox(QWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)
@@ -60,10 +59,7 @@ class CustomCheckbox(QWidget):
         
         self.icon_label.setText(icon)
         self.icon_label.setStyleSheet(f"color: {icon_color}; background: transparent;")
-        self.text_label.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
-            "font-size: 13px; font-weight: bold; background: transparent;"
-        )
+        self.text_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; background: transparent;")
 
 class IconCheckboxActionWidget(HoverWidget):
     """A context menu checkbox using FontAwesome icons."""
@@ -85,7 +81,7 @@ class IconCheckboxActionWidget(HoverWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)
@@ -103,7 +99,4 @@ class IconCheckboxActionWidget(HoverWidget):
         self.icon_label.setText(icon)
         color = APP_CONFIG.current_palette['TEXT_COLOR']
         self.icon_label.setStyleSheet(f"color: {color}; background: transparent;")
-        self.text_label.setStyleSheet(
-            f"color: {color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
-            "font-size: 14px; font-weight: bold; background: transparent;"
-        )
+        self.text_label.setStyleSheet(f"color: {color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; background: transparent;")
