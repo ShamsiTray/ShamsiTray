@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from config import APP_CONFIG
 from utils.asset_loader import verify_assets, load_fonts
 from utils.logger import setup_logging
-from core.system_tray import SystemTrayIcon
+from core.app_controller import SystemTrayIcon
 from ui.windows.tutorial_window import TutorialWindow
 
 logger = setup_logging(__name__)
