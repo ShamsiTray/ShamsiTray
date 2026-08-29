@@ -18,9 +18,9 @@ DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=D:\ShamsiTray-main\Installer
+OutputDir=D:\
 OutputBaseFilename=ShamsiTraySetup-{#MyAppVersion}
-SetupIconFile=D:\ShamsiTray-main\assets\images\icons\icon.ico
+SetupIconFile=D:\Torrent\ShamsiTray\v1.3-PyQT6\assets\images\icons\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=100
@@ -36,8 +36,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
       GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\ShamsiTray-main\output\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\ShamsiTray-main\output\ShamsiTray\*";          DestDir: "{app}"; \
+Source: "D:\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "D:\ShamsiTray\*";          DestDir: "{app}"; \
         Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -221,3 +221,4 @@ begin
   end;
 
 end;
+
