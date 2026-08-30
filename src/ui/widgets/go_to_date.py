@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayo
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_helpers import apply_combo_style
 
 class GoToDateWindow(QWidget):
     """A small, non-movable window to jump to a specific month and year."""
@@ -55,7 +54,6 @@ class GoToDateWindow(QWidget):
         main_layout.addWidget(self.title_label)
         
         self.month_combo = QComboBox()
-        apply_combo_style(self.month_combo)
         self.month_combo.setMaxVisibleItems(5)
         month_names = [f"{to_persian_digits(str(i).zfill(2))} - {persian_month_name(i)}" for i in range(1, 13)]
         for name in month_names:
