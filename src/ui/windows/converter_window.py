@@ -18,7 +18,6 @@ from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, persian_month_name, gregorian_month_name, persian_weekday_name
 from utils.logger import setup_logging
 from .base_window import BaseFramelessWindow
-from utils.ui_helpers import apply_combo_style
 from ui.widgets.tooltip import CustomTooltip
 
 logger = setup_logging(__name__)
@@ -123,10 +122,6 @@ class DateConverterWindow(BaseFramelessWindow):
         self.conversion_type_combo = QComboBox()
         self.day_combo = QComboBox()
         self.month_combo = QComboBox()
-        
-        apply_combo_style(self.conversion_type_combo)
-        apply_combo_style(self.day_combo)
-        apply_combo_style(self.month_combo)
 
         self._set_combo_items(self.conversion_type_combo, ["شمسی به میلادی", "میلادی به شمسی"])
         self.year_input = QLineEdit()
