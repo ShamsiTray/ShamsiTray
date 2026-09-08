@@ -36,6 +36,8 @@ class Config:
     USER_DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData' / 'Local'))) / APP_NAME
     USER_LOG_DIR = USER_DATA_DIR / 'logs'
     LOG_FILE_PATH = USER_LOG_DIR / 'shamsitray.log'
+    SETTINGS_FILE_PATH = USER_DATA_DIR / 'settings.json'
+    USER_EVENTS_FILE_PATH = USER_DATA_DIR / 'user_events.json'
 
     @classmethod
     def ensure_user_data_dirs(cls) -> bool:
