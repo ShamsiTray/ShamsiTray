@@ -53,9 +53,8 @@ class ClickableLabel(QLabel):
         
     def _show_custom_tooltip(self):
         if self._tooltip_text and self.underMouse() and not self._context_menu_open:
-            palette = APP_CONFIG.get_current_palette()
             global_pos = QCursor.pos()
-            CustomTooltip.instance().show_tooltip(self._tooltip_text, global_pos, palette)
+            CustomTooltip.instance().show_tooltip(self._tooltip_text, global_pos)
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         if not self.jalali_date or not self.text():

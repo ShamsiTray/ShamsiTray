@@ -269,9 +269,8 @@ class DateConverterWindow(BaseFramelessWindow):
         if text and text != "...":
             clipboard = QApplication.clipboard()
             clipboard.setText(text)
-            palette = APP_CONFIG.get_current_palette()
             global_pos = QCursor.pos()
-            CustomTooltip.instance().show_tooltip("کپی شد", global_pos, palette)
+            CustomTooltip.instance().show_tooltip("کپی شد", global_pos)
             QTimer.singleShot(600, CustomTooltip.instance().hide)
 
     def _apply_windows_styles(self):
