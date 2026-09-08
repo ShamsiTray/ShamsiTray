@@ -402,9 +402,8 @@ class SystemTrayIcon(QSystemTrayIcon):
                 self.show_calendar()
 
     def show_calendar(self):
-        if self.calendar_widget.selected_date != jdatetime.date.today():
-             self.calendar_widget.go_to_today()
-        
+        # Stay on the month the user was browsing; the calendar snaps back to today
+        # automatically on day changes (midnight timer / system time change).
         self.calendar_widget.fill_calendar_grid()
         self.calendar_widget.update_styles()
         
