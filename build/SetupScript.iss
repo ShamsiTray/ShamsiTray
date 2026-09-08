@@ -40,6 +40,12 @@ Source: "D:\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "D:\ShamsiTray\*";          DestDir: "{app}"; \
         Flags: ignoreversion recursesubdirs createallsubdirs
 
+; Seed the holiday store in %LOCALAPPDATA%\ShamsiTray (the app's USER_DATA_DIR).
+; onlyifdoesntexist: reinstalls/upgrades must never clobber an updated holiday file;
+; uninsneveruninstall: user data survives uninstall.
+Source: "D:\ShamsiTray\assets\data\holidays.json"; DestDir: "{localappdata}\ShamsiTray"; \
+        Flags: onlyifdoesntexist uninsneveruninstall
+
 [Icons]
 Name: "{group}\{#MyAppName}";                       Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
@@ -221,4 +227,3 @@ begin
   end;
 
 end;
-
