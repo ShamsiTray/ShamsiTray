@@ -70,6 +70,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.user_events = user_events
         self.fill_calendar_grid()
 
+    def set_holidays(self, holidays_cache: dict):
+        self.holidays_cache = holidays_cache
+        self.fill_calendar_grid()
+
     def _setup_ui(self):
         self.setFixedSize(APP_CONFIG.CALENDAR_WIDTH, APP_CONFIG.CALENDAR_HEIGHT)
         main_layout = QVBoxLayout(self)
