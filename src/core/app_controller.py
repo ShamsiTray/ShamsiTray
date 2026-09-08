@@ -11,24 +11,24 @@ controller for the application. It manages:
 - Handling system events like time changes and application activation.
 """
 import sys
-import json
 import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
 import jdatetime
-from PyQt6.QtCore import QCoreApplication, QTimer
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt
+from PyQt6.QtGui import QDesktopServices, QIcon
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QProgressDialog, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
 from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget, ThemeToggleActionWidget
 from ui.widgets.checkbox import IconCheckboxActionWidget
+from core.update_checker import DAY_MS, UpdateChecker
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import export_events_to_file, import_events_from_file, load_user_events, save_user_events
-from utils.holiday_io import resolve_holidays_store
+from utils.holiday_io import read_version, resolve_holidays_store
 from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
@@ -64,6 +64,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._apply_theme()
         self.activated.connect(self.on_tray_icon_activated)
         self._setup_timers()
+        self._setup_update_checker()
         self.update_tray_icon(force=True)
 
     def _get_windows_theme(self) -> str:
@@ -139,6 +140,129 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.go_to_today()
         self.update_tray_icon(force=True)
         self.schedule_next_midnight_check()
+
+    # --- Update checks ---
+
+    def _setup_update_checker(self):
+        self._manual_update_check = False
+        self._update_popup: Optional[QMessageBox] = None
+        self._download_dialog: Optional[QProgressDialog] = None
+        self.update_checker = UpdateChecker(current_data_version=read_version(APP_CONFIG.HOLIDAYS_STORE_PATH), parent=self)
+        self.update_checker.app_update_available.connect(self._on_app_update_available)
+        self.update_checker.holidays_updated.connect(self._on_holidays_updated)
+        self.update_checker.no_updates.connect(self._on_no_updates)
+        self.update_checker.check_failed.connect(self._on_check_failed)
+        self.update_checker.download_progress.connect(self._on_download_progress)
+        self.update_checker.installer_downloaded.connect(self._on_installer_downloaded)
+        self.update_checker.download_failed.connect(self._on_download_failed)
+        QTimer.singleShot(30000, self._auto_check_updates)
+
+    def _auto_check_updates(self):
+        if not self.settings.value(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, True, type=bool):
+            return
+        last_check_ms = self.settings.value(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, 0, type=int) or 0
+        now_ms = int(datetime.datetime.now().timestamp() * 1000)
+        if now_ms - last_check_ms < DAY_MS:
+            logger.debug("Skipping automatic update check (last check was less than 24h ago).")
+            return
+        self._check_for_updates(manual=False)
+
+    def _check_for_updates(self, manual: bool):
+        self._manual_update_check = manual
+        now_ms = int(datetime.datetime.now().timestamp() * 1000)
+        self.settings.setValue(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, now_ms)
+        logger.info(f"Checking for updates ({'manual' if manual else 'automatic'}).")
+        self.update_checker.check()
+
+    def _on_app_update_available(self, version: str, installer_url: str, sha256: str):
+        if not self._manual_update_check:
+            ignored = self.settings.value(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY, None)
+            if ignored == version:
+                logger.info(f"Skipping update notification for ignored version {version}.")
+                return
+        self._show_update_popup(version, installer_url, sha256)
+
+    def _show_update_popup(self, version: str, installer_url: str, sha256: str):
+        if self._update_popup is not None and self._update_popup.isVisible():
+            return
+        box = QMessageBox(QApplication.activeWindow())
+        box.setWindowTitle("بروزرسانی جدید")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(f"نسخه جدید {APP_CONFIG.APP_NAME} ({version}) موجود است.")
+        download_button = box.addButton("دانلود", QMessageBox.ButtonRole.AcceptRole)
+        ignore_button = box.addButton("نادیده گرفتن", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("بعداً یادآوری کن", QMessageBox.ButtonRole.RejectRole)
+        self._update_popup = box
+        box.exec()
+        self._update_popup = None
+        clicked = box.clickedButton()
+        if clicked is download_button:
+            self._download_update(version, installer_url, sha256)
+        elif clicked is ignore_button:
+            self.settings.setValue(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY, version)
+            logger.info(f"Update to {version} will no longer be announced automatically.")
+
+    def _download_update(self, version: str, installer_url: str, sha256: str):
+        downloads_dir = Path.home() / 'Downloads'
+        destination = (downloads_dir if downloads_dir.exists() else APP_CONFIG.USER_DATA_DIR) / f"ShamsiTraySetup-{version}.exe"
+        dialog = QProgressDialog("در حال دانلود بروزرسانی...", "لغو", 0, 0, QApplication.activeWindow())
+        dialog.setWindowTitle("دانلود بروزرسانی")
+        dialog.setMinimumDuration(0)
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.canceled.connect(self.update_checker.cancel_download)
+        self._download_dialog = dialog
+        logger.info(f"Downloading update {version} to {destination}")
+        self.update_checker.download_installer(installer_url, destination, sha256)
+
+    def _on_download_progress(self, received: int, total: int):
+        dialog = self._download_dialog
+        if dialog is None:
+            return
+        if total > 0:
+            if dialog.maximum() != total:
+                dialog.setRange(0, total)
+            dialog.setValue(received)
+
+    def _close_download_dialog(self):
+        if self._download_dialog is not None:
+            self._download_dialog.reset()
+            self._download_dialog = None
+
+    def _on_installer_downloaded(self, path: str):
+        self._close_download_dialog()
+        parent = QApplication.activeWindow()
+        answer = QMessageBox.question(
+            parent, APP_CONFIG.APP_NAME, "دانلود کامل شد. نصب‌کننده اجرا شود؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        else:
+            logger.info(f"Installer saved to {path}")
+
+    def _on_download_failed(self, reason: str):
+        self._close_download_dialog()
+        if reason == "canceled":
+            logger.info("Update download canceled.")
+            return
+        logger.error(f"Update download failed: {reason}")
+        QMessageBox.critical(QApplication.activeWindow(), APP_CONFIG.APP_NAME, "دانلود بروزرسانی ناموفق بود.")
+        QDesktopServices.openUrl(QUrl(APP_CONFIG.APP_RELEASES_PAGE_URL))
+
+    def _on_holidays_updated(self):
+        logger.info("Holiday data updated; refreshing calendar and tray icon.")
+        self.holidays_cache = resolve_holidays_store()
+        self.calendar_widget.set_holidays(self.holidays_cache)
+        self.update_tray_icon(force=True)
+
+    def _on_no_updates(self):
+        logger.info("No updates available.")
+        if self._manual_update_check:
+            QMessageBox.information(QApplication.activeWindow(), APP_CONFIG.APP_NAME, "برنامه و فایل تعطیلات بروز است.")
+
+    def _on_check_failed(self, reason: str):
+        logger.warning(f"Update check failed: {reason}")
+        if self._manual_update_check:
+            QMessageBox.warning(QApplication.activeWindow(), APP_CONFIG.APP_NAME, "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.")
 
     def _build_global_stylesheet(self) -> str:
         palette = APP_CONFIG.get_current_palette()
@@ -280,6 +404,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         events_widget.export_triggered.connect(lambda: self._close_menu_then(self._export_user_events))
         events_action.setDefaultWidget(events_widget)
         menu.addAction(events_action)
+        menu.addSeparator()
+        self._add_menu_action(menu, "بررسی بروزرسانی", lambda: self._close_menu_then(lambda: self._check_for_updates(manual=True)))
         menu.addSeparator()
         self._add_menu_action(menu, "خروج", QApplication.quit)
         self.setContextMenu(menu)
