@@ -243,11 +243,18 @@ class SystemTrayIcon(QSystemTrayIcon):
         return {}
 
     def _save_user_events(self):
-        self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, self.user_events)
-        logger.info(f"Saved {len(self.user_events)} user events.")
+        try:
+            self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, self.user_events)
+            logger.info(f"Saved {len(self.user_events)} user events.")
+        except Exception as e:
+            # Persistence failed: keep the in-memory state valid and report it, never crash.
+            logger.error(f"Failed to persist user events (in-memory state kept): {e}")
 
     def add_user_event(self, jdate: jdatetime.date, text: str, is_yearly: bool, remove_after_finish: bool):
         if not jdate:
+            return
+        if not text or not text.strip():
+            logger.warning("Ignoring attempt to add a user event with empty text.")
             return
         self.remove_user_event(jdate, save=False)
         

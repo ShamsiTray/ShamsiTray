@@ -79,8 +79,13 @@ class EventInputWidget(QWidget):
         self.save_button.clicked.connect(self._on_save)
         self.cancel_button.clicked.connect(self.canceled)
         self.yearly_checkbox.toggled.connect(self._on_yearly_toggled)
-        
+        self.text_edit.textChanged.connect(self._update_save_button_state)
+
         self.update_styles()
+        self._update_save_button_state()
+
+    def _update_save_button_state(self):
+        self.save_button.setEnabled(bool(self.text_edit.toPlainText().strip()))
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
@@ -103,7 +108,8 @@ class EventInputWidget(QWidget):
         save_button_style = (
             f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
             f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
-            f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
+            f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}"
+            f"QPushButton:disabled {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(150).name()}; color: rgba(255, 255, 255, 110); }}")
         self.save_button.setStyleSheet(save_button_style)
 
     def set_data(self, text, is_yearly, remove_after_finish):
@@ -122,4 +128,4 @@ class EventInputWidget(QWidget):
         text = self.text_edit.toPlainText().strip()
         if not text:
             return
-        self.saved.emit(self.text_edit.toPlainText().strip(), self.yearly_checkbox.isChecked(), self.remove_after_finish_checkbox.isChecked())
+        self.saved.emit(text, self.yearly_checkbox.isChecked(), self.remove_after_finish_checkbox.isChecked())
