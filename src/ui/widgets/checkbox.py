@@ -85,9 +85,7 @@ class IconCheckboxActionWidget(HoverWidget):
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)
-            self.update_visuals()
         super().mousePressEvent(event)
-
 
     def setChecked(self, checked: bool):
         if self._is_checked != checked:
