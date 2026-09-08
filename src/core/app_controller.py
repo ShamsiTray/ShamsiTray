@@ -203,7 +203,8 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _load_user_events(self) -> Dict[str, dict]:
         """Loads user events from QSettings and ensures they are in the new format."""
-        events = self.settings.value(APP_CONFIG.USER_EVENTS_SETTING_KEY, {}, type=dict)
+        raw_value = self.settings.value(APP_CONFIG.USER_EVENTS_SETTING_KEY)
+        events = self._normalize_user_events(raw_value)
         migrated = False
         for key, value in list(events.items()):
             if isinstance(value, str):
@@ -212,11 +213,34 @@ class SystemTrayIcon(QSystemTrayIcon):
             elif isinstance(value, dict) and "remove_after_finish" not in value:
                 value["remove_after_finish"] = False
                 migrated = True
+            elif not isinstance(value, dict):
+                logger.warning(f"Dropping malformed user event entry {key!r} (unexpected type {type(value).__name__}).")
+                del events[key]
+                migrated = True
         if migrated:
-            logger.info("Migrated old event format to new format.")
-            self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, events)
+            logger.info("Migrated or cleaned user event format.")
+            self._save_user_events()
         logger.info(f"Loaded {len(events)} user events.")
         return events
+
+    def _normalize_user_events(self, raw_value) -> Dict[str, dict]:
+        """Coerces the raw stored events value into a dict, tolerating corrupt data."""
+        if raw_value is None:
+            return {}
+        if isinstance(raw_value, dict):
+            return dict(raw_value)
+        if isinstance(raw_value, str):
+            try:
+                parsed = json.loads(raw_value)
+            except (ValueError, TypeError):
+                logger.warning("Stored user events value is not valid JSON; starting with an empty event set.")
+                return {}
+            if isinstance(parsed, dict):
+                return parsed
+            logger.warning(f"Stored user events JSON has unexpected root type ({type(parsed).__name__}); starting with an empty event set.")
+            return {}
+        logger.warning(f"Stored user events value has unexpected type ({type(raw_value).__name__}); starting with an empty event set.")
+        return {}
 
     def _save_user_events(self):
         self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, self.user_events)
