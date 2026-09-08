@@ -10,6 +10,7 @@ Date and asset-related helper functions have been moved to the `utils` package
 to keep this file focused solely on configuration data.
 """
 from pathlib import Path
+import os
 import sys
 
 class Config:
@@ -19,7 +20,7 @@ class Config:
     APP_NAME = "ShamsiTray"
     COMPANY_NAME = "ShamsiTray"
     APP_VERSION = "1.3.1"
-    
+
     # --- Paths (dynamically calculated) ---
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         PROJECT_ROOT = Path(sys._MEIPASS)
@@ -30,6 +31,20 @@ class Config:
     FONT_DIR = ASSETS_DIR / 'fonts'
     TUTORIAL_GIF_PATH = ASSETS_DIR / 'images' / 'welcome.gif'
     HOLIDAYS_FILE_PATH = ASSETS_DIR / 'data' / 'holidays.json'
+
+    # --- User Data Paths (%LOCALAPPDATA%\ShamsiTray) ---
+    USER_DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData' / 'Local'))) / APP_NAME
+    USER_LOG_DIR = USER_DATA_DIR / 'logs'
+    LOG_FILE_PATH = USER_LOG_DIR / 'shamsitray.log'
+
+    @classmethod
+    def ensure_user_data_dirs(cls) -> bool:
+        """Create the user data directories if missing. Returns True when present."""
+        try:
+            cls.USER_LOG_DIR.mkdir(parents=True, exist_ok=True)
+            return True
+        except OSError:
+            return False
 
     # --- Settings Keys (for QSettings) ---
     AUTO_START_SETTING_KEY = "General/OpenAtLogin"
