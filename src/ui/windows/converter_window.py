@@ -215,21 +215,7 @@ class DateConverterWindow(BaseFramelessWindow):
         
         input_field_height = 40
 
-        scrollbar_style = (
-            f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px; }}"
-            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px; }}"
-            f"QAbstractItemView::add-line:vertical, QAbstractItemView::sub-line:vertical {{ height: 0px; }} QAbstractItemView::add-page:vertical, QAbstractItemView::sub-page:vertical {{ background: none; }}")
-        
-        combo_style = (
-            f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 8px 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;}}"
-            f"QComboBox:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
-            f"QComboBox:focus, QComboBox::on {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
-            f"QComboBox::drop-down {{ border: 0px; width: 0px; height: 0px; }}"
-            f"QComboBox QAbstractItemView {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; outline: none;}}"
-            f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none; }}"
-            f"QComboBox QAbstractItemView::item:hover {{ background-color: {palette['HOVER_BG']}; border-radius: 4px; }}"
-            f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
-            f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
+        combo_style = combo_stylesheet(palette, center_text=True)
         
         base_button_style = f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; font-size: 18px; font-weight: bold; color: {palette['TEXT_COLOR']};"
         self.exit_button.setFixedSize(30, 30)
