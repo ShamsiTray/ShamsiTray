@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QSyst
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
-from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget
+from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget, ThemeToggleActionWidget
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import export_events_to_file, import_events_from_file, load_user_events, save_user_events
@@ -327,12 +327,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         )
         self._add_menu_action(menu, "تبدیل تاریخ", lambda: self._close_menu_then(self._open_date_converter))
         menu.addSeparator()
-        self._add_menu_action(menu, "برون‌بری رویدادها...", lambda: self._close_menu_then(self._export_user_events))
-        self._add_menu_action(menu, "درون‌ریزی رویدادها...", lambda: self._close_menu_then(self._import_user_events))
-        menu.addSeparator()
         self._add_theme_toggle_action(menu)
         menu.addSeparator()
         self._add_startup_action(menu)
+        menu.addSeparator()
+        events_action = QWidgetAction(self)
+        events_widget = EventsActionWidget(menu)
+        events_widget.import_triggered.connect(lambda: self._close_menu_then(self._import_user_events))
+        events_widget.export_triggered.connect(lambda: self._close_menu_then(self._export_user_events))
+        events_action.setDefaultWidget(events_widget)
+        menu.addAction(events_action)
         menu.addSeparator()
         self._add_menu_action(menu, "خروج", QApplication.quit)
         self.setContextMenu(menu)
@@ -476,22 +480,22 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _export_user_events(self):
         if not self.user_events:
-            QMessageBox.information(None, APP_CONFIG.APP_NAME, "هیچ رویدادی برای برون‌بری وجود ندارد.")
+            QMessageBox.information(None, APP_CONFIG.APP_NAME, "هیچ رویدادی برای خروجی گرفتن وجود ندارد.")
             return
         parent = QApplication.activeWindow()
         default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
-        path, _ = QFileDialog.getSaveFileName(parent, "برون‌بری رویدادها", default_name, "JSON (*.json)")
+        path, _ = QFileDialog.getSaveFileName(parent, "خروجی گرفتن از رویدادها", default_name, "JSON (*.json)")
         if not path:
             return
         if export_events_to_file(self.user_events, Path(path)):
             logger.info(f"Exported {len(self.user_events)} user events to {path}")
-            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "رویدادها با موفقیت برون‌بری شدند.")
+            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "رویدادها با موفقیت خروجی گرفته شدند.")
         else:
-            QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "برون‌بری رویدادها ناموفق بود.")
+            QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خروجی گرفتن از رویدادها ناموفق بود.")
 
     def _import_user_events(self):
         parent = QApplication.activeWindow()
-        path, _ = QFileDialog.getOpenFileName(parent, "درون‌ریزی رویدادها", "", "JSON (*.json)")
+        path, _ = QFileDialog.getOpenFileName(parent, "وارد کردن رویدادها", "", "JSON (*.json)")
         if not path:
             return
         result = import_events_from_file(path)
@@ -506,7 +510,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._save_user_events()
         self.calendar_widget.set_user_events(self.user_events)
         self.update_tray_icon(force=True)
-        summary = f"{len(imported)} رویداد درون‌ریزی شد."
+        summary = f"{len(imported)} رویداد وارد شد."
         if skipped:
             summary += f"\n{skipped} ورودی نامعتبر نادیده گرفته شد."
         QMessageBox.information(parent, APP_CONFIG.APP_NAME, summary)
