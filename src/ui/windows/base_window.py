@@ -64,8 +64,8 @@ class BaseFramelessWindow(QWidget):
             event.accept()
 
     def leaveEvent(self, event):
-    # Ensure drag state is cleared if the cursor leaves the window
-        self._drag_position = None
+        # Keep the drag alive when the cursor briefly leaves the window;
+        # a drag must only end on mouse release.
         super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event):
