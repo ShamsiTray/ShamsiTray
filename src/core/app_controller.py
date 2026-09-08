@@ -16,7 +16,7 @@ import datetime
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt6.QtCore import QCoreApplication, QSettings, QTimer
+from PyQt6.QtCore import QCoreApplication, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidgetAction
 
@@ -26,6 +26,8 @@ from ui.windows.converter_window import DateConverterWindow
 from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
+from utils.event_io import load_user_events, save_user_events
+from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
 from utils.ui_helpers import create_tray_pixmap
@@ -39,9 +41,9 @@ logger = setup_logging(__name__)
 class SystemTrayIcon(QSystemTrayIcon):
     """The main application controller, managing the tray icon, windows, and settings."""
 
-    def __init__(self):
+    def __init__(self, settings: Optional[JsonSettings] = None):
         super().__init__()
-        self.settings = QSettings(APP_CONFIG.COMPANY_NAME, APP_CONFIG.APP_NAME)
+        self.settings = settings if settings is not None else JsonSettings()
         self.holidays_cache = self._load_holidays_from_file()
         self.user_events = self._load_user_events()
         self._clean_expired_events()
@@ -202,53 +204,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         return holidays_data
 
     def _load_user_events(self) -> Dict[str, dict]:
-        """Loads user events from QSettings and ensures they are in the new format."""
-        raw_value = self.settings.value(APP_CONFIG.USER_EVENTS_SETTING_KEY)
-        events = self._normalize_user_events(raw_value)
-        migrated = False
-        for key, value in list(events.items()):
-            if isinstance(value, str):
-                events[key] = {"text": value, "yearly": False, "remove_after_finish": False}
-                migrated = True
-            elif isinstance(value, dict) and "remove_after_finish" not in value:
-                value["remove_after_finish"] = False
-                migrated = True
-            elif not isinstance(value, dict):
-                logger.warning(f"Dropping malformed user event entry {key!r} (unexpected type {type(value).__name__}).")
-                del events[key]
-                migrated = True
-        if migrated:
-            logger.info("Migrated or cleaned user event format.")
-            self._save_user_events()
-        logger.info(f"Loaded {len(events)} user events.")
-        return events
-
-    def _normalize_user_events(self, raw_value) -> Dict[str, dict]:
-        """Coerces the raw stored events value into a dict, tolerating corrupt data."""
-        if raw_value is None:
-            return {}
-        if isinstance(raw_value, dict):
-            return dict(raw_value)
-        if isinstance(raw_value, str):
-            try:
-                parsed = json.loads(raw_value)
-            except (ValueError, TypeError):
-                logger.warning("Stored user events value is not valid JSON; starting with an empty event set.")
-                return {}
-            if isinstance(parsed, dict):
-                return parsed
-            logger.warning(f"Stored user events JSON has unexpected root type ({type(parsed).__name__}); starting with an empty event set.")
-            return {}
-        logger.warning(f"Stored user events value has unexpected type ({type(raw_value).__name__}); starting with an empty event set.")
-        return {}
+        """Loads user events from the JSON event store (legacy registry blob is
+        handled by the one-time settings migration at startup)."""
+        self.user_events = load_user_events()
+        logger.info(f"Loaded {len(self.user_events)} user events.")
+        return self.user_events
 
     def _save_user_events(self):
-        try:
-            self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, self.user_events)
-            logger.info(f"Saved {len(self.user_events)} user events.")
-        except Exception as e:
+        if not save_user_events(self.user_events):
             # Persistence failed: keep the in-memory state valid and report it, never crash.
-            logger.error(f"Failed to persist user events (in-memory state kept): {e}")
+            logger.error("Failed to persist user events (in-memory state kept).")
 
     def add_user_event(self, jdate: jdatetime.date, text: str, is_yearly: bool, remove_after_finish: bool):
         if not jdate:

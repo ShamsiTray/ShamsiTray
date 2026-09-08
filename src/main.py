@@ -10,12 +10,14 @@ tray icon controller.
 import ctypes
 import sys
 
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from config import APP_CONFIG
 from utils.asset_loader import verify_assets, load_fonts
+from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
+from utils.settings_migration import migrate_from_registry
 from core.app_controller import SystemTrayIcon
 from ui.windows.tutorial_window import TutorialWindow
 
@@ -55,11 +57,13 @@ def main():
         QMessageBox.critical(None, "Error", "No system tray was found on this system.")
         sys.exit(1)
     
-    tray_icon = SystemTrayIcon()
+    settings = JsonSettings()
+    migrate_from_registry(settings)
+
+    tray_icon = SystemTrayIcon(settings=settings)
     tray_icon.show()
     logger.info("System tray icon initialized")
-    
-    settings = QSettings(APP_CONFIG.COMPANY_NAME, APP_CONFIG.APP_NAME)
+
     if not settings.value(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, False, type=bool):
         logger.info("First run detected: Showing tutorial window")
         
