@@ -13,12 +13,13 @@ controller for the application. It manages:
 import sys
 import json
 import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QTimer
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
@@ -26,7 +27,7 @@ from ui.windows.converter_window import DateConverterWindow
 from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
-from utils.event_io import load_user_events, save_user_events
+from utils.event_io import export_events_to_file, import_events_from_file, load_user_events, save_user_events
 from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
@@ -324,7 +325,10 @@ class SystemTrayIcon(QSystemTrayIcon):
             f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}"
             f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}"
         )
-        self._add_menu_action(menu, "تبدیل تاریخ", self._open_date_converter)
+        self._add_menu_action(menu, "تبدیل تاریخ", lambda: self._close_menu_then(self._open_date_converter))
+        menu.addSeparator()
+        self._add_menu_action(menu, "برون‌بری رویدادها...", lambda: self._close_menu_then(self._export_user_events))
+        self._add_menu_action(menu, "درون‌ریزی رویدادها...", lambda: self._close_menu_then(self._import_user_events))
         menu.addSeparator()
         self._add_theme_toggle_action(menu)
         menu.addSeparator()
@@ -332,6 +336,15 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addSeparator()
         self._add_menu_action(menu, "خروج", QApplication.quit)
         self.setContextMenu(menu)
+
+    def _close_menu_then(self, callback):
+        """Close the popup menu, then run callback once it has fully dismissed.
+        Windows refuses to show modal dialogs (e.g. native file dialogs) while a
+        popup menu is still tracking, so dialogs must be opened after the close."""
+        menu = self.contextMenu()
+        if menu:
+            menu.close()
+        QTimer.singleShot(50, callback)
     
     def _add_menu_action(self, menu, text, slot):
         action = QWidgetAction(self)
@@ -460,3 +473,40 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.converter_window.activateWindow()
         else:
             self.converter_window.activateWindow()
+
+    def _export_user_events(self):
+        if not self.user_events:
+            QMessageBox.information(None, APP_CONFIG.APP_NAME, "هیچ رویدادی برای برون‌بری وجود ندارد.")
+            return
+        parent = QApplication.activeWindow()
+        default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
+        path, _ = QFileDialog.getSaveFileName(parent, "برون‌بری رویدادها", default_name, "JSON (*.json)")
+        if not path:
+            return
+        if export_events_to_file(self.user_events, Path(path)):
+            logger.info(f"Exported {len(self.user_events)} user events to {path}")
+            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "رویدادها با موفقیت برون‌بری شدند.")
+        else:
+            QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "برون‌بری رویدادها ناموفق بود.")
+
+    def _import_user_events(self):
+        parent = QApplication.activeWindow()
+        path, _ = QFileDialog.getOpenFileName(parent, "درون‌ریزی رویدادها", "", "JSON (*.json)")
+        if not path:
+            return
+        result = import_events_from_file(path)
+        if result is None:
+            QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خواندن فایل رویدادها ناموفق بود.")
+            return
+        imported, skipped = result
+        merged = dict(self.user_events)
+        merged.update(imported)
+        self.user_events = merged
+        self._clean_expired_events()
+        self._save_user_events()
+        self.calendar_widget.set_user_events(self.user_events)
+        self.update_tray_icon(force=True)
+        summary = f"{len(imported)} رویداد درون‌ریزی شد."
+        if skipped:
+            summary += f"\n{skipped} ورودی نامعتبر نادیده گرفته شد."
+        QMessageBox.information(parent, APP_CONFIG.APP_NAME, summary)
