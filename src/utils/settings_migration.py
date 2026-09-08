@@ -64,6 +64,8 @@ def migrate_from_registry(settings: JsonSettings, legacy=None) -> None:
 
 def _migrate_user_events(legacy) -> bool:
     """Move the legacy registry events blob into the events file. Returns success."""
+    import json
+
     from utils import event_io
 
     try:
@@ -73,6 +75,13 @@ def _migrate_user_events(legacy) -> bool:
         return False
     if raw is None:
         return True
+    if isinstance(raw, str):
+        # Older builds could store the whole mapping as a serialized string.
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            logger.warning("Legacy user events blob is not valid JSON; nothing to migrate.")
+            return True
 
     events, skipped = event_io.normalize_events_mapping(raw)
     if skipped:
