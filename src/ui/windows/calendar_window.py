@@ -59,9 +59,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.fill_calendar_grid()
 
     def hideEvent(self, event):
-        """Override hideEvent to also close the 'Go To Date' window."""
+        """Override hideEvent to also close the 'Go To Date' window and its overlay,
+        so a stale overlay can never eat mouse input after the calendar reopens."""
         if self.go_to_window and self.go_to_window.isVisible():
             self.go_to_window.close()
+        self.overlay_blocker.hide()
         super().hideEvent(event)
 
     def set_user_events(self, user_events: dict):
@@ -398,13 +400,20 @@ class PersianCalendarWidget(BaseFramelessWindow):
         menu.exec(self.mapToGlobal(pos))
     
     def _open_go_to_date_window(self):
-        if self.go_to_window is None or not self.go_to_window.isVisible():
+        if self.go_to_window is not None and not self.go_to_window.isVisible():
+            # Stale hidden instance from a previous open — discard it.
+            self.go_to_window.deleteLater()
+            self.go_to_window = None
+        if self.go_to_window is None:
             self.overlay_blocker.setGeometry(self.rect())
             self.overlay_blocker.show()
             self.overlay_blocker.raise_()
             self.go_to_window = GoToDateWindow(self)
+            # Delete on close so the destroyed signal always tears the overlay down,
+            # no matter which close path (cancel, confirm, calendar hidden) is taken.
+            self.go_to_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             self.go_to_window.date_selected.connect(self.go_to_date)
-            self.go_to_window.destroyed.connect(lambda: self.overlay_blocker.hide())
+            self.go_to_window.destroyed.connect(self._on_go_to_window_destroyed)
             self.go_to_window.cancel_button.clicked.connect(self.overlay_blocker.hide)
             parent_size = self.size()
             child_size = self.go_to_window.size()
@@ -413,6 +422,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.go_to_window.move(x, y)
             self.go_to_window.show()
             self.go_to_window.raise_()
+
+    def _on_go_to_window_destroyed(self):
+        self.go_to_window = None
+        self.overlay_blocker.hide()
 
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
