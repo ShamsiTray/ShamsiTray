@@ -7,6 +7,8 @@ and calendar-specific logic for both Jalali (Shamsi) and Gregorian systems.
 """
 from typing import Optional
 
+import datetime
+
 import jdatetime
 
 from config import APP_CONFIG
@@ -53,6 +55,30 @@ def is_jalali_leap_year(year: int) -> bool:
             return True
         except ValueError:
             return False
+
+def days_in_jalali_month(year: int, month: int) -> int:
+    """Return the number of days in a Jalali month (1-12)."""
+    if 1 <= month <= 6:
+        return 31
+    if 7 <= month <= 11:
+        return 30
+    if month == 12:
+        return 30 if is_jalali_leap_year(year) else 29
+    raise ValueError("Month out of range (must be 1-12)")
+
+def days_in_gregorian_month(year: int, month: int) -> int:
+    """Return the number of days in a Gregorian month (1-12)."""
+    if month == 12:
+        return 31
+    return (datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)).day
+
+def validate_year_range(year: int, min_year: int, max_year: int, is_jalali: bool) -> Optional[str]:
+    """Check a year against its allowed range, returning a Persian error message or None."""
+    if min_year <= year <= max_year:
+        return None
+    if is_jalali:
+        return f"سال شمسی باید بین {to_persian_digits(min_year)} و {to_persian_digits(max_year)} باشد."
+    return f"سال میلادی باید بین {min_year} و {max_year} باشد."
 
 def safe_jdate(year: int, month: int, day: int) -> Optional[jdatetime.date]:
     """Safely create a Jalali date, returning None if invalid."""

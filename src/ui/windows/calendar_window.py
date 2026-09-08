@@ -17,7 +17,7 @@ from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
-from utils.date_utils import is_jalali_leap_year, persian_month_name, to_persian_digits
+from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import EventInputWidget
@@ -352,9 +352,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 month -= 12
                 year += 1
 
-        max_day = 31 if month <= 6 else (30 if month <= 11 else (30 if is_jalali_leap_year(year) else 29))
-        day = min(self.display_date.day, max_day)
-
+        day = min(self.display_date.day, days_in_jalali_month(year, month))
         self.display_date = jdatetime.date(year, month, day)
         self.fill_calendar_grid()
 
@@ -369,8 +367,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def go_to_date(self, year, month):
         try:
-            max_day = 31 if month <= 6 else (30 if month <= 11 else (30 if is_jalali_leap_year(year) else 29))
-            day = min(self.display_date.day, max_day)
+            day = min(self.display_date.day, days_in_jalali_month(year, month))
             self.display_date = jdatetime.date(year, month, day)
             self.fill_calendar_grid()
         except (ValueError, TypeError):
