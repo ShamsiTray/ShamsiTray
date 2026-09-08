@@ -38,6 +38,7 @@ class Config:
     LOG_FILE_PATH = USER_LOG_DIR / 'shamsitray.log'
     SETTINGS_FILE_PATH = USER_DATA_DIR / 'settings.json'
     USER_EVENTS_FILE_PATH = USER_DATA_DIR / 'user_events.json'
+    HOLIDAYS_STORE_PATH = USER_DATA_DIR / 'holidays.json'
 
     @classmethod
     def ensure_user_data_dirs(cls) -> bool:
@@ -48,11 +49,19 @@ class Config:
         except OSError:
             return False
 
-    # --- Settings Keys (for QSettings) ---
+    # --- Settings Keys (for QSettings / JsonSettings) ---
     AUTO_START_SETTING_KEY = "General/OpenAtLogin"
     CURRENT_THEME_CHOICE_SETTING_KEY = "Appearance/ThemeChoice"
     TUTORIAL_SHOWN_SETTING_KEY = "Tutorial/HasShown"
     USER_EVENTS_SETTING_KEY = "UserData/Events"
+    UPDATE_CHECK_ENABLED_SETTING_KEY = "Updates/CheckEnabled"
+    LAST_UPDATE_CHECK_SETTING_KEY = "Updates/LastCheckMs"
+    IGNORED_UPDATE_VERSION_SETTING_KEY = "Updates/IgnoredVersion"
+
+    # --- Update Check Endpoints ---
+    APP_RELEASES_API_URL = "https://api.github.com/repos/ShamsiTray/ShamsiTray/releases/latest"
+    APP_RELEASES_PAGE_URL = "https://github.com/ShamsiTray/ShamsiTray/releases/latest"
+    HOLIDAYS_UPDATE_URL = "https://raw.githubusercontent.com/ShamsiTray/ShamsiTray/main/assets/data/holidays.json"
 
     # --- Font Families ---
     FONT_FAMILY = "Vazirmatn"

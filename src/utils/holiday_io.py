@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from config import APP_CONFIG
 
