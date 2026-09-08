@@ -432,11 +432,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.event_input_widget.raise_()
 
     def _handle_event_saved(self, text: str, is_yearly: bool, remove_after_finish: bool):
+        # Save is disabled while the text is empty, so an empty text here is impossible;
+        # event deletion goes through the context menu (_remove_event) instead.
         if self.editing_date:
-            if text: 
-                self.event_added.emit(jdatetime.date(self.editing_date.year, self.editing_date.month, self.editing_date.day), text, is_yearly, remove_after_finish)
-            else: 
-                self.event_removed.emit(jdatetime.date(self.editing_date.year, self.editing_date.month, self.editing_date.day))
+            self.event_added.emit(self.editing_date, text, is_yearly, remove_after_finish)
         self._hide_event_input_widget()
 
     def _handle_event_canceled(self):
