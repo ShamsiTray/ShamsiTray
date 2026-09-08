@@ -15,8 +15,9 @@ from PyQt6.QtGui import QColor, QFont, QIcon, QPalette, QRegularExpressionValida
 from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
 
 from config import APP_CONFIG
-from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, persian_month_name, gregorian_month_name, persian_weekday_name
+from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, days_in_jalali_month, days_in_gregorian_month, validate_year_range, persian_month_name, gregorian_month_name, persian_weekday_name
 from utils.logger import setup_logging
+from utils.ui_helpers import combo_stylesheet
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
 
@@ -40,7 +41,7 @@ except ImportError:
 class DateConverterWindow(BaseFramelessWindow):
     """A window for converting dates between Jalali and Gregorian calendars."""
     MIN_JALALI_YEAR, MAX_JALALI_YEAR = 1, 1600
-    MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR = 622, 2200
+    MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR = 623, 2200
 
     def __init__(self):
         super().__init__()
@@ -337,15 +338,8 @@ class DateConverterWindow(BaseFramelessWindow):
 
     def _get_days_in_month(self, is_jalali: bool, year: int, month: int) -> int:
         if is_jalali:
-            if 1 <= month <= 6:
-                return 31
-            if 7 <= month <= 11:
-                return 30
-            if month == 12:
-                return 30 if is_jalali_leap_year(year) else 29
-        else:
-            return (datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)).day if month < 12 else 31
-        return 0
+            return days_in_jalali_month(year, month)
+        return days_in_gregorian_month(year, month)
 
     def _clear_results(self, *args):
         if self.status_message.isVisible():
@@ -387,16 +381,16 @@ class DateConverterWindow(BaseFramelessWindow):
             day = int(from_persian_digits(day_text))
 
             if is_jalali_input:
-                if not (self.MIN_JALALI_YEAR <= year <= self.MAX_JALALI_YEAR):
-                    min_y = to_persian_digits(str(self.MIN_JALALI_YEAR))
-                    max_y = to_persian_digits(str(self.MAX_JALALI_YEAR))
-                    self._show_error(f"سال شمسی باید بین {min_y} و {max_y} باشد.")
+                error = validate_year_range(year, self.MIN_JALALI_YEAR, self.MAX_JALALI_YEAR, is_jalali=True)
+                if error:
+                    self._show_error(error)
                     return
                 j_date = jdatetime.date(year, month, day)
                 g_date = j_date.togregorian()
             else:
-                if not (self.MIN_GREGORIAN_YEAR <= year <= self.MAX_GREGORIAN_YEAR):
-                    self._show_error(f"سال میلادی باید بین {self.MIN_GREGORIAN_YEAR} و {self.MAX_GREGORIAN_YEAR} باشد.")
+                error = validate_year_range(year, self.MIN_GREGORIAN_YEAR, self.MAX_GREGORIAN_YEAR, is_jalali=False)
+                if error:
+                    self._show_error(error)
                     return
                 g_date = datetime.date(year, month, day)
                 j_date = jdatetime.date.fromgregorian(date=g_date)
@@ -406,18 +400,6 @@ class DateConverterWindow(BaseFramelessWindow):
         except (ValueError, TypeError) as e:
             self._show_error("تاریخ ورودی نامعتبر است.")
             logger.warning(f"Date conversion failed: {e}")
-
-
-        if is_jalali_input:
-            if not (self.MIN_JALALI_YEAR <= year <= self.MAX_JALALI_YEAR):
-                min_y = to_persian_digits(str(self.MIN_JALALI_YEAR))
-                max_y = to_persian_digits(str(self.MAX_JALALI_YEAR))
-                self._show_error(f"سال شمسی باید بین {min_y} و {max_y} باشد.")
-                return
-        else:
-            if not (self.MIN_GREGORIAN_YEAR <= year <= self.MAX_GREGORIAN_YEAR):
-                self._show_error(f"سال میلادی باید بین {self.MIN_GREGORIAN_YEAR} و {self.MAX_GREGORIAN_YEAR} باشد.")
-                return
 
     def _display_results(self, j_date: jdatetime.date, g_date: datetime.date, is_jalali_input: bool):
         self.jalali_date_value_1.setText(to_persian_digits(j_date.strftime("%Y/%m/%d")))
