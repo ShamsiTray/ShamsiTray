@@ -11,16 +11,17 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 VersionInfoVersion={#MyAppVersion}
-VersionInfoCopyright="Copyright © 2025 - ShamsiTray"
+VersionInfoCopyright="Copyright © 2026 - ShamsiTray"
 ; • install location and icons
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=D:\
+; Paths are relative to this script (build/): PyInstaller output and the repo tree.
+OutputDir=..\output
 OutputBaseFilename=ShamsiTraySetup-{#MyAppVersion}
-SetupIconFile=D:\Torrent\ShamsiTray\v1.3-PyQT6\assets\images\icons\icon.ico
+SetupIconFile=..\assets\images\icons\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=100
@@ -36,14 +37,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
       GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\ShamsiTray\*";          DestDir: "{app}"; \
+; PyInstaller one-folder output (contents_directory "." puts the payload beside the exe).
+Source: "..\dist\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\ShamsiTray\*";               DestDir: "{app}"; \
         Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Seed the holiday store in %LOCALAPPDATA%\ShamsiTray (the app's USER_DATA_DIR).
 ; onlyifdoesntexist: reinstalls/upgrades must never clobber an updated holiday file;
-; uninsneveruninstall: user data survives uninstall.
-Source: "D:\ShamsiTray\assets\data\holidays.json"; DestDir: "{localappdata}\ShamsiTray"; \
+; uninsneveruninstall: user data survives uninstall (the uninstaller's
+; "Remove user settings and data" checkbox removes it explicitly).
+Source: "..\assets\data\holidays.json"; DestDir: "{localappdata}\ShamsiTray"; \
         Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
@@ -55,10 +58,10 @@ Name: "{autodesktop}\{#MyAppName}";                 Filename: "{app}\{#MyAppExeN
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
-      ValueName: "{#MyAppName}"; ValueType: string; \
-      ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue
+; Autostart is owned by the app itself (tray-menu toggle persisted in settings.json
+; and validated/repaired at every startup), so the installer deliberately does NOT
+; write the HKCU Run key: it would silently re-enable autostart on upgrades for
+; users who had turned it off.
 
 [InstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -75,16 +78,11 @@ var
   AppRunning: Boolean;
 begin
   Result := True;
-  AppRunning := CheckForMutexes('{#MyAppName}Mutex');
-  
-  if not AppRunning then
-    AppRunning := FindWindowByClassName('YourAppWindowClass') <> 0;
-  
-  if not AppRunning then
-  begin
-    if Exec('tasklist', '/FI "IMAGENAME eq {#MyAppExeName}" /FO CSV | find /I "{#MyAppExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode) then
-      AppRunning := (ErrorCode = 0);
-  end;
+  // The app creates no named mutex or window class we can rely on, so detect a
+  // running instance via tasklist. The pipe needs a shell, hence cmd.exe /C.
+  AppRunning := False;
+  if Exec('cmd.exe', '/C tasklist /FI "IMAGENAME eq {#MyAppExeName}" /FO CSV | find /I "{#MyAppExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode) then
+    AppRunning := (ErrorCode = 0);
   
   if AppRunning then
   begin
@@ -206,11 +204,17 @@ var
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    // Check if user wants to remove settings (registry data)
+    // The exe is gone, so a leftover autostart entry (created by the app's own
+    // tray toggle) must never survive the uninstall.
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#MyAppName}');
+
+    // Check if user wants to remove settings and data
     if ShouldRemoveSettings() then
     begin
-      // Remove the entire RaySoft registry key and all subkeys
+      // Legacy registry location (pre-1.4 QSettings data)
       RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\ShamsiTray');
+      // Current user data: JSON settings, events, holiday store, logs
+      DelTree(ExpandConstant('{localappdata}\ShamsiTray'), True, True, True);
     end;
     
     // Additional cleanup - force kill any remaining processes
