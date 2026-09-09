@@ -156,6 +156,8 @@ class Config:
         FA_SQUARE_CHECK_SOLID = '\uf14a'
         FA_SUN_SOLID = '\ue28f'
         FA_MOON_SOLID = '\uf186'
+        FA_XMARK = '\uf00d'
+        FA_MINUS = '\uf068'
 
 # Create a single, globally accessible instance of the configuration.
 APP_CONFIG = Config()
