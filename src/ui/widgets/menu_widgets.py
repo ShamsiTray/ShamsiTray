@@ -158,3 +158,12 @@ class EventsActionWidget(QWidget):
         divider_style = f"color: {palette['MENU_BORDER_COLOR']}; background-color: {palette['MENU_BORDER_COLOR']}; border: none;"
         self.h_divider.setStyleSheet(divider_style)
         self.v_divider.setStyleSheet(divider_style)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        # The whole section is one QWidgetAction: a click on the inert header or
+        # dividers must be swallowed here, otherwise QMenu activates the action
+        # on release and closes the menu even though nothing was selected.
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        event.accept()
