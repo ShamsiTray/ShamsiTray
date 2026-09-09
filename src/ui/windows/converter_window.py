@@ -23,6 +23,8 @@ from ui.widgets.tooltip import CustomTooltip
 
 logger = setup_logging(__name__)
 
+
+
 try:
     from dateutil.relativedelta import relativedelta
     RELATIVEDELTA_AVAILABLE = True
@@ -100,8 +102,11 @@ class DateConverterWindow(BaseFramelessWindow):
             combo.setItemData(combo.count() - 1, Qt.AlignmentFlag.AlignCenter, Qt.ItemDataRole.TextAlignmentRole)
 
     def _create_title_bar(self) -> QHBoxLayout:
-        self.exit_button = QPushButton("✕")
-        self.minimize_button = QPushButton("—")
+        self.exit_button = QPushButton(APP_CONFIG.FAS.FA_XMARK)
+        self.minimize_button = QPushButton(APP_CONFIG.FAS.FA_MINUS)
+        for button in (self.exit_button, self.minimize_button):
+            button.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 10))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignTop)
         button_layout.addWidget(self.minimize_button, alignment=Qt.AlignmentFlag.AlignTop)
@@ -218,11 +223,16 @@ class DateConverterWindow(BaseFramelessWindow):
 
         combo_style = combo_stylesheet(palette, center_text=True)
         
-        base_button_style = f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; font-size: 18px; font-weight: bold; color: {palette['TEXT_COLOR']};"
         self.exit_button.setFixedSize(30, 30)
-        self.exit_button.setStyleSheet(f"QPushButton {{ background-color: #FF4C4C; {base_button_style} }} QPushButton:hover {{ background-color: #FF6666; }}")
         self.minimize_button.setFixedSize(30, 30)
-        self.minimize_button.setStyleSheet(f"QPushButton {{ background-color: {palette['BACKGROUND_COLOR']}; {base_button_style} }} QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}")
+        self.exit_button.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; color: {palette['TEXT_COLOR']}; font-size: 13px; }}"
+            f"QPushButton:hover {{ background-color: #E81123; border-color: #E81123; color: white; }}"
+            f"QPushButton:pressed {{ background-color: #C50F1F; border-color: #C50F1F; color: white; }}")
+        self.minimize_button.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; color: {palette['TEXT_COLOR']}; font-size: 13px; }}"
+            f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}"
+            f"QPushButton:pressed {{ background-color: {palette['HOVER_BG']}; }}")
         for label in self.input_labels:
              label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
              label.setFixedHeight(input_field_height)
