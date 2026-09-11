@@ -88,10 +88,18 @@ class IconCheckboxActionWidget(HoverWidget):
             self.toggled.emit(new_state)
         super().mousePressEvent(event)
 
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        # Swallow the release so the menu does not activate the action and
+        # close: toggling the checkbox must keep the context menu open.
+        event.accept()
+
     def setChecked(self, checked: bool):
         if self._is_checked != checked:
             self._is_checked = checked
             self.update_visuals()
+
+    def isChecked(self) -> bool:
+        return self._is_checked
 
     def update_visuals(self):
         icon = APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID if self._is_checked else APP_CONFIG.FAS.FA_SQUARE_REGULAR

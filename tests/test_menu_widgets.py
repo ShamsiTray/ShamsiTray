@@ -9,7 +9,8 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMenu, QWidgetAction
 
-from ui.widgets.menu_widgets import EventsActionWidget
+from ui.widgets.checkbox import IconCheckboxActionWidget
+from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget
 
 
 @pytest.fixture(scope='module')
@@ -60,3 +61,41 @@ def test_import_and_export_buttons_still_fire(events_menu):
     _click(widget.import_button, 5, 5)
     _click(widget.export_button, 5, 5)
     assert fired == ['import', 'export']
+
+
+@pytest.fixture()
+def checkbox_menu(qapp):
+    menu = QMenu()
+    action = QWidgetAction(menu)
+    widget = IconCheckboxActionWidget("راه اندازی همراه با سیستم", False, parent=menu)
+    action.setDefaultWidget(widget)
+    menu.addAction(action)
+    menu.popup(QPoint(0, 0))
+    yield menu, widget
+    menu.close()
+
+
+def test_checkbox_toggle_keeps_menu_open(checkbox_menu):
+    menu, widget = checkbox_menu
+    _click(widget, 10, 10)
+    assert widget.isChecked()
+    assert menu.isVisible()
+
+
+def test_checkbox_toggle_updates_and_stays_open(checkbox_menu):
+    menu, widget = checkbox_menu
+    _click(widget, 10, 10)
+    assert widget.isChecked()
+    _click(widget, 10, 10)
+    assert not widget.isChecked()
+    assert menu.isVisible()
+
+
+def test_hover_clears_when_hidden(qapp):
+    widget = MenuActionWidget("تبدیل تاریخ")
+    widget.resize(120, 40)
+    widget.show()
+    widget._is_hovered = True
+    widget.update()
+    widget.hide()
+    assert widget._is_hovered is False
