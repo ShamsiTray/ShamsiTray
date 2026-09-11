@@ -47,6 +47,13 @@ class HoverWidget(QWidget):
         self.update()
         super().leaveEvent(event)
 
+    def hideEvent(self, event):
+        # A hidden menu never sends leaveEvent, so without this the hover
+        # background survives the close and re-appears on the previously
+        # hovered item the next time the menu opens.
+        self._is_hovered = False
+        super().hideEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
             self.triggered.emit()
