@@ -18,12 +18,12 @@ from typing import Dict, Optional
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QProgressDialog, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QProgressDialog, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
-from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget, ThemeToggleActionWidget
+from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget, ThemeToggleActionWidget, TrayMenu
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from core.update_checker import DAY_MS, UpdateChecker
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
@@ -386,27 +386,34 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.setToolTip("\n".join(tooltip_lines))
 
     def _setup_context_menu(self):
-        menu = QMenu()
+        menu = TrayMenu()
         palette = APP_CONFIG.get_current_palette()
+        # Separator rows only provide spacing; TrayMenu paints the actual divider
+        # lines with the same thickness everywhere: ceil(scale) full device rows,
+        # matching how a native separator renders on a well-aligned position.
         menu.setStyleSheet(
             f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}"
-            f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}"
+            f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
         )
         self._add_menu_action(menu, "تبدیل تاریخ", lambda: self._close_menu_then(self._open_date_converter))
-        menu.addSeparator()
+        menu.add_divider()
         self._add_theme_toggle_action(menu)
-        menu.addSeparator()
+        menu.add_divider()
         self._add_startup_action(menu)
-        menu.addSeparator()
+        menu.add_divider()
         events_action = QWidgetAction(self)
         events_widget = EventsActionWidget(menu)
+        # The events section's dividers are transparent spacers; the menu paints
+        # their hairlines so they match every other divider in the menu. Without
+        # this registration they are never painted at all (invisible on Windows).
+        menu.register_divider_source(events_widget)
         events_widget.import_triggered.connect(lambda: self._close_menu_then(self._import_user_events))
         events_widget.export_triggered.connect(lambda: self._close_menu_then(self._export_user_events))
         events_action.setDefaultWidget(events_widget)
         menu.addAction(events_action)
-        menu.addSeparator()
+        menu.add_divider()
         self._add_menu_action(menu, "بررسی بروزرسانی", lambda: self._close_menu_then(lambda: self._check_for_updates(manual=True)))
-        menu.addSeparator()
+        menu.add_divider()
         self._add_menu_action(menu, "خروج", QApplication.quit)
         self.setContextMenu(menu)
 

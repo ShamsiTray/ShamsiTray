@@ -75,6 +75,7 @@ class IconCheckboxActionWidget(HoverWidget):
         self.icon_label.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 14))
         self.icon_label.setFixedWidth(22)
         self.text_label = QLabel(text)
+        layout.addStretch()
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
         layout.addStretch()
