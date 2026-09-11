@@ -6,13 +6,15 @@ This module contains a set of custom QWidgets designed to be used as actions
 in a QMenu. This allows for more complex and better-styled menu items than
 the default QAction, such as items with icons, hover effects, and custom text.
 """
+import math
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QRectF, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPainterPath
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
+
 
 class HoverWidget(QWidget):
     """Base widget for menu items that handles hover effects."""
@@ -108,18 +110,110 @@ class ThemeToggleActionWidget(MenuActionWidget):
         self.icon_label.setStyleSheet(f"color: {color}; background: transparent;")
         self._update_style()
 
+class TrayMenu(QMenu):
+    """QMenu that paints its own divider lines on the device-pixel grid.
+
+    Native QMenu::separator lines (and any 1px child widget) sit at fractional
+    device positions: Qt passes child paint offsets as integer *logical*
+    points which are then scaled by the (fractional) device pixel ratio, and
+    each clip edge is rounded independently. With Qt's PassThrough DPI policy
+    on Windows scale factors like 125% / 150%, that makes dividers at
+    different heights get their one logical pixel of ink split across one or
+    two physical rows in different ratios, so some look thinner than others.
+
+    Painting every line from this menu's own paintEvent avoids the problem:
+    a top-level window's device origin is always an integer number of physical
+    pixels, so each line can be placed deterministically. Every divider is
+    drawn exactly the way a native separator renders on a well-aligned
+    position at the current scale factor: ``ceil(dpr)`` full-coverage device
+    rows at 100% scale, two solid rows at 125% / 150%, and so on - and now
+    every divider gets that same look, identically, at any scale.
+
+    Divider spacing comes from native separator actions (kept invisible via
+    the QMenu::separator stylesheet rule); widgets that expose
+    ``divider_rects()`` (in their own coordinates) get their internal divider
+    lines painted the same way (see ``register_divider_source``).
+    """
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._divider_actions = []
+        self._divider_sources: list[QWidget] = []
+
+    def add_divider(self):
+        """Add a divider row and remember it for device-snapped painting."""
+        action = self.addSeparator()
+        self._divider_actions.append(action)
+        return action
+
+    def register_divider_source(self, widget: QWidget):
+        """Register a widget whose ``divider_rects()`` should be painted as lines."""
+        self._divider_sources.append(widget)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        color = QColor(APP_CONFIG.get_current_palette()['MENU_BORDER_COLOR'])
+
+        for action in self._divider_actions:
+            rect = self.actionGeometry(action)
+            if rect.isValid() and rect.height() > 0:
+                self._paint_hairline(painter, rect, True, color)
+
+        for source in self._divider_sources:
+            for rect in source.divider_rects():
+                if rect.isValid() and rect.width() > 0 and rect.height() > 0:
+                    mapped = QRect(source.mapTo(self, rect.topLeft()), rect.size())
+                    self._paint_hairline(painter, mapped, rect.width() >= rect.height(), color)
+
+    def _paint_hairline(self, painter: QPainter, rect: QRect, horizontal: bool, color: QColor):
+        """Draw one divider line the way a native 1px separator renders on a
+        well-aligned position: ``ceil(dpr)`` full device rows (or columns),
+        snapped to the device-pixel grid. Deterministic, so every divider in
+        the menu renders with the same thickness at every position and scale
+        (one crisp pixel at 100%, two solid rows at 125% / 150%, ...)."""
+        dpr = self.devicePixelRatioF() or 1.0
+        rows = max(1, math.ceil(dpr - 1e-6))
+
+        if horizontal:
+            x0 = round(rect.left() * dpr) / dpr
+            x1 = round((rect.left() + rect.width()) * dpr) / dpr
+            center_y = rect.top() + rect.height() / 2.0
+            top = round(center_y * dpr - rows / 2.0)
+            painter.fillRect(QRectF(x0, top / dpr, x1 - x0, rows / dpr), color)
+        else:
+            y0 = round(rect.top() * dpr) / dpr
+            y1 = round((rect.top() + rect.height()) * dpr) / dpr
+            center_x = rect.left() + rect.width() / 2.0
+            left = round(center_x * dpr - rows / 2.0)
+            painter.fillRect(QRectF(left / dpr, y0, rows / dpr, y1 - y0), color)
+
 class EventsActionWidget(QWidget):
     """'رویدادها' section for the tray menu with import/export child buttons."""
     import_triggered = pyqtSignal()
     export_triggered = pyqtSignal()
 
+    # Transparent spacer sizes: wide/tall enough for the menu to snap a 1px
+    # hairline through their center, never painted by the widgets themselves.
+    H_DIVIDER_HEIGHT_PX = 2
+    V_DIVIDER_WIDTH_PX = 2
+
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        # Plain LTR geometry: «وارد کردن» is added first so it lands on the
+        # left and «خروجی گرفتن» last so it lands on the right. This section
+        # previously relied on RightToLeft mirroring to place the buttons, but
+        # that flag does not reliably propagate into a parentless sub-layout of
+        # a QWidgetAction child on Windows, which put the buttons on the wrong
+        # sides there. Nothing else in this section needs RTL (the header is
+        # centered), so the direction is pinned to LTR instead.
+        self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.setMinimumWidth(210)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 2, 5, 2)
+        # Bottom margin removed: the divider below this section carries its own
+        # spacing, so extra padding here only adds dead space under the buttons.
+        layout.setContentsMargins(5, 2, 5, 0)
         layout.setSpacing(0)
 
         self.header_label = QLabel("رویدادها")
@@ -127,21 +221,33 @@ class EventsActionWidget(QWidget):
         self.header_label.setFixedHeight(28)
         layout.addWidget(self.header_label)
 
-        self.h_divider = QFrame()
-        self.h_divider.setFrameShape(QFrame.Shape.HLine)
-        self.h_divider.setFixedHeight(1)
+        # Invisible spacer; the menu paints the actual hairline (see TrayMenu).
+        self.h_divider = QWidget(self)
+        self.h_divider.setFixedHeight(self.H_DIVIDER_HEIGHT_PX)
         layout.addWidget(self.h_divider)
 
         buttons_row = QHBoxLayout()
-        buttons_row.setContentsMargins(0, 0, 0, 0)
-        buttons_row.setSpacing(0)
+        # Bottom margin reduced so the divider below sits closer to the buttons.
+        buttons_row.setContentsMargins(0, 5, 0, 2)
+        buttons_row.setSpacing(5)
+
         self.import_button = MenuActionWidget("وارد کردن")
         self.import_button.setFixedHeight(34)
         self.export_button = MenuActionWidget("خروجی گرفتن")
         self.export_button.setFixedHeight(34)
-        self.v_divider = QFrame()
-        self.v_divider.setFrameShape(QFrame.Shape.VLine)
-        self.v_divider.setFixedWidth(1)
+
+        # Both buttons share the same width (driven by the wider of the two
+        # Persian labels) so the vertical divider sits exactly on the horizontal
+        # center of the row instead of drifting toward the smaller button.
+        equal_width = self._shared_button_width("وارد کردن", "خروجی گرفتن")
+        self.import_button.setFixedWidth(equal_width)
+        self.export_button.setFixedWidth(equal_width)
+
+        self.v_divider = QWidget(self)
+        self.v_divider.setFixedWidth(self.V_DIVIDER_WIDTH_PX)
+        self.v_divider.setFixedHeight(34)
+
+        # LTR row order: «وارد کردن» left - divider - «خروجی گرفتن» right.
         buttons_row.addWidget(self.import_button)
         buttons_row.addWidget(self.v_divider)
         buttons_row.addWidget(self.export_button)
@@ -151,13 +257,25 @@ class EventsActionWidget(QWidget):
         self.export_button.triggered.connect(self.export_triggered)
         self.update_styles()
 
+    @staticmethod
+    def _shared_button_width(*labels: str) -> int:
+        """Width that fits the widest label at the real menu font (the 14px bold
+        family set by MenuActionWidget's stylesheet) plus its 15px side margins."""
+        font = QFont(APP_CONFIG.FONT_FAMILY)
+        font.setPixelSize(14)
+        font.setBold(True)
+        metrics = QFontMetrics(font)
+        text_width = max(metrics.horizontalAdvance(label) for label in labels)
+        return text_width + 15 + 15 + 2  # side margins + small rounding safety
+
+    def divider_rects(self) -> list[QRect]:
+        """Rects (in this widget's coordinates) the TrayMenu paints hairlines through."""
+        return [self.h_divider.geometry(), self.v_divider.geometry()]
+
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         self.header_label.setStyleSheet(
             f"color: {palette['GREY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; background: transparent; border: none;")
-        divider_style = f"color: {palette['MENU_BORDER_COLOR']}; background-color: {palette['MENU_BORDER_COLOR']}; border: none;"
-        self.h_divider.setStyleSheet(divider_style)
-        self.v_divider.setStyleSheet(divider_style)
 
     def mousePressEvent(self, event: QMouseEvent):
         # The whole section is one QWidgetAction: a click on the inert header or
