@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 ENTRY_KEYS = ("text", "yearly", "remove_after_finish")
 
+_LAST_LOAD_TRUSTED = True
+
 
 def normalize_event_entry(value) -> Optional[dict]:
     """Coerce a stored/imported entry into the canonical dict form, or None if unusable.
@@ -75,22 +77,35 @@ def _write_events(path, events: Dict[str, dict]) -> bool:
 
 def load_user_events() -> Dict[str, dict]:
     """Load and normalize user events from the store; {} when missing or corrupt."""
+    global _LAST_LOAD_TRUSTED
     try:
         with open(APP_CONFIG.USER_EVENTS_FILE_PATH, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except FileNotFoundError:
+        _LAST_LOAD_TRUSTED = True
         return {}
     except (OSError, json.JSONDecodeError) as e:
         logger.error(f"Events file unreadable, starting with an empty event set: {e}")
+        _LAST_LOAD_TRUSTED = False
         return {}
     events, skipped = normalize_events_mapping(raw)
     if skipped:
         logger.warning(f"Loaded user events with {skipped} malformed entr{'y' if skipped == 1 else 'ies'} skipped.")
+        _LAST_LOAD_TRUSTED = False
     return events
 
 
 def save_user_events(events: Dict[str, dict]) -> bool:
-    """Persist user events atomically; returns success."""
+    """Persist user events atomically; returns success.
+
+    Refuses to write an empty set when the last load was untrusted (foreign
+    format, unreadable, or malformed entries skipped) so an unreadable store
+    is never bulldozed with {}.
+    """
+    global _LAST_LOAD_TRUSTED
+    if not events and not _LAST_LOAD_TRUSTED:
+        logger.critical("Refusing to persist an empty event set after an untrusted load; events file left untouched.")
+        return False
     ok = _write_events(APP_CONFIG.USER_EVENTS_FILE_PATH, events)
     if ok:
         logger.info(f"Saved {len(events)} user events.")
