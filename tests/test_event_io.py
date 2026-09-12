@@ -62,6 +62,37 @@ def test_save_failure_reports_false(store_path, monkeypatch):
     assert event_io.save_user_events({"k": {"text": "x"}}) is False
 
 
+def test_save_empty_allowed_after_trusted_empty_load(store_path):
+    assert event_io.load_user_events() == {}
+    assert event_io.save_user_events({}) is True
+
+
+def test_save_empty_refused_after_unreadable_load(store_path, caplog):
+    store_path.write_text("{bad json", encoding="utf-8")
+    with caplog.at_level(logging.CRITICAL):
+        assert event_io.load_user_events() == {}
+        assert event_io.save_user_events({}) is False
+    assert any("Refusing to persist" in r.message for r in caplog.records)
+    assert store_path.read_text(encoding="utf-8") == "{bad json"
+
+
+def test_save_empty_refused_after_foreign_format_load(store_path):
+    store_path.write_text(json.dumps({
+        "version": 2,
+        "events": {"0000-02-22": {"text": "x", "recurrence": "yearly"}},
+    }), encoding="utf-8")
+    assert event_io.load_user_events() == {}
+    assert event_io.save_user_events({}) is False
+    assert json.loads(store_path.read_text(encoding="utf-8"))["version"] == 2
+
+
+def test_save_nonempty_allowed_even_after_untrusted_load(store_path):
+    store_path.write_text("{bad json", encoding="utf-8")
+    event_io.load_user_events()
+    assert event_io.save_user_events({"k": {"text": "x"}}) is True
+    assert event_io.load_user_events()["k"]["text"] == "x"
+
+
 def test_export_import_roundtrip(tmp_path):
     events = {"1403/05/05": {"text": "meeting", "yearly": False, "remove_after_finish": True}}
     out = tmp_path / "export.json"
