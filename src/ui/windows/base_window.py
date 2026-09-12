@@ -23,7 +23,6 @@ class BaseFramelessWindow(QWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._drag_position: Optional[QPoint] = None
-        #FramelessWindowHint removes native title bar, WindowStaysOnTopHint keeps the window above others for quick access and Qt.WindowType.Tool prevents taskbar entry.
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
