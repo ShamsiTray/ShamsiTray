@@ -34,10 +34,6 @@ class RTLTextEdit(QTextEdit):
 
 class EventInputWidget(QWidget):
     """An integrated widget for adding or editing a user event."""
-    # Arguments:
-    # text (str): event description
-    # is_yearly (bool): whether the event repeats every year
-    # remove_after_finish (bool): auto-remove after date passes
     saved = pyqtSignal(str, bool, bool)
     canceled = pyqtSignal()
 
