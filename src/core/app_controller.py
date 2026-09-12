@@ -47,17 +47,22 @@ class SystemTrayIcon(QSystemTrayIcon):
         super().__init__()
         self.settings = settings if settings is not None else JsonSettings()
         self.holidays_cache = resolve_holidays_store()
+        # Window references are created lazily; they must exist (as None) before
+        # _clean_expired_events can run, because it refreshes the calendar when
+        # events expire. Previously this raised AttributeError on startup whenever
+        # an expired auto-delete event was pending.
+        self.calendar_widget: Optional[PersianCalendarWidget] = None
+        self.converter_window: Optional[DateConverterWindow] = None
+        self.tutorial_window: Optional["TutorialWindow"] = None
+
         self.user_events = self._load_user_events()
         self._clean_expired_events()
-        
+
         self.calendar_widget = PersianCalendarWidget(self.holidays_cache, self.user_events)
         self.calendar_widget.event_added.connect(self.add_user_event)
         self.calendar_widget.event_removed.connect(self.remove_user_event)
 
         QTimer.singleShot(1000, self._prewarm_calendar)
-
-        self.converter_window: Optional[DateConverterWindow] = None
-        self.tutorial_window: Optional["TutorialWindow"] = None
 
         self._load_settings() 
         self._validate_and_apply_startup_setting()
@@ -114,7 +119,8 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _on_midnight_timer_triggered(self):
         logger.info("Midnight timer triggered. Updating tray icon for new day.")
         self._clean_expired_events()
-        self.calendar_widget.go_to_today()
+        if self.calendar_widget:
+            self.calendar_widget.go_to_today()
         self.update_tray_icon(force=True)
         self.schedule_next_midnight_check()
 
@@ -137,7 +143,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         # System time changes (manual adjustment, DST) can invalidate the current date and scheduled midnight timers, so we force a full refresh and reschedule.
         logger.info("System time change detected. Forcing tray icon update and rescheduling midnight check.")
         self._clean_expired_events()
-        self.calendar_widget.go_to_today()
+        if self.calendar_widget:
+            self.calendar_widget.go_to_today()
         self.update_tray_icon(force=True)
         self.schedule_next_midnight_check()
 
