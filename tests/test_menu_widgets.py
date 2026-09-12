@@ -53,6 +53,13 @@ def test_clicking_container_padding_keeps_menu_open(events_menu):
     assert menu.isVisible()
 
 
+def test_header_to_divider_gap(events_menu):
+    _menu, widget = events_menu
+    gap = widget.h_divider.y() - (widget.header_label.y() + widget.header_label.height())
+    assert gap == widget.H_HEADER_GAP_PX
+    assert widget.H_DIVIDER_HEIGHT_PX < widget.H_HEADER_GAP_PX
+
+
 def test_import_and_export_buttons_still_fire(events_menu):
     _menu, widget = events_menu
     fired = []
