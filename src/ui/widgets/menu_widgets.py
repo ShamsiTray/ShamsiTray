@@ -204,6 +204,9 @@ class EventsActionWidget(QWidget):
     # hairline through their center, never painted by the widgets themselves.
     H_DIVIDER_HEIGHT_PX = 2
     V_DIVIDER_WIDTH_PX = 2
+    # Breathing room between the header and its hairline; the divider spacer
+    # above stays thin so the line sits 1px below the gap.
+    H_HEADER_GAP_PX = 4
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -227,6 +230,11 @@ class EventsActionWidget(QWidget):
         self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_label.setFixedHeight(28)
         layout.addWidget(self.header_label)
+
+        # Gap above the divider only; the hairline stays centered in the thin
+        # H_DIVIDER_HEIGHT_PX spacer below, so extra space is not also added
+        # under the line.
+        layout.addSpacing(self.H_HEADER_GAP_PX)
 
         # Invisible spacer; the menu paints the actual hairline (see TrayMenu).
         self.h_divider = QWidget(self)
