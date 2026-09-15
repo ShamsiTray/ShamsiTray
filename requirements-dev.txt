@@ -1,2 +1,4 @@
 # Development / test dependencies (not needed at runtime)
 pytest>=8.0
+pytest-qt>=4.4
+ruff>=0.16
