@@ -27,7 +27,17 @@ from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget, ThemeT
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from core.update_checker import DAY_MS, UpdateChecker
 from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
-from utils.event_io import export_events_to_file, import_events_from_file, load_user_events, save_user_events
+from utils.event_io import (
+    RECURRENCE_NONE,
+    clean_expired_keys,
+    events_for_date,
+    export_events_to_file,
+    import_events_from_file,
+    keys_matching_date,
+    load_user_events,
+    make_event_key,
+    save_user_events,
+)
 from utils.holiday_io import read_version, resolve_holidays_store
 from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
@@ -290,63 +300,67 @@ class SystemTrayIcon(QSystemTrayIcon):
             # Persistence failed: keep the in-memory state valid and report it, never crash.
             logger.error("Failed to persist user events (in-memory state kept).")
 
-    def add_user_event(self, jdate: jdatetime.date, text: str, is_yearly: bool, remove_after_finish: bool):
+    def add_user_event(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
+                       remove_after_finish: bool = False):
+        """Add (or replace) the event shown for ``jdate``.
+
+        One event per date: whatever previously matched this date (one-time,
+        yearly or monthly) is replaced. Recurring events ignore the
+        auto-delete flag because they repeat forever.
+        """
         if not jdate:
             return
         if not text or not text.strip():
             logger.warning("Ignoring attempt to add a user event with empty text.")
             return
         self.remove_user_event(jdate, save=False)
-        
-        if is_yearly:
-        # Yearly events are stored with year "0000" so they match the same month/day across all years when rendering and cleaning events.
-            remove_after_finish = False
-            key = jdate.strftime("0000-%m-%d")
-        else:
-            key = jdate.strftime("%Y-%m-%d")
 
-        self.user_events[key] = {"text": text, "yearly": is_yearly, "remove_after_finish": remove_after_finish}
+        if recurrence != RECURRENCE_NONE:
+            remove_after_finish = False
+        key = make_event_key(jdate, recurrence)
+        self.user_events[key] = {
+            "text": text,
+            "recurrence": recurrence,
+            "remove_after_finish": remove_after_finish,
+        }
         self._save_user_events()
         self.calendar_widget.set_user_events(self.user_events)
         self.update_tray_icon(force=True)
+        self._refresh_event_manager()
 
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
+        """Remove every event variant matching ``jdate`` (specific, yearly, monthly)."""
         if not jdate:
             return
-        specific_key = jdate.strftime("%Y-%m-%d")
-        yearly_key = jdate.strftime("0000-%m-%d")
-        event_removed = False
-        if specific_key in self.user_events:
-            del self.user_events[specific_key]
-            event_removed = True
-        if yearly_key in self.user_events:
-            del self.user_events[yearly_key]
-            event_removed = True
-        if event_removed and save:
+        matching = keys_matching_date(self.user_events, jdate)
+        if not matching:
+            return
+        for key in matching:
+            del self.user_events[key]
+        if save:
             self._save_user_events()
             self.calendar_widget.set_user_events(self.user_events)
             self.update_tray_icon(force=True)
-    
-    def _clean_expired_events(self):
-        today = jdatetime.date.today()
-        events_to_remove = []
-        for date_str, event_data in list(self.user_events.items()):
-            if not event_data.get("yearly", False) and event_data.get("remove_after_finish", False):
-                try:
-                    event_date = jdatetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-                    if event_date < today:
-                        events_to_remove.append(date_str)
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not parse event date for removal: {date_str}")
-                    continue
+            self._refresh_event_manager()
 
-        if events_to_remove:
-            logger.info(f"Removing {len(events_to_remove)} expired events.")
-            for key in events_to_remove:
-                del self.user_events[key]
-            self._save_user_events()
-            if self.calendar_widget:
-                self.calendar_widget.set_user_events(self.user_events)
+    def _clean_expired_events(self):
+        expired = clean_expired_keys(self.user_events)
+        if not expired:
+            return
+        logger.info(f"Removing {len(expired)} expired events.")
+        for key in expired:
+            del self.user_events[key]
+        self._save_user_events()
+        if self.calendar_widget:
+            self.calendar_widget.set_user_events(self.user_events)
+        self._refresh_event_manager()
+
+    def _refresh_event_manager(self):
+        """Keep an open event-manager window in sync with store mutations that
+        happen elsewhere (calendar context menu, import, expiry cleanup)."""
+        window = getattr(self, "event_manager_window", None)
+        if window is not None and window.isVisible():
+            window.refresh_list()
 
     def update_tray_icon(self, force: bool = False):
         new_date = jdatetime.date.today()
@@ -359,8 +373,9 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.calendar_widget.fill_calendar_grid()
 
         day_str_persian = to_persian_digits(new_date.day)
-        
-        user_event_text, _, _ = self.calendar_widget._get_user_event_for_date(new_date)
+
+        matched = events_for_date(self.user_events, new_date)
+        user_event_text = matched[1].get("text") if matched else None
         is_user_event = bool(user_event_text)
         is_holiday = bool(new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day)))
         
