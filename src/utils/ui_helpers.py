@@ -49,9 +49,13 @@ def center_combo_items(combo: QComboBox) -> None:
     draws its current text centered through ``combo_stylesheet(center_text=
     True)``, so pair this helper with that flag for a fully centered control.
     Call it again whenever the items are repopulated (clear() drops the roles).
+
+    The role MUST combine the horizontal and vertical flags: a horizontal-only
+    alignment leaves the popup painting an empty band under the last option
+    (the dead-space bug). ``AlignCenter`` is the same as the two OR'd together.
     """
     for i in range(combo.count()):
-        combo.setItemData(i, Qt.AlignmentFlag.AlignHCenter, Qt.ItemDataRole.TextAlignmentRole)
+        combo.setItemData(i, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, Qt.ItemDataRole.TextAlignmentRole)
 
 
 class DigitsFirstCombo(QComboBox):

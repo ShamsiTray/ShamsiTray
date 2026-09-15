@@ -126,10 +126,9 @@ class EventInputWidget(QWidget):
         recurrence_label_widget = QLabel("تکرار:")
         recurrence_label_widget.setObjectName("RecurrenceLabel")
         self.recurrence_combo = QComboBox()
-        # Plain combo with a measured minimum width (fit_combo_width below):
-        # the same configuration as the date converter, whose dropdown the
-        # user confirmed renders without dead space. AdjustToContents was
-        # removed everywhere for that reason.
+        # Plain combo with a measured minimum width (fit_combo_width below);
+        # the dropdown renders without dead space thanks to the vertical
+        # component in center_combo_items' item alignment.
         for label in _RECURRENCE_LABELS:
             self.recurrence_combo.addItem(label)
         center_combo_items(self.recurrence_combo)

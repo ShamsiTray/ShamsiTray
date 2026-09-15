@@ -64,11 +64,8 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.next_year_btn = QPushButton("❮")
         self.next_year_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_year_btn.clicked.connect(self._go_to_next_year)
-        # Plain combo, configured like the converter's (whose dropdown the
-        # user confirmed renders without dead space): no AdjustToContents and
-        # no popup-height games - the old subclass pinned the view's height
-        # from pre-popup metrics, which itself re-created the dead-space band
-        # under the last year on Windows.
+        # Plain combo; the dropdown renders without dead space thanks to the
+        # vertical component in center_combo_items' item alignment.
         self.year_combo = QComboBox()
         self.year_combo.currentIndexChanged.connect(self._fill_year)
         header_row.addWidget(self.title_label)
