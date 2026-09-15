@@ -27,6 +27,7 @@ from ui.windows.event_manager_window import EventManagerWindow
 from ui.windows.holiday_viewer_window import HolidayViewerWindow
 from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, TrayMenu
 from ui.widgets.checkbox import IconCheckboxActionWidget
+from ui.widgets.confirm_dialog import ConfirmDialog
 from core.update_checker import DAY_MS, UpdateChecker, should_notify
 from utils.date_utils import ms_until_midnight, persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import (
@@ -78,7 +79,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         QTimer.singleShot(1000, self._prewarm_calendar)
 
-        self._load_settings() 
+        self._load_settings()
         self._validate_and_apply_startup_setting()
         self._apply_theme()
         self.activated.connect(self.on_tray_icon_activated)
@@ -101,7 +102,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _load_settings(self):
         self.is_open_at_login = self.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool)
-        
+
         saved_theme = self.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
         if saved_theme:
             self.current_theme = saved_theme
@@ -121,7 +122,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                        self.holiday_viewer_window, self.tutorial_window):
             if window and window.isVisible():
                 window.update_styles()
-    
+
     def _setup_timers(self):
         self.minute_timer = QTimer(self)
         self.minute_timer.timeout.connect(lambda: self.update_tray_icon(force=False))
@@ -163,7 +164,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _setup_update_checker(self):
         self._manual_update_check = False
-        self._update_popup: Optional[QMessageBox] = None
+        self._update_dialog_open = False
         self._download_dialog: Optional[QProgressDialog] = None
         self.update_checker = UpdateChecker(current_data_version=read_version(APP_CONFIG.HOLIDAYS_STORE_PATH), parent=self)
         self.update_checker.app_update_available.connect(self._on_app_update_available)
@@ -201,22 +202,25 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._show_update_popup(version, installer_url, sha256)
 
     def _show_update_popup(self, version: str, installer_url: str, sha256: str):
-        if self._update_popup is not None and self._update_popup.isVisible():
+        if self._update_dialog_open:
             return
-        box = QMessageBox(QApplication.activeWindow())
-        box.setWindowTitle("بروزرسانی جدید")
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setText(f"نسخه جدید {APP_CONFIG.APP_NAME} ({version}) موجود است.")
-        download_button = box.addButton("دانلود", QMessageBox.ButtonRole.AcceptRole)
-        ignore_button = box.addButton("نادیده گرفتن", QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton("بعداً یادآوری کن", QMessageBox.ButtonRole.RejectRole)
-        self._update_popup = box
-        box.exec()
-        self._update_popup = None
-        clicked = box.clickedButton()
-        if clicked is download_button:
+        self._update_dialog_open = True
+        try:
+            # Themed three-way ask (the stock QMessageBox ignored the palette):
+            # download = accent, ignore = red (it silences this version),
+            # remind later = quiet ghost. Rotate glyph marks it as an update.
+            choice = ConfirmDialog.choose(
+                QApplication.activeWindow(), "بروزرسانی جدید",
+                f"نسخه جدید {APP_CONFIG.APP_NAME} ({version}) موجود است.",
+                glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
+                actions=[("دانلود", "accent"),
+                         ("نادیده گرفتن", "danger"),
+                         ("بعداً یادآوری کن", "ghost")])
+        finally:
+            self._update_dialog_open = False
+        if choice == "دانلود":
             self._download_update(version, installer_url, sha256)
-        elif clicked is ignore_button:
+        elif choice == "نادیده گرفتن":
             self.settings.setValue(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY, version)
             logger.info(f"Update to {version} will no longer be announced automatically.")
 
@@ -248,11 +252,13 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _on_installer_downloaded(self, path: str):
         self._close_download_dialog()
-        parent = QApplication.activeWindow()
-        answer = QMessageBox.question(
-            parent, APP_CONFIG.APP_NAME, "دانلود کامل شد. نصب‌کننده اجرا شود؟",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if answer == QMessageBox.StandardButton.Yes:
+        # Themed ask matching the rest of the update flow; the installer is
+        # not run unless the user asks for it here.
+        run_requested = ConfirmDialog.ask(
+            QApplication.activeWindow(), "دانلود کامل شد", "نصب‌کننده اجرا شود؟",
+            glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE, danger=False,
+            confirm_text="اجرا", cancel_text="بعداً")
+        if run_requested:
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
         else:
             logger.info(f"Installer saved to {path}")
@@ -263,7 +269,10 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info("Update download canceled.")
             return
         logger.error(f"Update download failed: {reason}")
-        QMessageBox.critical(QApplication.activeWindow(), APP_CONFIG.APP_NAME, "دانلود بروزرسانی ناموفق بود.")
+        ConfirmDialog.notify(
+            QApplication.activeWindow(), APP_CONFIG.APP_NAME,
+            "دانلود بروزرسانی ناموفق بود.", danger=True,
+            glyph=APP_CONFIG.FAS.FA_XMARK)
         QDesktopServices.openUrl(QUrl(APP_CONFIG.APP_RELEASES_PAGE_URL))
 
     def _on_holidays_updated(self):
@@ -275,12 +284,19 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _on_no_updates(self):
         logger.info("No updates available.")
         if self._manual_update_check:
-            QMessageBox.information(QApplication.activeWindow(), APP_CONFIG.APP_NAME, "برنامه و فایل تعطیلات بروز است.")
+            ConfirmDialog.notify(
+                QApplication.activeWindow(), APP_CONFIG.APP_NAME,
+                "برنامه و فایل تعطیلات بروز است.",
+                glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
 
     def _on_check_failed(self, reason: str):
         logger.warning(f"Update check failed: {reason}")
         if self._manual_update_check:
-            QMessageBox.warning(QApplication.activeWindow(), APP_CONFIG.APP_NAME, "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.")
+            ConfirmDialog.notify(
+                QApplication.activeWindow(), APP_CONFIG.APP_NAME,
+                "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
+                danger=True,
+                glyph=APP_CONFIG.FAS.FA_XMARK)
 
     def _build_global_stylesheet(self) -> str:
         palette = APP_CONFIG.get_current_palette()
@@ -288,7 +304,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                 f"QScrollBar::handle:vertical {{ background: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px;}}"
                 f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}"
                 f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}")
-    
+
     def _load_user_events(self) -> Dict[str, dict]:
         """Loads user events from the JSON event store (legacy registry blob is
         handled by the one-time settings migration at startup)."""
@@ -378,7 +394,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         user_event_text = matched[1].get("text") if matched else None
         is_user_event = bool(user_event_text)
         is_holiday = bool(new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day)))
-        
+
         color = APP_CONFIG.TRAY_ICON_DARK_COLOR if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.TRAY_ICON_LIGHT_COLOR
         if is_user_event:
             color = APP_CONFIG.current_palette['ACCENT_COLOR']
@@ -390,10 +406,10 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         weekday_name = persian_weekday_name(new_date.weekday())
         month_name = persian_month_name(new_date.month)
-        
+
         date_str = f"{new_date.year}/{new_date.month:02d}/{new_date.day:02d}"
         month_written_persian = f"\u200F{new_date.day:02d} {month_name} {new_date.year}"
-        
+
         tooltip_lines = [weekday_name, date_str, month_written_persian]
 
         if is_holiday:
@@ -404,7 +420,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         if is_user_event:
             tooltip_lines.append("رویداد:")
             tooltip_lines.extend(user_event_text.split('\n'))
-                
+
         self.setToolTip("\n".join(tooltip_lines))
 
     def _setup_context_menu(self):
@@ -439,7 +455,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         if menu:
             menu.close()
         QTimer.singleShot(50, callback)
-    
+
     def _add_menu_action(self, menu, text, slot):
         action = QWidgetAction(self)
         widget = MenuActionWidget(text, parent=menu)
@@ -465,11 +481,11 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def on_tray_icon_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            # Toggle the whole calendar. Any open event editor is a child of
+            # the calendar (and hideEvent dismisses it), so a tray click must
+            # never just close the editor and leave the calendar up.
             if self.calendar_widget.isVisible():
-                if self.calendar_widget.event_input_widget.isVisible():
-                    self.calendar_widget._hide_event_input_widget()
-                else:
-                    self.calendar_widget.hide()
+                self.calendar_widget.hide()
             else:
                 self.show_calendar()
 
@@ -478,7 +494,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # automatically on day changes (midnight timer / system time change).
         self.calendar_widget.fill_calendar_grid()
         self.calendar_widget.update_styles()
-        
+
         screen = QApplication.primaryScreen().availableGeometry()
         tray_geom = self.geometry()
         widget_size = self.calendar_widget.size()
