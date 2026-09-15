@@ -11,6 +11,7 @@ import ctypes
 import sys
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from config import APP_CONFIG
@@ -52,7 +53,13 @@ def main():
     except (RuntimeError, FileNotFoundError) as e:
         QMessageBox.critical(None, "Font Error", str(e))
         sys.exit(1)
-    
+
+    # Give every widget a concrete default font. Without this, widgets that
+    # never get an explicit font inherit one with pointSize -1, and Qt emits
+    # "QFont::setPointSize: Point size <= 0 (-1)" while re-resolving fonts
+    # under Windows fractional DPI scaling (e.g. 125%).
+    app.setFont(QFont(APP_CONFIG.FONT_FAMILY, 10))
+
     if not QSystemTrayIcon.isSystemTrayAvailable():
         QMessageBox.critical(None, "Error", "No system tray was found on this system.")
         sys.exit(1)
