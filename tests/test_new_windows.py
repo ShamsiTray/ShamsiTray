@@ -565,29 +565,36 @@ def test_event_recurring_saves_even_with_unusable_year(manager):
 # --- centered combo items ---
 
 def test_manager_filter_combo_items_are_centered(manager):
-    """Every dropdown row of the filter combos carries the centered role."""
+    """Every dropdown row of the filter combos carries the centered role.
+
+    The role combines the horizontal and vertical alignment bits: a
+    horizontal-only value paints an empty band under the last popup option.
+    """
     from PyQt6.QtCore import Qt as QtCoreQt
+    expected = QtCoreQt.AlignmentFlag.AlignHCenter | QtCoreQt.AlignmentFlag.AlignVCenter
     for combo in (manager.month_combo, manager.type_combo):
         assert combo.count() > 1
         for i in range(combo.count()):
             role = combo.itemData(i, QtCoreQt.ItemDataRole.TextAlignmentRole)
-            assert role == QtCoreQt.AlignmentFlag.AlignHCenter
+            assert role == expected
 
 
 def test_event_input_date_combos_are_centered(manager):
     manager._on_add_requested()
     widget = manager.event_input_widget
+    expected = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
     for combo in (widget.month_combo, widget.day_combo, widget.recurrence_combo):
         for i in range(combo.count()):
             role = combo.itemData(i, Qt.ItemDataRole.TextAlignmentRole)
-            assert role == Qt.AlignmentFlag.AlignHCenter
+            assert role == expected
 
 
 def test_holiday_viewer_year_combo_items_are_centered():
     window = HolidayViewerWindow({1403: {(1, 1): ["عید"]}})
+    expected = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
     for i in range(window.year_combo.count()):
         role = window.year_combo.itemData(i, Qt.ItemDataRole.TextAlignmentRole)
-        assert role == Qt.AlignmentFlag.AlignHCenter
+        assert role == expected
     window.close()
 
 

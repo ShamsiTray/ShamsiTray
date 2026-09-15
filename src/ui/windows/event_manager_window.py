@@ -233,11 +233,8 @@ class EventManagerWindow(BaseFramelessWindow):
         self.search_input.textChanged.connect(self.refresh_list)
         filter_row.addWidget(self.search_input, 1)
 
-        # Plain combos, configured exactly like the converter's (which the
-        # user confirmed renders its dropdown without dead space): no
-        # AdjustToContents and no popup-height games - the old subclass pinned
-        # the view's height from pre-popup metrics, which itself re-created
-        # the band of dead space under the last option on Windows.
+        # Plain combos; the dropdown renders without dead space thanks to the
+        # vertical component in center_combo_items' item alignment.
         self.month_combo = QComboBox()
         self.month_combo.addItem("همه ماه‌ها", _MONTH_ANY)
         for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
