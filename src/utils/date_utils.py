@@ -46,15 +46,16 @@ def is_gregorian_leap_year(year: int) -> bool:
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
 
 def is_jalali_leap_year(year: int) -> bool:
-    """Return True if a Jalali year is a leap year."""
+    """Return True if a Jalali year is a leap year.
+
+    A Jalali year is leap exactly when Esfand has 30 days; constructing that
+    date is the arithmetic-free check (jdatetime has no static is-leap API).
+    """
     try:
-        return jdatetime.date.is_leap(year)
-    except AttributeError:
-        try:
-            jdatetime.date(year, 12, 30)
-            return True
-        except ValueError:
-            return False
+        jdatetime.date(year, 12, 30)
+        return True
+    except ValueError:
+        return False
 
 def days_in_jalali_month(year: int, month: int) -> int:
     """Return the number of days in a Jalali month (1-12)."""
@@ -86,3 +87,13 @@ def safe_jdate(year: int, month: int, day: int) -> Optional[jdatetime.date]:
         return jdatetime.date(year, month, day)
     except ValueError:
         return None
+
+def ms_until_midnight(now: datetime.datetime) -> int:
+    """Milliseconds from ``now`` local time until the next local midnight.
+
+    Used to schedule the daily rollover; always returns a non-negative value
+    (exactly-midnight input schedules the following midnight).
+    """
+    tomorrow = now + datetime.timedelta(days=1)
+    next_midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
+    return max(0, int((next_midnight - now).total_seconds() * 1000))

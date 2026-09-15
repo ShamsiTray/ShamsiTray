@@ -40,11 +40,10 @@ class Config:
     USER_EVENTS_FILE_PATH = USER_DATA_DIR / 'user_events.json'
     HOLIDAYS_STORE_PATH = USER_DATA_DIR / 'holidays.json'
 
-    @classmethod
-    def ensure_user_data_dirs(cls) -> bool:
+    def ensure_user_data_dirs(self) -> bool:
         """Create the user data directories if missing. Returns True when present."""
         try:
-            cls.USER_LOG_DIR.mkdir(parents=True, exist_ok=True)
+            self.USER_LOG_DIR.mkdir(parents=True, exist_ok=True)
             return True
         except OSError:
             return False
@@ -82,7 +81,6 @@ class Config:
         "CALENDAR_BACKGROUND_COLOR": "#2c2c2c", "CALENDAR_BORDER_COLOR": "#3B3B3B",
         "CALENDAR_TODAY_BG_COLOR": "rgba(128, 128, 128, 0.3)",
         "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(128, 128, 128, 0.5)",
-        "CALENDAR_TODAY_SELECTED_BG_COLOR": "rgba(128, 128, 128, 0.6)",
         "CALENDAR_SELECTED_BG_COLOR": "rgba(224, 224, 224, 0.2)",
         "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(224, 224, 224, 0.3)",
         "MENU_BACKGROUND_COLOR": "#2c2c2c", "MENU_BORDER_COLOR": "#606060",
@@ -98,7 +96,6 @@ class Config:
         "CALENDAR_BACKGROUND_COLOR": "#ffffff", "CALENDAR_BORDER_COLOR": "#e5e7eb",
         "CALENDAR_TODAY_BG_COLOR": "rgba(156, 163, 175, 0.2)",
         "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(156, 163, 175, 0.35)",
-        "CALENDAR_TODAY_SELECTED_BG_COLOR": "rgba(156, 163, 175, 0.45)",
         "CALENDAR_SELECTED_BG_COLOR": "rgba(75, 174, 79, 0.1)",
         "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(75, 174, 79, 0.2)",
         "MENU_BACKGROUND_COLOR": "#ffffff", "MENU_BORDER_COLOR": "#e5e7eb",
@@ -138,7 +135,7 @@ class Config:
     # --- Date & Time Data ---
     PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹']
     _ENGLISH_DIGITS_MAP = {ord(p): str(e) for e, p in enumerate(PERSIAN_DIGITS)}
-    
+
     PERSIAN_MONTHS = [
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
         "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
@@ -158,6 +155,8 @@ class Config:
         FA_MOON_SOLID = '\uf186'
         FA_XMARK = '\uf00d'
         FA_MINUS = '\uf068'
+        FA_TRASH = '\uf1f8'
+        FA_ARROWS_ROTATE = '\uf2f1'
 
 # Create a single, globally accessible instance of the configuration.
 APP_CONFIG = Config()

@@ -41,7 +41,7 @@ def test_first_run_migrates_settings_and_events(events_path, tmp_path):
     assert s.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY) == "dark"
     assert s.value(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, False, type=bool) is True
     assert event_io.load_user_events() == {
-        "0000-01-01": {"text": "yearly thing", "yearly": True, "remove_after_finish": False},
+        "0000-01-01": {"text": "yearly thing", "recurrence": "yearly", "remove_after_finish": False},
     }
     # Registry keys must be left in place (rollback safety).
     assert legacy.deleted == []
@@ -67,7 +67,7 @@ def test_migrates_serialized_string_event_blob(events_path, tmp_path):
     migrate_from_registry(s, legacy=legacy)
 
     assert event_io.load_user_events() == {
-        "1403/07/07": {"text": "from string", "yearly": False, "remove_after_finish": False},
+        "1403/07/07": {"text": "from string", "recurrence": "none", "remove_after_finish": False},
     }
 
 
