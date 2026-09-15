@@ -40,26 +40,41 @@ class ClickableLabel(QLabel):
 
     def setToolTip(self, text: str):
         self._tooltip_text = text
-        
+
     def enterEvent(self, event):
         super().enterEvent(event)
         if self._tooltip_text and not self._context_menu_open:
             self._tooltip_timer.start(500)
-            
+
     def leaveEvent(self, event):
         super().leaveEvent(event)
         self._tooltip_timer.stop()
         CustomTooltip.instance().hide()
-        
+
+    def _cursor_inside(self) -> bool:
+        """True only when the real cursor is inside this cell right now.
+
+        Popup menus and overlay panels break the normal enter/leave chain, so
+        the widget's own under-mouse state can go stale; the cursor position
+        is the only source of truth (a stale pending timer must not pop a
+        tooltip for a cell the user has long since moved off of - it would
+        even float above the modal event editor).
+        """
+        return self.rect().contains(self.mapFromGlobal(QCursor.pos()))
+
     def _show_custom_tooltip(self):
-        if self._tooltip_text and self.underMouse() and not self._context_menu_open:
+        # The cursor check is what keeps a stale timer (menus and overlays
+        # interrupt the enter/leave chain) from popping a tooltip for a cell
+        # the cursor is no longer over - and from floating above the modal
+        # event editor that opened since.
+        if self._tooltip_text and not self._context_menu_open and self._cursor_inside():
             global_pos = QCursor.pos()
             CustomTooltip.instance().show_tooltip(self._tooltip_text, global_pos)
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         if not self.jalali_date or not self.text():
             return
-        
+
         self._context_menu_open = True
         CustomTooltip.instance().hide()
 
@@ -94,7 +109,13 @@ class ClickableLabel(QLabel):
         self._context_menu_open = False
         self.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
         self.update()
-        
+        # The menu's grab interrupted the enter/leave chain; let the calendar
+        # re-sync every cell's hover flag against the real cursor position
+        # (decoupled: the cell must not depend on its host's concrete type).
+        normalize_hover = getattr(self.window(), "normalize_day_hover", None)
+        if callable(normalize_hover):
+            normalize_hover()
+
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
             # Delay emission slightly to ensure the context menu fully closes before opening any new dialogs or widgets.
