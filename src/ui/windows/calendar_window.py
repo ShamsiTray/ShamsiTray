@@ -13,15 +13,18 @@ from typing import List, Optional, Tuple
 
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QCursor, QFont
 from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
 from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
+from utils.event_io import RECURRENCE_NONE, events_for_date
 from ui.widgets.calendar_day_cell import ClickableLabel
+from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import EventInputWidget
 from ui.widgets.menu_widgets import MenuActionWidget
+from ui.widgets.tooltip import CustomTooltip
 from .base_window import BaseFramelessWindow
 
 @dataclass
@@ -37,33 +40,40 @@ class DayStyle:
 class PersianCalendarWidget(BaseFramelessWindow):
     """Main calendar widget displaying a month of Persian (Jalali) dates."""
     ROWS, COLS = 6, 7
-    event_added = pyqtSignal(object, str, bool, bool)
+    event_added = pyqtSignal(object, str, str, bool)  # jdate, text, recurrence, remove_after_finish
     event_removed = pyqtSignal(object)
 
     def __init__(self, holidays_cache: dict, user_events: dict):
         super().__init__()
         self.holidays_cache = holidays_cache
         self.user_events = user_events
-        
+
         self.current_date = jdatetime.date.today()
         self.display_date = self.current_date
         self.selected_date = self.current_date
         self.editing_date: Optional[jdatetime.date] = None
         self.go_to_window: Optional[GoToDateWindow] = None
-        
+
         self.day_labels: List[List[ClickableLabel]] = []
         self._show_gregorian_mdy = True
-        
+
         self._setup_ui()
         self.update_styles()
         self.fill_calendar_grid()
 
     def hideEvent(self, event):
         """Override hideEvent to also close the 'Go To Date' window and its overlay,
-        so a stale overlay can never eat mouse input after the calendar reopens."""
+        so a stale overlay can never eat mouse input after the calendar reopens.
+        Any open event editor and the custom tooltip are dismissed as well:
+        both outlive their parent window otherwise (the tooltip is a separate
+        top-level window and would keep floating over other applications)."""
         if self.go_to_window and self.go_to_window.isVisible():
             self.go_to_window.close()
+        if self.event_input_widget.isVisible():
+            self.event_input_widget.hide()
+            self.editing_date = None
         self.overlay_blocker.hide()
+        CustomTooltip.instance().hide()
         super().hideEvent(event)
 
     def set_user_events(self, user_events: dict):
@@ -89,7 +99,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.overlay_blocker = QWidget(self)
         self.overlay_blocker.setStyleSheet("background-color: rgba(0, 0, 0, 75); border-radius: 26px; margin: 1px;")
         self.overlay_blocker.hide()
-        
+
         self.event_input_widget = EventInputWidget(self)
         self.event_input_widget.saved.connect(self._handle_event_saved)
         self.event_input_widget.canceled.connect(self._handle_event_canceled)
@@ -108,7 +118,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         month_year_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         month_year_layout.addWidget(self.year_label)
         month_year_layout.addWidget(self.month_label)
-        
+
         month_year_container = QWidget()
         month_year_container.setLayout(month_year_layout)
         month_year_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -166,11 +176,29 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 week_labels.append(label)
             self.day_labels.append(week_labels)
         return grid_layout
-    
+
     def resizeEvent(self, event):
         self.overlay_blocker.resize(self.size())
         super().resizeEvent(event)
-    
+
+    def normalize_day_hover(self):
+        """Re-align every day cell's hover flag with the real cursor position.
+
+        Popup menus and overlay panels interrupt Qt's enter/leave chain, so a
+        cell can keep its under-mouse flag - and with it the QSS :hover look -
+        long after the cursor moved behind the editor (the report: hover stuck
+        on the right-clicked date after cancelling the add-event panel, cleared
+        only by hovering the cell again). :hover resolves from that flag at
+        paint time, so clearing it for cells the cursor is genuinely not inside
+        and repainting puts the grid back in sync once an overlay is gone.
+        """
+        cursor = QCursor.pos()
+        for row in self.day_labels:
+            for cell in row:
+                if cell.underMouse() and not cell.rect().contains(cell.mapFromGlobal(cursor)):
+                    cell.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
+                    cell.update()
+
     def _get_nav_button_style(self, bg_color: str, is_today_button: bool = False) -> str:
         palette = APP_CONFIG.get_current_palette()
         text_color = palette['TEXT_COLOR']
@@ -210,26 +238,22 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 is_friday = day_label.text() == 'ج'
                 color = palette['HOLIDAY_COLOR'] if is_friday else palette['WEEKDAY_NAMES_COLOR']
                 day_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 16px; background: transparent; font-family: '{APP_CONFIG.FONT_FAMILY}';")
-        
-        if self.event_input_widget: 
+
+        if self.event_input_widget:
             self.event_input_widget.update_styles()
-        if self.go_to_window: 
+        if self.go_to_window:
             self.go_to_window.update_styles()
         self.fill_calendar_grid()
 
-    def _get_user_event_for_date(self, jdate: jdatetime.date) -> Tuple[Optional[str], bool, bool]:
-        """Checks for a specific or yearly event, returning the text, if it was yearly, and if it's set to be removed after finishing."""
-        specific_key = jdate.strftime("%Y-%m-%d")
-        if specific_key in self.user_events:
-            event_data = self.user_events[specific_key]
-            return event_data.get("text"), event_data.get("yearly", False), event_data.get("remove_after_finish", False)
-
-        yearly_key = jdate.strftime("0000-%m-%d")
-        if yearly_key in self.user_events:
-            event_data = self.user_events[yearly_key]
-            return event_data.get("text"), True, event_data.get("remove_after_finish", False)
-            
-        return None, False, False
+    def get_user_event_for_date(self, jdate: jdatetime.date) -> Tuple[Optional[str], bool, bool]:
+        """Checks for a matching event (specific, yearly or monthly), returning the
+        text, whether it repeats (recurrence != none), and its auto-delete flag."""
+        matched = events_for_date(self.user_events, jdate)
+        if matched is None:
+            return None, False, False
+        _, entry = matched
+        recurrence = entry.get("recurrence", RECURRENCE_NONE)
+        return entry.get("text"), recurrence != RECURRENCE_NONE, entry.get("remove_after_finish", False)
 
     def fill_calendar_grid(self):
         self._update_header()
@@ -245,8 +269,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 label = self.day_labels[row][col]
                 label.jalali_date = current_day
                 label.setText(to_persian_digits(current_day.day))
-                
-                user_event_text, _, _ = self._get_user_event_for_date(current_day)
+
+                user_event_text, _, _ = self.get_user_event_for_date(current_day)
                 label.has_user_event = bool(user_event_text)
 
                 is_in_display_month = (current_day.month == self.display_date.month)
@@ -273,12 +297,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
         palette = APP_CONFIG.get_current_palette()
         style = DayStyle(text_color=palette['TEXT_COLOR'], hover_background_color=palette['HOVER_BG'])
 
-        user_event_text, _, _ = self._get_user_event_for_date(jdate)
+        user_event_text, _, _ = self.get_user_event_for_date(jdate)
         is_user_event = bool(user_event_text)
         is_today = (jdate == self.current_date)
         is_selected = (jdate == self.selected_date)
         is_friday = jdate.weekday() == 6
-        
+
         year_holidays = self.holidays_cache.get(jdate.year, {})
         holiday_reasons = year_holidays.get((jdate.month, jdate.day))
         is_holiday = bool(holiday_reasons)
@@ -311,7 +335,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 if is_special_day:
                     style.background_color = self._get_rgba_string(base_color_hex, 0.45)
                     style.hover_background_color = self._get_rgba_string(base_color_hex, 0.55)
-                else: 
+                else:
                     style.background_color = palette['CALENDAR_SELECTED_BG_COLOR']
                     style.hover_background_color = palette['CALENDAR_SELECTED_HOVER_BG_COLOR']
             elif is_today:
@@ -337,14 +361,14 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 style.text_color = self._get_rgba_string(palette['HOLIDAY_COLOR'], 0.45)
                 style.background_color = self._get_rgba_string(palette['HOLIDAY_COLOR'], 0.05)
                 style.hover_background_color = self._get_rgba_string(palette['HOLIDAY_COLOR'], 0.10)
-        
+
         return style
 
     def _get_day_style(self, jdate: jdatetime.date, is_in_month: bool) -> Tuple[str, str]:
         style = self._determine_day_style(jdate, is_in_month)
-        
+
         base_style = (f"background-color: {style.background_color}; color: {style.text_color}; border: {style.border_style}; border-radius: 8px; font-size: {style.font_size}px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}';")
-        
+
         stylesheet = f"QLabel {{ {base_style} }} QLabel:hover {{ background-color: {style.hover_background_color}; }}"
         return stylesheet, style.tooltip
 
@@ -364,7 +388,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def prev_month(self): self._navigate(-1)
     def next_month(self): self._navigate(1)
-    
+
     def go_to_today(self):
         self.current_date = jdatetime.date.today()
         self.display_date = self.current_date
@@ -402,10 +426,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
         action.setDefaultWidget(go_to_action)
         menu.addAction(action)
         menu.exec(self.mapToGlobal(pos))
-    
+
     def _open_go_to_date_window(self):
         if self.go_to_window is not None and not self.go_to_window.isVisible():
-            # Stale hidden instance from a previous open — discard it.
+            # Stale hidden instance from a previous open - discard it.
             self.go_to_window.deleteLater()
             self.go_to_window = None
         if self.go_to_window is None:
@@ -437,29 +461,43 @@ class PersianCalendarWidget(BaseFramelessWindow):
             return
         self.go_to_window = None
         self.overlay_blocker.hide()
+        self.normalize_day_hover()
 
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
             return
+        # The tooltip is a top-level window; without an explicit hide it can
+        # keep floating above the editor overlay (right-click opens the menu
+        # without ever leaving the cell, so nothing else dismisses it).
+        CustomTooltip.instance().hide()
         self.editing_date = jdate
-        existing_text, is_yearly, remove_after_finish = self._get_user_event_for_date(jdate)
-        self.event_input_widget.set_data(existing_text or "", is_yearly, remove_after_finish)
+        matched = events_for_date(self.user_events, jdate)
+        if matched is None:
+            existing_text, recurrence, remove_after_finish = "", RECURRENCE_NONE, False
+        else:
+            entry = matched[1]
+            existing_text = entry.get("text", "")
+            recurrence = entry.get("recurrence", RECURRENCE_NONE)
+            remove_after_finish = entry.get("remove_after_finish", False)
+        self.event_input_widget.set_data(existing_text, recurrence, remove_after_finish)
         self.overlay_blocker.resize(self.size())
         self.overlay_blocker.show()
         self.overlay_blocker.raise_()
         width = self.width() - 40
-        height = 230
+        # The original panel was 230px; the added تکرار row costs ~15px more,
+        # so 245px keeps the text box at its original size.
+        height = 245
         x = (self.width() - width) // 2
         y = (self.height() - height) // 2 + 15
         self.event_input_widget.setGeometry(x, y, width, height)
         self.event_input_widget.show()
         self.event_input_widget.raise_()
 
-    def _handle_event_saved(self, text: str, is_yearly: bool, remove_after_finish: bool):
+    def _handle_event_saved(self, text: str, recurrence: str, remove_after_finish: bool):
         # Save is disabled while the text is empty, so an empty text here is impossible;
         # event deletion goes through the context menu (_remove_event) instead.
         if self.editing_date:
-            self.event_added.emit(self.editing_date, text, is_yearly, remove_after_finish)
+            self.event_added.emit(self.editing_date, text, recurrence, remove_after_finish)
         self._hide_event_input_widget()
 
     def _handle_event_canceled(self):
@@ -469,8 +507,27 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.editing_date = None
         self.event_input_widget.hide()
         self.overlay_blocker.hide()
+        # Both the tooltip (top-level window) and a stale hover flag would
+        # outlive the editor otherwise - the former floats above the grid,
+        # the latter leaves a cell lit as if the cursor were still on it.
+        CustomTooltip.instance().hide()
+        self.normalize_day_hover()
+
+    def _confirm_remove(self, jdate: jdatetime.date) -> bool:
+        """Ask before deleting; a context-menu click must never delete silently.
+
+        Uses the themed in-app dialog (the stock QMessageBox ignored the app
+        palette and its long-winded wording read like a system error)."""
+        matched = events_for_date(self.user_events, jdate)
+        text = str(matched[1].get("text", "")) if matched else ""
+        preview = text if len(text) <= 40 else text[:40] + "…"
+        return ConfirmDialog.ask(
+            self, "حذف رویداد", "این رویداد حذف شود؟", detail=preview,
+            confirm_text="حذف", cancel_text="انصراف", danger=True)
 
     def _remove_event(self, jdate: jdatetime.date):
-        if not jdate: 
+        if not jdate:
+            return
+        if not self._confirm_remove(jdate):
             return
         self.event_removed.emit(jdate)
