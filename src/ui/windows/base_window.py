@@ -8,22 +8,38 @@ frameless windows in the application (e.g., Calendar, Tutorial, Converter).
 It handles common functionality such as:
 - A custom-painted rounded-rectangle background.
 - Mouse events for dragging the frameless window.
-- Translucent background and stay-on-top hints.
+- Translucent background.
+- A taskbar presence for tool windows (see ``TASKBAR_ICON``).
 """
 from typing import Optional
 
 from PyQt6.QtCore import QPoint, QRectF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPainterPath
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from config import APP_CONFIG
 
 class BaseFramelessWindow(QWidget):
-    """A base class for frameless windows with custom drag and paint logic."""
+    """A base class for frameless windows with custom drag and paint logic.
+
+    Subclasses set ``TASKBAR_ICON = True`` to opt into a real top-level window
+    type: plain ``Qt.WindowType.Tool`` windows never get a taskbar entry, so a
+    minimized tool window could previously never be brought back. The calendar
+    popup and tutorial keep the Tool behaviour (a taskbar button for a quick
+    popup would be noise); the converter and the other tool windows show in
+    the taskbar like the converter always did.
+    """
+    TASKBAR_ICON = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._drag_position: Optional[QPoint] = None
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        if self.TASKBAR_ICON:
+            self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+            if APP_CONFIG.ICON_PATH.exists():
+                self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
+        else:
+            self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
     def paintEvent(self, event):
@@ -45,7 +61,7 @@ class BaseFramelessWindow(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < APP_CONFIG.DRAGGABLE_AREA_HEIGHT:
             self._drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
-            return 
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -61,11 +77,6 @@ class BaseFramelessWindow(QWidget):
             clamped_y = max(min_y, min(new_pos.y(), max_y))
             self.move(clamped_x, clamped_y)
             event.accept()
-
-    def leaveEvent(self, event):
-        # Keep the drag alive when the cursor briefly leaves the window;
-        # a drag must only end on mouse release.
-        super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if self._drag_position is not None:

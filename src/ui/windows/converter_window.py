@@ -6,24 +6,23 @@ This module provides the `DateConverterWindow`, a tool for converting dates
 between Jalali (Shamsi) and Gregorian calendars. It features input validation,
 dynamic day/month population, and calculates elapsed time from the present.
 """
-import sys
 import datetime
 
 import jdatetime
 from PyQt6.QtCore import Qt, QTimer, QRegularExpression
-from PyQt6.QtGui import QColor, QFont, QIcon, QPalette, QRegularExpressionValidator, QCursor
+from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
 from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, days_in_jalali_month, days_in_gregorian_month, validate_year_range, persian_month_name, gregorian_month_name, persian_weekday_name
 from utils.logger import setup_logging
-from utils.ui_helpers import combo_stylesheet
+from utils.ui_helpers import (DigitsFirstCombo, accent_button_stylesheet,
+                              combo_stylesheet, line_edit_stylesheet)
+from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
 
 logger = setup_logging(__name__)
-
-
 
 try:
     from dateutil.relativedelta import relativedelta
@@ -32,32 +31,23 @@ except ImportError:
     logger.warning("dateutil.relativedelta not available. Elapsed time calculation will be less precise.")
     RELATIVEDELTA_AVAILABLE = False
 
-try:
-    import win32con
-    import win32gui
-    WIN32_AVAILABLE = True
-except ImportError:
-    logger.warning("win32api not available. Window style modifications will be skipped.")
-    WIN32_AVAILABLE = False
-
 class DateConverterWindow(BaseFramelessWindow):
     """A window for converting dates between Jalali and Gregorian calendars."""
     MIN_JALALI_YEAR, MAX_JALALI_YEAR = 1, 1600
     MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR = 623, 2200
+    TASKBAR_ICON = True  # show in the taskbar so a minimized window is reachable
 
     def __init__(self):
         super().__init__()
         self._initial_height = 260
         self.setWindowTitle("تبدیل تاریخ")
-        self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(650, self._initial_height)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        
+
         self._setup_ui()
         self.update_styles()
         self._connect_signals()
-        
+
         self._initialize_date_inputs()
         self._apply_windows_styles()
 
@@ -74,7 +64,7 @@ class DateConverterWindow(BaseFramelessWindow):
         main_layout.addSpacing(10)
         main_layout.addLayout(self._create_input_section())
         main_layout.addSpacing(10)
-        
+
         self.convert_button = QPushButton("تبدیل")
         main_layout.addWidget(self.convert_button)
         main_layout.addSpacing(10)
@@ -85,7 +75,7 @@ class DateConverterWindow(BaseFramelessWindow):
 
         self.output_widget = self._create_output_section()
         main_layout.addWidget(self.output_widget)
-        
+
         self.status_message = QLabel("")
         self.status_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_message)
@@ -102,16 +92,8 @@ class DateConverterWindow(BaseFramelessWindow):
             combo.setItemData(combo.count() - 1, Qt.AlignmentFlag.AlignCenter, Qt.ItemDataRole.TextAlignmentRole)
 
     def _create_title_bar(self) -> QHBoxLayout:
-        self.exit_button = QPushButton(APP_CONFIG.FAS.FA_XMARK)
-        self.minimize_button = QPushButton(APP_CONFIG.FAS.FA_MINUS)
-        for button in (self.exit_button, self.minimize_button):
-            button.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 10))
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignTop)
-        button_layout.addWidget(self.minimize_button, alignment=Qt.AlignmentFlag.AlignTop)
-        button_layout.addStretch(1)
-        return button_layout
+        self.title_bar = WindowTitleBar(self.close, self.showMinimized)
+        return self.title_bar
 
     def _create_input_section(self) -> QHBoxLayout:
         grid = QGridLayout()
@@ -127,7 +109,11 @@ class DateConverterWindow(BaseFramelessWindow):
 
         self.conversion_type_combo = QComboBox()
         self.day_combo = QComboBox()
-        self.month_combo = QComboBox()
+        # The Jalali items («۰۶ - شهریور») mix digits with Persian text, which
+        # is bidi-ambiguous: their visual order depends on the base direction
+        # of whatever paints them. DigitsFirstCombo pins the closed label and
+        # the popup rows to the digits-first order on every platform.
+        self.month_combo = DigitsFirstCombo()
 
         self._set_combo_items(self.conversion_type_combo, ["شمسی به میلادی", "میلادی به شمسی"])
         self.year_input = QLineEdit()
@@ -154,13 +140,13 @@ class DateConverterWindow(BaseFramelessWindow):
 
             self.output_grid = QGridLayout()
             self.output_grid.setContentsMargins(20, 0, 20, 0)
-            self.output_grid.setVerticalSpacing(0) 
+            self.output_grid.setVerticalSpacing(0)
             self.output_grid.setHorizontalSpacing(20)
 
             greg_title = QLabel("تاریخ میلادی")
             greg_title.setObjectName("OutputTitleLabel")
             greg_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
+
             jalali_title = QLabel("تاریخ شمسی")
             jalali_title.setObjectName("OutputTitleLabel")
             jalali_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -170,7 +156,7 @@ class DateConverterWindow(BaseFramelessWindow):
             self.jalali_date_value_1 = QLabel("...")
             self.jalali_date_value_2 = QLabel("...")
 
-            for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2, 
+            for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2,
                     self.jalali_date_value_1, self.jalali_date_value_2]:
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 lbl.setWordWrap(False)
@@ -197,10 +183,10 @@ class DateConverterWindow(BaseFramelessWindow):
             self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
             self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
-            
+
             layout.addWidget(self.elapsed_text)
             layout.addWidget(self.leap_year_status)
-            
+
             return widget
 
     def _create_divider(self) -> QFrame:
@@ -218,21 +204,11 @@ class DateConverterWindow(BaseFramelessWindow):
         for label in self.findChildren(QLabel):
             if not label.objectName():
                 label.setStyleSheet(f"color: {palette['TEXT_COLOR']};")
-        
+
         input_field_height = 40
 
         combo_style = combo_stylesheet(palette, center_text=True)
-        
-        self.exit_button.setFixedSize(30, 30)
-        self.minimize_button.setFixedSize(30, 30)
-        self.exit_button.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; color: {palette['TEXT_COLOR']}; font-size: 13px; }}"
-            f"QPushButton:hover {{ background-color: #E81123; border-color: #E81123; color: white; }}"
-            f"QPushButton:pressed {{ background-color: #C50F1F; border-color: #C50F1F; color: white; }}")
-        self.minimize_button.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; color: {palette['TEXT_COLOR']}; font-size: 13px; }}"
-            f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}"
-            f"QPushButton:pressed {{ background-color: {palette['HOVER_BG']}; }}")
+        self.title_bar.update_styles()
         for label in self.input_labels:
              label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
              label.setFixedHeight(input_field_height)
@@ -242,9 +218,9 @@ class DateConverterWindow(BaseFramelessWindow):
         for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
         self.year_input.setFixedSize(100, input_field_height)
-        self.year_input.setStyleSheet(f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; text-align: center; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;}} QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }} QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
+        self.year_input.setStyleSheet(line_edit_stylesheet(palette, center_text=True))
         self.convert_button.setFixedHeight(50)
-        self.convert_button.setStyleSheet(f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }} QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }} QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
+        self.convert_button.setStyleSheet(accent_button_stylesheet(palette, padding="0px 18px", font_size=16))
         self.middle_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
         for label in self.output_widget.findChildren(QLabel):
             if label.objectName() == "OutputTitleLabel":
@@ -259,8 +235,6 @@ class DateConverterWindow(BaseFramelessWindow):
         self.status_message.setStyleSheet("color: red; font-weight: bold; font-size: 18px;")
 
     def _connect_signals(self):
-        self.exit_button.clicked.connect(self.close)
-        self.minimize_button.clicked.connect(self.showMinimized)
         self.conversion_type_combo.currentIndexChanged.connect(self._on_conversion_type_changed)
         self.month_combo.currentIndexChanged.connect(self._update_day_dropdown)
         self.year_input.textChanged.connect(self._update_day_dropdown)
@@ -285,15 +259,7 @@ class DateConverterWindow(BaseFramelessWindow):
             QTimer.singleShot(600, CustomTooltip.instance().hide)
 
     def _apply_windows_styles(self):
-        if sys.platform == "win32" and WIN32_AVAILABLE:
-            try:
-                hwnd = self.winId().__int__()
-                style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-                style |= win32con.WS_MINIMIZEBOX | win32con.WS_SYSMENU
-                win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
-                win32gui.SetWindowPos(hwnd, None, 0, 0, 0, 0, win32con.SWP_FRAMECHANGED | win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER)
-            except Exception as e:
-                logger.error(f"Failed to apply Windows window styles: {e}")
+        apply_windows_styles(self)
 
     def _initialize_date_inputs(self): self._on_conversion_type_changed()
     def _on_conversion_type_changed(self):
@@ -303,14 +269,12 @@ class DateConverterWindow(BaseFramelessWindow):
         if is_jalali_to_greg:
             self.year_input.setText(to_persian_digits(str(today.year)))
             months = [f"{to_persian_digits(str(i+1).zfill(2))} - {name}" for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS)]
-            self.month_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             self.day_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         else:
             self.year_input.setText(str(today.year))
             months = [f"{i+1:02d} - {name}" for i, name in enumerate(APP_CONFIG.GREGORIAN_MONTHS)]
-            self.month_combo.view().setLayoutDirection(Qt.LayoutDirection.LeftToRight)
             self.day_combo.view().setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        
+
         self._set_combo_items(self.month_combo, months)
         self.month_combo.setCurrentIndex(today.month - 1)
         self._update_day_dropdown()
@@ -335,8 +299,8 @@ class DateConverterWindow(BaseFramelessWindow):
                 month = self.month_combo.currentIndex() + 1
                 days_in_month = self._get_days_in_month(is_jalali_input, year, month)
         except (ValueError, IndexError):
-            days_in_month = 31 
-        
+            days_in_month = 31
+
         self.day_combo.blockSignals(True)
         days = [to_persian_digits(d) if is_jalali_input else str(d) for d in range(1, days_in_month + 1)]
         self._set_combo_items(self.day_combo, days)
@@ -369,7 +333,7 @@ class DateConverterWindow(BaseFramelessWindow):
         self.status_message.show()
         new_height = self._initial_height + self.status_message.sizeHint().height() + 20
         self.setFixedSize(650, new_height)
-            
+
 
     def _convert_date(self):
         """
@@ -384,7 +348,7 @@ class DateConverterWindow(BaseFramelessWindow):
             if not year_text:
                 self._show_error("لطفاً سال را وارد کنید.")
                 return
-            
+
             day_text = self.day_combo.currentText().strip()
             year = int(from_persian_digits(year_text))
             month = self.month_combo.currentIndex() + 1
@@ -446,6 +410,6 @@ class DateConverterWindow(BaseFramelessWindow):
             years, rem = divmod(total_days, 365)
             months, days = divmod(rem, 30)
             parts = [f"{to_persian_digits(d)} {n}" for d, n in [(years, "سال"), (months, "ماه"), (days, "روز")] if d]
-        
+
         status = "مانده" if future else "گذشته"
         self.elapsed_text.setText(f"فاصله زمانی: {' '.join(parts)} {status}")
