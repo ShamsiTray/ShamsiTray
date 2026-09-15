@@ -8,11 +8,18 @@ such as the 'Go To Date' panel for the calendar.
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QRegularExpression
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValidator, QPen
-from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout
+from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_helpers import combo_stylesheet, error_line_edit_stylesheet
+from utils.ui_helpers import (DigitsFirstCombo, accent_button_stylesheet,
+                              combo_stylesheet, danger_button_stylesheet,
+                              error_line_edit_stylesheet)
+
+# The «NN - month» items mix digits with Persian text, which is bidi-ambiguous:
+# their visual order depends on the base direction of whatever paints them.
+# DigitsFirstCombo pins closed label and popup rows to the digits-first order
+# («۰۶ - شهریور") on every platform.
 
 class GoToDateWindow(QWidget):
     """A small, non-movable window to jump to a specific month and year."""
@@ -55,7 +62,7 @@ class GoToDateWindow(QWidget):
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.title_label)
 
-        self.month_combo = QComboBox()
+        self.month_combo = DigitsFirstCombo()
         self.month_combo.setMaxVisibleItems(5)
         month_names = [f"{to_persian_digits(str(i).zfill(2))} - {persian_month_name(i)}" for i in range(1, 13)]
         for name in month_names:
@@ -150,6 +157,7 @@ class GoToDateWindow(QWidget):
         self.month_combo.setStyleSheet(combo_stylesheet(
             palette,
             padding="5px",
+            center_text=True,
             dropdown_bg=palette['BACKGROUND_COLOR'],
             dropdown_border_key='MENU_BORDER_COLOR',
             scrollbar_width=8,
@@ -158,16 +166,8 @@ class GoToDateWindow(QWidget):
 
         self._apply_year_style()
 
-        self.confirm_button.setStyleSheet(
-            f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
-            f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
-
-        cancel_button_style = (
-            f"QPushButton {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(110).name()}; }}"
-            f"QPushButton:pressed {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(140).name()}; }}")
-        self.cancel_button.setStyleSheet(cancel_button_style)
+        self.confirm_button.setStyleSheet(accent_button_stylesheet(palette))
+        self.cancel_button.setStyleSheet(danger_button_stylesheet(palette))
 
     def _on_confirm(self):
         year_str = self.year_input.text()
