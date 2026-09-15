@@ -7,26 +7,18 @@ launch of the application. It provides a brief, user-friendly guide on
 how to pin the application to the taskbar for easy access.
 """
 import os
-import sys
 from typing import Optional
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QMovie, QColor
+from PyQt6.QtGui import QFont, QMovie
 from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
 from utils.logger import setup_logging
+from ui.widgets.window_chrome import apply_windows_styles
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
-
-try:
-    import win32con
-    import win32gui
-    WIN32_AVAILABLE = True
-except ImportError:
-    logger.warning("win32api not available. Window style modifications will be skipped.")
-    WIN32_AVAILABLE = False
 
 
 class TutorialWindow(BaseFramelessWindow):
@@ -38,7 +30,7 @@ class TutorialWindow(BaseFramelessWindow):
         self.setFixedSize(500, 365)
         self._setup_ui()
         self.update_styles()
-        self._apply_windows_styles()
+        apply_windows_styles(self)
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -48,12 +40,12 @@ class TutorialWindow(BaseFramelessWindow):
         self.message_label.setWordWrap(True)
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.message_label)
-        
+
         self.gif_label = QLabel()
         self.gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.gif_label, alignment=Qt.AlignmentFlag.AlignCenter)
         self._load_gif()
-        
+
         main_layout.addStretch(1)
         self.close_button = QPushButton("بستن آموزش")
         self.close_button.clicked.connect(self._close_tutorial)
@@ -69,7 +61,7 @@ class TutorialWindow(BaseFramelessWindow):
             logger.error(f"Tutorial GIF not found: {gif_path}")
             self.gif_label.setText("GIF file not found.")
             return
-            
+
         self.movie = QMovie(gif_path)
         if self.movie.isValid():
             self.gif_label.setMovie(self.movie)
@@ -80,14 +72,14 @@ class TutorialWindow(BaseFramelessWindow):
             logger.warning(f"Failed to load GIF from {gif_path}.")
 
     def update_styles(self):
+        from utils.ui_helpers import accent_button_stylesheet
+
         palette = APP_CONFIG.get_current_palette()
         self.message_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
         self.message_label.setStyleSheet(f"color: {palette['TEXT_COLOR']};")
         self.close_button.setFixedHeight(50)
-        self.close_button.setStyleSheet(
-            f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}'; }}"
-            f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}"
-        )
+        # Same accent look as before; font size preserved via the shared style.
+        self.close_button.setStyleSheet(accent_button_stylesheet(palette, font_size=16))
 
     def _close_tutorial(self):
         if hasattr(self, "movie") and self.movie:
@@ -95,13 +87,3 @@ class TutorialWindow(BaseFramelessWindow):
             self.movie.deleteLater()
             self.movie = None
         self.close()
-
-    def _apply_windows_styles(self):
-        if sys.platform == "win32" and WIN32_AVAILABLE:
-            try:
-                hwnd = self.winId().__int__()
-                style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-                style |= win32con.WS_MINIMIZEBOX | win32con.WS_SYSMENU
-                win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
-            except Exception as e:
-                logger.warning(f"Could not set Windows styles for tutorial: {e}")

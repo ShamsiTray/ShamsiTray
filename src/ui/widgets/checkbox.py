@@ -26,7 +26,7 @@ class CustomCheckbox(QWidget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4) 
+        layout.setSpacing(4)
         self.icon_label = QLabel()
         fa_font = QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 14)
         self.icon_label.setFont(fa_font)
@@ -38,7 +38,10 @@ class CustomCheckbox(QWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
+        # Disabled checkboxes (e.g. auto-delete while a recurring mode is
+        # selected) must not toggle: this widget paints its own state instead
+        # of using the native QCheckBox disabled handling.
+        if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)
@@ -48,18 +51,28 @@ class CustomCheckbox(QWidget):
         return self._is_checked
 
     def setChecked(self, checked: bool):
+        # Emits ``toggled`` on change, like QCheckBox.setChecked does, so
+        # programmatic updates (e.g. the manager's past-events filter) re-render.
         if self._is_checked != checked:
             self._is_checked = checked
             self.update_visuals()
+            self.toggled.emit(checked)
 
     def update_visuals(self):
         palette = APP_CONFIG.get_current_palette()
         icon = APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID if self._is_checked else APP_CONFIG.FAS.FA_SQUARE_REGULAR
-        icon_color = palette['ACCENT_COLOR'] if self._is_checked else palette['TEXT_COLOR']
-        
+        if not self.isEnabled():
+            # Greyed-out state so "disabled" is actually visible on screen.
+            icon_color = palette['GREY_COLOR']
+            text_color = palette['GREY_COLOR']
+            icon = APP_CONFIG.FAS.FA_SQUARE_REGULAR
+        else:
+            icon_color = palette['ACCENT_COLOR'] if self._is_checked else palette['TEXT_COLOR']
+            text_color = palette['TEXT_COLOR']
+
         self.icon_label.setText(icon)
         self.icon_label.setStyleSheet(f"color: {icon_color}; background: transparent;")
-        self.text_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; background: transparent;")
+        self.text_label.setStyleSheet(f"color: {text_color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; background: transparent;")
 
 class IconCheckboxActionWidget(HoverWidget):
     """A context menu checkbox using FontAwesome icons."""
@@ -82,7 +95,7 @@ class IconCheckboxActionWidget(HoverWidget):
         self.update_visuals()
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
             new_state = not self._is_checked
             self.setChecked(new_state)
             self.toggled.emit(new_state)
