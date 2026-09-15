@@ -141,7 +141,7 @@ class Config:
         "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
     ]
     GREGORIAN_MONTHS = [
-        "January", "February", "March", "April", "May", "June", 
+        "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December"
     ]
     PERSIAN_WEEKDAYS_SHORT = ["ش", "ی", "د", "س", "چ", "پ", "ج"]

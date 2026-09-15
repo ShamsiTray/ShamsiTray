@@ -18,7 +18,7 @@ def load_fonts() -> None:
     font_dir = APP_CONFIG.FONT_DIR
     if not font_dir.is_dir():
         raise FileNotFoundError(f"Font directory not found: {font_dir}")
-    
+
     loaded_fonts = []
     for extension in ("*.ttf", "*.otf"):
         for font_path in font_dir.glob(extension):
@@ -26,7 +26,7 @@ def load_fonts() -> None:
                 loaded_fonts.append(font_path.name)
             else:
                 logger.warning(f"Failed to load font: {font_path.name}")
-            
+
     if loaded_fonts:
         logger.info(f"Loaded fonts: {', '.join(loaded_fonts)}")
     else:
@@ -42,9 +42,9 @@ def verify_assets() -> None:
         "Tutorial GIF": APP_CONFIG.TUTORIAL_GIF_PATH,
         "Font directory": APP_CONFIG.FONT_DIR,
     }
-    
+
     missing_assets = [name for name, path in assets_to_check.items() if not path.exists()]
-    
+
     if not any(APP_CONFIG.FONT_DIR.glob("*.ttf")) and not any(APP_CONFIG.FONT_DIR.glob("*.otf")):
         missing_assets.append("Any .ttf or .otf font file")
 
@@ -52,5 +52,5 @@ def verify_assets() -> None:
         error_msg = "One or more required assets are missing: " + ", ".join(missing_assets)
         logger.error(error_msg)
         raise FileNotFoundError(error_msg)
-    
+
     logger.info("All required assets verified successfully.")

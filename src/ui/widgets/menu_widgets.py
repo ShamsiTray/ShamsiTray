@@ -36,7 +36,7 @@ class HoverWidget(QWidget):
             path.addRoundedRect(QRectF(self.rect()), 6, 6)
             painter.fillPath(path, QColor(*APP_CONFIG.current_palette["MENU_HOVER_COLOR"]))
         super().paintEvent(event)
-        
+
     def enterEvent(self, event):
         self._is_hovered = True
         self.update()
@@ -99,7 +99,7 @@ class ThemeToggleActionWidget(MenuActionWidget):
         self.icon_label = QLabel()
         self.icon_label.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 14))
         self.icon_label.setFixedWidth(22)
-        self.label = QLabel("") 
+        self.label = QLabel("")
         layout.addStretch()
         layout.addWidget(self.icon_label)
         layout.addSpacing(-7)

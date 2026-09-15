@@ -19,7 +19,7 @@ class GoToDateWindow(QWidget):
     date_selected = pyqtSignal(int, int)
     MIN_YEAR = 1200
     MAX_YEAR = 1600
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -32,7 +32,7 @@ class GoToDateWindow(QWidget):
         self._year_error = False
         self._setup_ui()
         self.update_styles()
-        
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -54,7 +54,7 @@ class GoToDateWindow(QWidget):
         self.title_label = QLabel("برو به تاریخ")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.title_label)
-        
+
         self.month_combo = QComboBox()
         self.month_combo.setMaxVisibleItems(5)
         month_names = [f"{to_persian_digits(str(i).zfill(2))} - {persian_month_name(i)}" for i in range(1, 13)]
@@ -77,19 +77,19 @@ class GoToDateWindow(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.hide()
         main_layout.addWidget(self.error_label)
-        
+
         today = jdatetime.date.today()
         self.month_combo.setCurrentIndex(today.month - 1)
         self.year_input.setText(to_persian_digits(today.year))
-        
+
         main_layout.addStretch(1)
-        
+
         button_layout = QHBoxLayout()
         self.confirm_button = QPushButton("تایید")
         self.cancel_button = QPushButton("لغو")
         button_layout.addWidget(self.confirm_button)
         button_layout.addWidget(self.cancel_button)
-        
+
         self.confirm_button.clicked.connect(self._on_confirm)
         self.cancel_button.clicked.connect(self.close)
         self.year_input.returnPressed.connect(self._on_confirm)
@@ -124,27 +124,27 @@ class GoToDateWindow(QWidget):
                       f"QLineEdit::placeholder {{ color: {palette['GREY_COLOR']}; }}"
                       f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
         self.year_input.setStyleSheet(style)
-    
+
     def _clear_error(self):
         """Clear error and reset window size when user types."""
         if self.error_label.isVisible():
             self.error_label.hide()
             self.setFixedSize(200, self._initial_height)
-    
+
     def _show_error(self, message: str):
         """Show error and resize window to fit error message."""
         self.error_label.setText(message)
         self.error_label.show()
-        
+
         error_height = 230
         self.setFixedSize(200, error_height)
-        
+
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         self.setStyleSheet("GoToDateWindow { background-color: transparent; }")
 
         self.title_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 18px; font-weight: bold; border: none; background: transparent;")
-        
+
         self.error_label.setStyleSheet(f"color: red; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
 
         self.month_combo.setStyleSheet(combo_stylesheet(
@@ -162,19 +162,19 @@ class GoToDateWindow(QWidget):
             f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
             f"QPushButton:hover {{ background-color: {QColor(palette['ACCENT_COLOR']).lighter(110).name()}; }}"
             f"QPushButton:pressed {{ background-color: {QColor(palette['ACCENT_COLOR']).darker(120).name()}; }}")
-        
+
         cancel_button_style = (
             f"QPushButton {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(120).name()}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
             f"QPushButton:hover {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(110).name()}; }}"
             f"QPushButton:pressed {{ background-color: {QColor(palette['HOLIDAY_COLOR']).darker(140).name()}; }}")
         self.cancel_button.setStyleSheet(cancel_button_style)
-        
+
     def _on_confirm(self):
         year_str = self.year_input.text()
         if not year_str:
             self._show_error("لطفاً سال را وارد کنید")
             return
-        
+
         try:
             year = int(from_persian_digits(year_str))
             if not self.MIN_YEAR <= year <= self.MAX_YEAR:
@@ -182,7 +182,7 @@ class GoToDateWindow(QWidget):
                 max_y = to_persian_digits(str(self.MAX_YEAR))
                 self._show_error(f"سال باید بین {min_y} تا {max_y} باشد")
                 return
-            
+
             month = self.month_combo.currentIndex() + 1
             self.date_selected.emit(year, month)
             self.close()

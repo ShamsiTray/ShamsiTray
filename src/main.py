@@ -28,18 +28,18 @@ def main():
     """Initialize and run the ShamsiTray application."""
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
     logger.info(f"Starting {APP_CONFIG.APP_NAME} v{APP_CONFIG.APP_VERSION}")
-    
+
     try:
         verify_assets()
     except FileNotFoundError as e:
         QMessageBox.critical(None, "Application File Error", str(e))
         sys.exit(1)
-    
+
     if sys.platform == 'win32':
         try:
             myappid = f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}.1"
@@ -47,7 +47,7 @@ def main():
             logger.debug("Windows AppUserModelID set successfully")
         except Exception as e:
             logger.warning(f"Failed to set Windows AppUserModelID: {e}")
-    
+
     try:
         load_fonts()
     except (RuntimeError, FileNotFoundError) as e:
@@ -63,7 +63,7 @@ def main():
     if not QSystemTrayIcon.isSystemTrayAvailable():
         QMessageBox.critical(None, "Error", "No system tray was found on this system.")
         sys.exit(1)
-    
+
     settings = JsonSettings()
     migrate_from_registry(settings)
 
@@ -73,7 +73,7 @@ def main():
 
     if not settings.value(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, False, type=bool):
         logger.info("First run detected: Showing tutorial window")
-        
+
         tutorial = TutorialWindow()
         tray_icon.tutorial_window = tutorial
         tutorial.setPalette(app.palette())
@@ -85,7 +85,7 @@ def main():
             tutorial.move(screen_center - tutorial.rect().center())
         settings.setValue(APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY, True)
         logger.debug("Tutorial window displayed and marked as shown")
-    
+
     logger.info("Application initialization complete, entering main loop")
     sys.exit(app.exec())
 
