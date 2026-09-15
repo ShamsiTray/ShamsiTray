@@ -17,7 +17,8 @@ from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, days_in_jalali_month, days_in_gregorian_month, validate_year_range, persian_month_name, gregorian_month_name, persian_weekday_name
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, accent_button_stylesheet,
-                              combo_stylesheet, line_edit_stylesheet)
+                              combo_stylesheet, error_line_edit_stylesheet,
+                              line_edit_stylesheet)
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
@@ -50,6 +51,43 @@ class DateConverterWindow(BaseFramelessWindow):
 
         self._initialize_date_inputs()
         self._apply_windows_styles()
+        self._year_error = False
+
+    def _current_year_bounds(self):
+        """(min, max) year for the active input mode (jalali vs gregorian)."""
+        if self.conversion_type_combo.currentText() == "شمسی به میلادی":
+            return self.MIN_JALALI_YEAR, self.MAX_JALALI_YEAR
+        return self.MIN_GREGORIAN_YEAR, self.MAX_GREGORIAN_YEAR
+
+    def _year_is_out_of_range(self) -> bool:
+        """Live flag for the red year border: typed year complete but out of bounds."""
+        text = self.year_input.text().strip()
+        if not text:
+            return False
+        try:
+            year = int(from_persian_digits(text))
+        except ValueError:
+            return False
+        lo, hi = self._current_year_bounds()
+        return not lo <= year <= hi
+
+    def _update_year_error_state(self, *_args):
+        """Keep the red 'invalid year' border in sync with the typed text."""
+        self._set_year_error(self._year_is_out_of_range())
+
+    def _set_year_error(self, errored: bool):
+        if getattr(self, "_year_error", False) == errored:
+            return
+        self._year_error = errored
+        self._apply_year_style()
+
+    def _apply_year_style(self):
+        """Style the year input, switching to the shared error look when flagged."""
+        palette = APP_CONFIG.get_current_palette()
+        style = (error_line_edit_stylesheet(palette, center_text=True)
+                 if getattr(self, "_year_error", False)
+                 else line_edit_stylesheet(palette, center_text=True))
+        self.year_input.setStyleSheet(style)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -218,7 +256,7 @@ class DateConverterWindow(BaseFramelessWindow):
         for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
         self.year_input.setFixedSize(100, input_field_height)
-        self.year_input.setStyleSheet(line_edit_stylesheet(palette, center_text=True))
+        self._apply_year_style()
         self.convert_button.setFixedHeight(50)
         self.convert_button.setStyleSheet(accent_button_stylesheet(palette, padding="0px 18px", font_size=16))
         self.middle_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
@@ -238,6 +276,7 @@ class DateConverterWindow(BaseFramelessWindow):
         self.conversion_type_combo.currentIndexChanged.connect(self._on_conversion_type_changed)
         self.month_combo.currentIndexChanged.connect(self._update_day_dropdown)
         self.year_input.textChanged.connect(self._update_day_dropdown)
+        self.year_input.textChanged.connect(self._update_year_error_state)
         self.day_combo.currentIndexChanged.connect(self._clear_results)
         self.month_combo.currentIndexChanged.connect(self._clear_results)
         self.year_input.textChanged.connect(self._clear_results)
@@ -281,6 +320,9 @@ class DateConverterWindow(BaseFramelessWindow):
         day_str_to_set = to_persian_digits(today.day) if is_jalali_to_greg else str(today.day)
         if self.day_combo.findText(day_str_to_set) != -1:
             self.day_combo.setCurrentText(day_str_to_set)
+
+        # The bounds changed with the mode; re-evaluate the year border now.
+        self._update_year_error_state()
 
     def _update_day_dropdown(self, *args):
         """

@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayo
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_helpers import combo_stylesheet
+from utils.ui_helpers import combo_stylesheet, error_line_edit_stylesheet
 
 class GoToDateWindow(QWidget):
     """A small, non-movable window to jump to a specific month and year."""
@@ -29,6 +29,7 @@ class GoToDateWindow(QWidget):
         self._initial_height = 200
         self.setFixedSize(200, self._initial_height)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self._year_error = False
         self._setup_ui()
         self.update_styles()
         
@@ -93,8 +94,36 @@ class GoToDateWindow(QWidget):
         self.cancel_button.clicked.connect(self.close)
         self.year_input.returnPressed.connect(self._on_confirm)
         self.year_input.textChanged.connect(self._clear_error)
-        
+        self.year_input.textChanged.connect(self._update_year_error_state)
+
         main_layout.addLayout(button_layout)
+
+    def _year_is_out_of_range(self) -> bool:
+        text = self.year_input.text().strip()
+        if not text:
+            return False
+        try:
+            year = int(from_persian_digits(text))
+        except ValueError:
+            return False
+        return not self.MIN_YEAR <= year <= self.MAX_YEAR
+
+    def _update_year_error_state(self, *_args):
+        errored = self._year_is_out_of_range()
+        if self._year_error == errored:
+            return
+        self._year_error = errored
+        self._apply_year_style()
+
+    def _apply_year_style(self):
+        palette = APP_CONFIG.get_current_palette()
+        style = (error_line_edit_stylesheet(palette, padding="5px")
+                 if self._year_error
+                 else f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
+                      f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
+                      f"QLineEdit::placeholder {{ color: {palette['GREY_COLOR']}; }}"
+                      f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
+        self.year_input.setStyleSheet(style)
     
     def _clear_error(self):
         """Clear error and reset window size when user types."""
@@ -126,12 +155,8 @@ class GoToDateWindow(QWidget):
             scrollbar_width=8,
             zero_drop_down=False))
         self.month_combo.view().setStyleSheet(f"QListView {{ background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}")
-        
-        self.year_input.setStyleSheet(
-            f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
-            f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
-            f"QLineEdit::placeholder {{ color: {palette['GREY_COLOR']}; }}"
-            f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
+
+        self._apply_year_style()
 
         self.confirm_button.setStyleSheet(
             f"QPushButton {{ background-color: {palette['ACCENT_COLOR']}; color: white; border: none; border-radius: 8px; padding: 8px 18px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
