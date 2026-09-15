@@ -23,10 +23,12 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QProgressDia
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
-from ui.widgets.menu_widgets import EventsActionWidget, MenuActionWidget, ThemeToggleActionWidget, TrayMenu
+from ui.windows.event_manager_window import EventManagerWindow
+from ui.windows.holiday_viewer_window import HolidayViewerWindow
+from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, TrayMenu
 from ui.widgets.checkbox import IconCheckboxActionWidget
-from core.update_checker import DAY_MS, UpdateChecker
-from utils.date_utils import persian_month_name, persian_weekday_name, to_persian_digits
+from core.update_checker import DAY_MS, UpdateChecker, should_notify
+from utils.date_utils import ms_until_midnight, persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import (
     RECURRENCE_NONE,
     clean_expired_keys,
@@ -63,6 +65,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         # an expired auto-delete event was pending.
         self.calendar_widget: Optional[PersianCalendarWidget] = None
         self.converter_window: Optional[DateConverterWindow] = None
+        self.event_manager_window: Optional[EventManagerWindow] = None
+        self.holiday_viewer_window: Optional[HolidayViewerWindow] = None
         self.tutorial_window: Optional["TutorialWindow"] = None
 
         self.user_events = self._load_user_events()
@@ -113,10 +117,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._setup_context_menu()
         if self.calendar_widget:
             self.calendar_widget.update_styles()
-        if self.converter_window and self.converter_window.isVisible():
-            self.converter_window.update_styles()
-        if self.tutorial_window and self.tutorial_window.isVisible():
-            self.tutorial_window.update_styles()
+        for window in (self.converter_window, self.event_manager_window,
+                       self.holiday_viewer_window, self.tutorial_window):
+            if window and window.isVisible():
+                window.update_styles()
     
     def _setup_timers(self):
         self.minute_timer = QTimer(self)
@@ -135,10 +139,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.schedule_next_midnight_check()
 
     def schedule_next_midnight_check(self):
-        now = datetime.datetime.now()
-        tomorrow = now + datetime.timedelta(days=1)
-        midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
-        millis_until_midnight = int((midnight - now).total_seconds() * 1000)
+        millis_until_midnight = ms_until_midnight(datetime.datetime.now())
         buffer_ms = 500 # Small buffer to ensure we pass midnight even if the timer fires slightly early
         if hasattr(self, '_midnight_timer') and self._midnight_timer.isActive():
             self._midnight_timer.stop()
@@ -194,7 +195,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _on_app_update_available(self, version: str, installer_url: str, sha256: str):
         if not self._manual_update_check:
             ignored = self.settings.value(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY, None)
-            if ignored == version:
+            if not should_notify(version, ignored):
                 logger.info(f"Skipping update notification for ignored version {version}.")
                 return
         self._show_update_popup(version, installer_url, sha256)
@@ -358,9 +359,8 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _refresh_event_manager(self):
         """Keep an open event-manager window in sync with store mutations that
         happen elsewhere (calendar context menu, import, expiry cleanup)."""
-        window = getattr(self, "event_manager_window", None)
-        if window is not None and window.isVisible():
-            window.refresh_list()
+        if self.event_manager_window is not None and self.event_manager_window.isVisible():
+            self.event_manager_window.refresh_list()
 
     def update_tray_icon(self, force: bool = False):
         new_date = jdatetime.date.today()
@@ -423,16 +423,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.add_divider()
         self._add_startup_action(menu)
         menu.add_divider()
-        events_action = QWidgetAction(self)
-        events_widget = EventsActionWidget(menu)
-        # The events section's dividers are transparent spacers; the menu paints
-        # their hairlines so they match every other divider in the menu. Without
-        # this registration they are never painted at all (invisible on Windows).
-        menu.register_divider_source(events_widget)
-        events_widget.import_triggered.connect(lambda: self._close_menu_then(self._import_user_events))
-        events_widget.export_triggered.connect(lambda: self._close_menu_then(self._export_user_events))
-        events_action.setDefaultWidget(events_widget)
-        menu.addAction(events_action)
+        self._add_menu_action(menu, "مدیریت رویدادها", lambda: self._close_menu_then(self._open_event_manager))
+        self._add_menu_action(menu, "مشاهده تعطیلات", lambda: self._close_menu_then(self._open_holiday_viewer))
         menu.add_divider()
         self._add_menu_action(menu, "بررسی بروزرسانی", lambda: self._close_menu_then(lambda: self._check_for_updates(manual=True)))
         menu.add_divider()
@@ -576,39 +568,62 @@ class SystemTrayIcon(QSystemTrayIcon):
         else:
             self.converter_window.activateWindow()
 
-    def _export_user_events(self):
-        if not self.user_events:
-            QMessageBox.information(None, APP_CONFIG.APP_NAME, "هیچ رویدادی برای خروجی گرفتن وجود ندارد.")
-            return
-        parent = QApplication.activeWindow()
-        default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
-        path, _ = QFileDialog.getSaveFileName(parent, "خروجی گرفتن از رویدادها", default_name, "JSON (*.json)")
-        if not path:
-            return
-        if export_events_to_file(self.user_events, Path(path)):
-            logger.info(f"Exported {len(self.user_events)} user events to {path}")
-            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "رویدادها با موفقیت خروجی گرفته شدند.")
+    def _open_event_manager(self):
+        if self.event_manager_window is None or not self.event_manager_window.isVisible():
+            self.event_manager_window = EventManagerWindow(self)
+            self.event_manager_window.events_changed.connect(self._on_events_changed_by_manager)
+            self.event_manager_window.show()
+            self.event_manager_window.activateWindow()
         else:
-            QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خروجی گرفتن از رویدادها ناموفق بود.")
+            self.event_manager_window.activateWindow()
 
-    def _import_user_events(self):
-        parent = QApplication.activeWindow()
+    def _open_holiday_viewer(self):
+        if self.holiday_viewer_window is None or not self.holiday_viewer_window.isVisible():
+            self.holiday_viewer_window = HolidayViewerWindow(self.holidays_cache)
+            self.holiday_viewer_window.show()
+            self.holiday_viewer_window.activateWindow()
+        else:
+            self.holiday_viewer_window.activateWindow()
+
+    def _on_events_changed_by_manager(self):
+        """The event manager mutated self.user_events; refresh calendar + tray."""
+        self._clean_expired_events()
+        self.calendar_widget.set_user_events(self.user_events)
+        self.update_tray_icon(force=True)
+
+    def import_events_from_dialog(self, parent=None) -> bool:
+        """Reusable import flow for the event manager window. Returns True when events changed."""
         path, _ = QFileDialog.getOpenFileName(parent, "وارد کردن رویدادها", "", "JSON (*.json)")
         if not path:
-            return
+            return False
         result = import_events_from_file(path)
         if result is None:
             QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خواندن فایل رویدادها ناموفق بود.")
-            return
+            return False
         imported, skipped = result
         merged = dict(self.user_events)
         merged.update(imported)
         self.user_events = merged
         self._clean_expired_events()
         self._save_user_events()
-        self.calendar_widget.set_user_events(self.user_events)
-        self.update_tray_icon(force=True)
         summary = f"{len(imported)} رویداد وارد شد."
         if skipped:
             summary += f"\n{skipped} ورودی نامعتبر نادیده گرفته شد."
         QMessageBox.information(parent, APP_CONFIG.APP_NAME, summary)
+        return True
+
+    def export_events_to_dialog(self, parent=None) -> bool:
+        """Reusable export flow for the event manager window. Returns True on success."""
+        if not self.user_events:
+            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "هیچ رویدادی برای خروجی گرفتن وجود ندارد.")
+            return False
+        default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
+        path, _ = QFileDialog.getSaveFileName(parent, "خروجی گرفتن از رویدادها", default_name, "JSON (*.json)")
+        if not path:
+            return False
+        if export_events_to_file(self.user_events, Path(path)):
+            logger.info(f"Exported {len(self.user_events)} user events to {path}")
+            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "رویدادها با موفقیت خروجی گرفته شدند.")
+            return True
+        QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خروجی گرفتن از رویدادها ناموفق بود.")
+        return False
