@@ -7,12 +7,84 @@ UI elements, such as dynamically drawing pixmaps or building shared stylesheets.
 """
 from typing import Optional
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPixmap
+from PyQt6.QtCore import QPoint, QRectF, Qt
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle, QStyleOptionComboBox,
                              QStylePainter)
 
 from config import APP_CONFIG
+
+def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius: float) -> QPainterPath:
+    """Paint the app's rounded-card background (antialiased fill + 1px border).
+
+    Shared by every frameless surface (base window, dialogs, popups) which used
+    to carry four near-identical paintEvent bodies. Returns the path so callers
+    that clip children to the card (the base window) can reuse it. ``rect`` is
+    the widget rect; the card is inset by 1px on each side so the border is not
+    clipped at the window edge.
+    """
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    path = QPainterPath()
+    path.addRoundedRect(QRectF(rect).adjusted(1, 1, -1, -1), radius, radius)
+    painter.fillPath(path, QColor(fill_color))
+    painter.setPen(QColor(border_color))
+    painter.drawPath(path)
+    return path
+
+
+class FramelessDragMixin:
+    """Shared drag logic for frameless windows and cards.
+
+    Was duplicated in three places (base window, ConfirmDialog,
+    DownloadUpdateDialog) with slightly different clamping; the mixin keeps
+    one implementation. Call the three handlers from the widget's mouse
+    events and return early when they report the event handled. Configure via
+    the ``drag_strip_height`` class attribute: an int restricts dragging to a
+    top strip of that many logical pixels (the calendar/tool windows drag by
+    their title area only), ``None`` makes the whole blank surface draggable
+    (dialogs). ``drag_bottom_keep_visible`` tunes the vertical clamp: ``None``
+    keeps the window fully inside the screen (dialogs), an int N keeps only
+    the top N px of the window reachable above the screen's bottom edge - the
+    tool windows' historical rule, letting most of the window hang below it
+    without ever losing it entirely. A card can never be lost off-screen.
+    """
+
+    drag_strip_height: Optional[int] = None
+    drag_bottom_keep_visible: Optional[int] = None
+    _drag_position: Optional[QPoint] = None
+
+    def handle_drag_press(self, event) -> bool:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return False
+        strip = self.drag_strip_height
+        if strip is not None and event.position().y() >= strip:
+            return False
+        self._drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        event.accept()
+        return True
+
+    def handle_drag_move(self, event) -> bool:
+        if not (event.buttons() & Qt.MouseButton.LeftButton) or self._drag_position is None:
+            return False
+        new_pos = event.globalPosition().toPoint() - self._drag_position
+        screen = QApplication.screenAt(event.globalPosition().toPoint())
+        if screen is not None:
+            geo = screen.availableGeometry()
+            new_pos.setX(max(geo.left(), min(new_pos.x(), geo.right() - self.width())))
+            keep_visible = self.drag_bottom_keep_visible
+            y_max = geo.bottom() - self.height() if keep_visible is None else geo.bottom() - keep_visible
+            new_pos.setY(max(geo.top(), min(new_pos.y(), y_max)))
+            self.move(new_pos)
+        event.accept()
+        return True
+
+    def handle_drag_release(self, event) -> bool:
+        if self._drag_position is None:
+            return False
+        self._drag_position = None
+        event.accept()
+        return True
+
 
 def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
     """
@@ -187,17 +259,22 @@ def scrollbar_stylesheet(palette: dict, *, width: int = 10) -> str:
     return _scrollbar_rules(palette, width=width, selector="QScrollBar", min_handle=24)
 
 
-def line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bool = False) -> str:
+def line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bool = False,
+                         placeholder_color: Optional[str] = None) -> str:
     """Shared single-line input style: accent border on hover/focus, greyed
     out while disabled (e.g. the event date-picker's year field for recurring
     events, which need no year). The disabled state dims the text, the border
-    and the fill so the field clearly reads as "not editable"."""
+    and the fill so the field clearly reads as "not editable". Pass
+    ``placeholder_color`` to pin the placeholder text's color (QSS placeholders
+    otherwise fall back to a platform-chosen grey)."""
     align_rule = " text-align: center;" if center_text else ""
+    placeholder_rule = f" QLineEdit::placeholder {{ color: {placeholder_color}; }}" if placeholder_color else ""
     return (
         f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding};{align_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
         f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
         f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
-        f"QLineEdit:disabled {{ background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; color: {palette['GREY_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; }}")
+        f"QLineEdit:disabled {{ background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; color: {palette['GREY_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; }}"
+        + placeholder_rule)
 
 
 def error_line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bool = False) -> str:
