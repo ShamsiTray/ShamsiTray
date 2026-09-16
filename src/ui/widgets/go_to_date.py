@@ -14,7 +14,7 @@ from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
 from utils.ui_helpers import (DigitsFirstCombo, accent_button_stylesheet,
                               combo_stylesheet, danger_button_stylesheet,
-                              error_line_edit_stylesheet)
+                              error_line_edit_stylesheet, line_edit_stylesheet)
 
 # The «NN - month» items mix digits with Persian text, which is bidi-ambiguous:
 # their visual order depends on the base direction of whatever paints them.
@@ -124,12 +124,10 @@ class GoToDateWindow(QWidget):
 
     def _apply_year_style(self):
         palette = APP_CONFIG.get_current_palette()
-        style = (error_line_edit_stylesheet(palette, padding="5px")
+        style = (error_line_edit_stylesheet(palette, padding="5px", center_text=True)
                  if self._year_error
-                 else f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
-                      f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
-                      f"QLineEdit::placeholder {{ color: {palette['GREY_COLOR']}; }}"
-                      f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
+                 else line_edit_stylesheet(palette, padding="5px", center_text=True,
+                                           placeholder_color=palette['GREY_COLOR']))
         self.year_input.setStyleSheet(style)
 
     def _clear_error(self):

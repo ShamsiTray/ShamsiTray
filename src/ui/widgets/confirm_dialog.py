@@ -24,16 +24,24 @@ Design notes:
   the app's interactive flows.
 - ``WindowModal`` blocks only the parent window, matching the old ``exec()``
   behaviour on the parent without freezing the whole application.
+- The card is draggable from any of its blank surfaces (labels and stretches
+  pass mouse events through to the dialog; buttons consume their own), with
+  the same screen clamping the frameless windows use - a centered dialog is
+  only its *initial* position, not a life sentence.
+- The width argument is a floor, not a law: the dialog grows wide enough that
+  the widest button caption plus its padding always fits, so three-button
+  rows like the update popup («بعداً یادآوری کن") never clip.
 """
 from typing import List, Optional, Tuple
 
-from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPainterPath
-from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QFont, QFontMetrics, QPainter
+from PyQt6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from config import APP_CONFIG
-from utils.ui_helpers import (accent_button_stylesheet, danger_button_stylesheet,
-                              ghost_button_stylesheet)
+from utils.ui_helpers import (FramelessDragMixin, accent_button_stylesheet,
+                              danger_button_stylesheet, ghost_button_stylesheet,
+                              paint_rounded_card)
 
 # Button kinds -> stylesheet builders; ``choose`` labels pick from these.
 _BUTTON_KINDS = {
@@ -43,7 +51,7 @@ _BUTTON_KINDS = {
 }
 
 
-class ConfirmDialog(QDialog):
+class ConfirmDialog(FramelessDragMixin, QDialog):
     """A themed modal ask: icon badge, title, short message, detail box, buttons."""
 
     def __init__(self, parent, title: str, message: str, *, detail: str = "",
@@ -56,7 +64,7 @@ class ConfirmDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.setFixedWidth(width)
+        self._drag_position: Optional[QPoint] = None
         self._danger = danger
         # (text, kind) list driving the button row; defaults to confirm/cancel.
         self._actions = actions if actions else [
@@ -114,6 +122,10 @@ class ConfirmDialog(QDialog):
             button_row.addWidget(button, 1)
             self.buttons.append(button)
         main_layout.addLayout(button_row)
+        # Width floor from the caller, raised to whatever the button row needs:
+        # equal stretch shrinks every button to the same width, so one long
+        # caption («بعداً یادآوری کن") used to clip all three buttons.
+        self.setFixedWidth(max(width, self._minimum_width_for_buttons()))
         self.choice: Optional[str] = None  # set to the clicked button's text
         # Default two-button flow keeps its named accessors (tests/callers).
         if actions is None:
@@ -121,6 +133,45 @@ class ConfirmDialog(QDialog):
             self.cancel_button = self.buttons[1]
 
         self.update_styles()
+
+    def _minimum_width_for_buttons(self) -> int:
+        """Dialog width at which no button caption ever clips.
+
+        Qt measures sizeHint before the QSS font lands, and the shared button
+        styles hard-code 18px side padding, so the requirement is measured
+        here with the same family/weight the stylesheets ask for: caption
+        advance + 2x18px padding + 2px border per button, plus the row's
+        margins and spacing, times a small raster-safety factor.
+        """
+        font = QFont(APP_CONFIG.FONT_FAMILY, 10)
+        font.setBold(True)
+        metrics = QFontMetrics(font)
+        margins = self.layout().contentsMargins()
+        total = margins.left() + margins.right()
+        for i, (text, _kind) in enumerate(self._actions):
+            total += metrics.horizontalAdvance(text) + 38  # 2x18 padding + 2 border
+            if i:
+                total += 10  # button_row spacing
+        return int(total * 1.1)
+
+    # --- dragging ---------------------------------------------------------------
+
+    def mousePressEvent(self, event):
+        # Blank-card press only: buttons (and any future interactive child)
+        # consume their own events, so a click there never starts a drag.
+        if self.handle_drag_press(event):
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.handle_drag_move(event):
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.handle_drag_release(event):
+            return
+        super().mouseReleaseEvent(event)
 
     def _make_choice_handler(self, button: QPushButton, kind: str):
         """Close the dialog, remembering which action was clicked.
@@ -144,13 +195,9 @@ class ConfirmDialog(QDialog):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path = QPainterPath()
-        rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        path.addRoundedRect(rect, 15, 15)
-        painter.fillPath(path, QColor(APP_CONFIG.current_palette['BACKGROUND_COLOR']))
-        painter.setPen(QColor(APP_CONFIG.current_palette['MENU_BORDER_COLOR']))
-        painter.drawPath(path)
+        paint_rounded_card(painter, self.rect(),
+                           APP_CONFIG.current_palette['BACKGROUND_COLOR'],
+                           APP_CONFIG.current_palette['MENU_BORDER_COLOR'], 15)
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
@@ -176,17 +223,26 @@ class ConfirmDialog(QDialog):
             center = parent.geometry().center()
             self.move(center.x() - self.width() // 2,
                       center.y() - self.height() // 2)
+        else:
+            # Tray-only flows (update popup, download results) have no visible
+            # parent; centering over the screen beats Qt's default corner-ish
+            # placement for a parentless dialog.
+            screen = QApplication.primaryScreen()
+            if screen is not None:
+                geo = screen.availableGeometry()
+                self.move(geo.center().x() - self.width() // 2,
+                          geo.center().y() - self.height() // 2)
 
     # --- ready-made flows -------------------------------------------------------
 
     @staticmethod
     def ask(parent, title: str, message: str, *, detail: str = "",
             confirm_text: str = "تایید", cancel_text: str = "انصراف", danger: bool = True,
-            glyph: Optional[str] = None) -> bool:
+            glyph: Optional[str] = None, width: int = 340) -> bool:
         """Build, center over ``parent`` and run the dialog; True on confirm."""
         dialog = ConfirmDialog(parent, title, message, detail=detail,
                                confirm_text=confirm_text, cancel_text=cancel_text,
-                               danger=danger, glyph=glyph)
+                               danger=danger, glyph=glyph, width=width)
         dialog.adjustSize()
         dialog._center_over_parent(parent)
         return dialog.exec() == QDialog.DialogCode.Accepted

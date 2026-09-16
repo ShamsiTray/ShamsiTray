@@ -15,11 +15,12 @@ from typing import Optional
 
 from PyQt6.QtCore import QPoint, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QWidget
 
 from config import APP_CONFIG
+from utils.ui_helpers import FramelessDragMixin
 
-class BaseFramelessWindow(QWidget):
+class BaseFramelessWindow(FramelessDragMixin, QWidget):
     """A base class for frameless windows with custom drag and paint logic.
 
     Subclasses set ``TASKBAR_ICON = True`` to opt into a real top-level window
@@ -28,8 +29,14 @@ class BaseFramelessWindow(QWidget):
     popup and tutorial keep the Tool behaviour (a taskbar button for a quick
     popup would be noise); the converter and the other tool windows show in
     the taskbar like the converter always did.
+
+    Dragging comes from ``FramelessDragMixin``: the top ``DRAGGABLE_AREA_HEIGHT``
+    pixels act as the grab strip, and the window keeps its historical vertical
+    clamp (only the top 50 px must stay above the screen's bottom edge).
     """
     TASKBAR_ICON = False
+    drag_strip_height = APP_CONFIG.DRAGGABLE_AREA_HEIGHT
+    drag_bottom_keep_visible = 50
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -58,29 +65,16 @@ class BaseFramelessWindow(QWidget):
         super().paintEvent(event)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < APP_CONFIG.DRAGGABLE_AREA_HEIGHT:
-            self._drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+        if self.handle_drag_press(event):
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and self._drag_position is not None:
-            new_pos = event.globalPosition().toPoint() - self._drag_position
-            screen = QApplication.screenAt(event.globalPosition().toPoint())
-            if screen is None:
-                return
-            screen_geometry = screen.availableGeometry()
-            min_x, max_x = screen_geometry.left(), screen_geometry.right() - self.width()
-            clamped_x = max(min_x, min(new_pos.x(), max_x))
-            min_y, max_y = screen_geometry.top(), screen_geometry.bottom() - 50 # Prevents dragging windows fully off-screen at the bottom
-            clamped_y = max(min_y, min(new_pos.y(), max_y))
-            self.move(clamped_x, clamped_y)
-            event.accept()
+        if self.handle_drag_move(event):
+            return
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self._drag_position is not None:
-            self._drag_position = None
-            event.accept()
+        if self.handle_drag_release(event):
             return
         super().mouseReleaseEvent(event)
