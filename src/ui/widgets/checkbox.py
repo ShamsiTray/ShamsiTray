@@ -42,9 +42,10 @@ class CustomCheckbox(QWidget):
         # selected) must not toggle: this widget paints its own state instead
         # of using the native QCheckBox disabled handling.
         if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
-            new_state = not self._is_checked
-            self.setChecked(new_state)
-            self.toggled.emit(new_state)
+            # setChecked emits `toggled` exactly once on an actual change;
+            # emitting here as well used to fire every connected handler
+            # twice per click (e.g. the manager rebuilt its list twice).
+            self.setChecked(not self._is_checked)
         super().mousePressEvent(event)
 
     def isChecked(self) -> bool:
