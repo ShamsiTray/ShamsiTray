@@ -203,14 +203,28 @@ def test_manager_add_replace_declined(manager, monkeypatch):
     assert manager.controller.user_events[key]["text"] == "قدیمی"
 
 
-def test_manager_edit_hides_date_selector(manager):
-    today = jdatetime.date.today()
-    key = today.strftime("%Y-%m-%d")
-    manager.controller.add_user_event(today, "برای ویرایش", "none", False)
+def test_manager_edit_shows_prefilled_date_selector(manager):
+    """Editing now allows changing the date: the selector opens prefilled with
+    the event's own anchor (not today) and saving re-anchors the store key."""
+    from utils.event_io import make_event_key
+
+    anchor = jdatetime.date.today().replace(year=1404, month=5, day=10)
+    key = make_event_key(anchor, "none")
+    manager.controller.add_user_event(anchor, "برای ویرایش", "none", False)
     manager._on_edit_requested(key)
-    assert manager.event_input_widget.date_row.isHidden()
+    assert manager.event_input_widget.date_row.isVisible()
     assert manager._editing_key == key
-    manager._hide_event_input_widget()
+    assert manager.event_input_widget.year_input.text() == "۱۴۰۴"
+    assert manager.event_input_widget.month_combo.currentData() == 5
+    assert manager.event_input_widget.day_combo.currentData() == 10
+
+    # Move the event to day 15 and save; the store key must be re-anchored.
+    widget = manager.event_input_widget
+    widget.day_combo.setCurrentIndex(14)
+    manager._on_edit_saved("برای ویرایش", "none", False)
+    new_key = make_event_key(anchor.replace(day=15), "none")
+    assert new_key in manager.controller.user_events
+    assert key not in manager.controller.user_events
 
 
 def test_manager_calendar_add_refreshes_open_manager(tray):

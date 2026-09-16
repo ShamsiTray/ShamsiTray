@@ -15,14 +15,17 @@ calendar popup refresh.
 
 Editing rules:
 - One event per calendar date (same rule as the calendar editor): saving an
-  event whose recurrence anchors it to a date that already holds another
-  event replaces that event (with a confirmation in the add flow).
-- Switching an event's recurrence keeps its month/day anchor. One-time
-  events created from recurring ones are anchored to the recurring event's
-  next occurrence (today or later); monthly events keep their day-of-month.
-- The date of an existing event cannot be changed here (edit it from the
-  calendar); new events added here pick their date from the editor's
-  year/month/day selector.
+  event onto a date that already holds another event replaces that event
+  (with a confirmation).
+- The date of an existing event can be changed from the edit overlay: the
+  date selector opens prefilled with the event's anchor (for recurring
+  events with their next occurrence), and saving re-anchors the store key
+  accordingly. Switching an event's recurrence keeps the month/day anchor
+  shown in the selector; one-time events keep their full date. Monthly
+  events ignore month/year (they repeat every month), yearly ones ignore
+  the year.
+- New events added here pick their date from the editor's year/month/day
+  selector.
 """
 from typing import Dict, Optional
 
@@ -36,7 +39,7 @@ from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.event_input import EventInputWidget, recurrence_label
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
-from utils.date_utils import persian_month_name, to_persian_digits
+from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
                             make_event_key, next_occurrence_jdate, parse_event_key)
@@ -432,16 +435,37 @@ class EventManagerWindow(BaseFramelessWindow):
             return
         self._editing_key = key
         entry = self.user_events[key]
-        self.event_input_widget.set_title("افزودن/ویرایش رویداد")
+        recurrence = entry.get("recurrence", RECURRENCE_NONE)
+        self.event_input_widget.set_title("ویرایش رویداد")
         self.event_input_widget.set_data(
-            entry.get("text", ""), entry.get("recurrence", RECURRENCE_NONE),
+            entry.get("text", ""), recurrence,
             entry.get("remove_after_finish", False))
-        self.event_input_widget.set_date_selector_visible(False)
+        # The date selector is visible in edit mode too, prefilled with the
+        # event's own anchor: one-time events keep their full date; recurring
+        # ones open on their next occurrence (today or later), so switching
+        # them to one-time lands on a sensible, already-visible date.
+        today = jdatetime.date.today()
+        if recurrence == RECURRENCE_NONE:
+            parsed = parse_event_key(key)
+            if parsed is not None:
+                year, month, day = parsed
+                try:
+                    initial = jdatetime.date(year, month, day)
+                except ValueError:
+                    # A stored key that no longer forms a valid date (calendar
+                    # data changed) - clamp instead of crashing the editor.
+                    safe_day = min(day, days_in_jalali_month(year, month))
+                    initial = jdatetime.date(year, month, safe_day)
+            else:
+                initial = today
+        else:
+            initial = next_occurrence_jdate(key) or today
+        self.event_input_widget.set_date_selector_visible(True, initial)
         self._show_event_input_overlay()
 
     def _on_edit_saved(self, text: str, recurrence: str, remove_after_finish: bool):
         editing_key = self._editing_key
-        picked_date = self.event_input_widget.event_date() if editing_key is None else None
+        picked_date = self.event_input_widget.event_date()
         if recurrence != RECURRENCE_NONE:
             remove_after_finish = False
 
@@ -455,13 +479,19 @@ class EventManagerWindow(BaseFramelessWindow):
         else:
             if editing_key not in self.user_events:
                 return
-            # Re-anchor the key when the recurrence changed; recurring events
-            # keep their month/day anchor, one-time events anchor to the next
-            # occurrence (today or later).
-            new_key = editing_key
-            if _event_recurrence(editing_key) != recurrence:
-                anchor_date = next_occurrence_jdate(editing_key) or jdatetime.date.today()
-                new_key = make_event_key(anchor_date, recurrence)
+            # The date selector is visible while editing, so its picked date
+            # (prefilled with the old anchor) decides the new store key -
+            # that is how the event's date gets changed from the manager.
+            # make_event_key drops the dimensions a recurring key ignores
+            # (year for yearly, year+month for monthly), matching the
+            # greyed-out fields in the editor.
+            if picked_date is None:
+                picked_date = next_occurrence_jdate(editing_key) or jdatetime.date.today()
+            new_key = make_event_key(picked_date, recurrence)
+            # Moving onto a date that already holds an event replaces it; ask.
+            if new_key != editing_key and new_key in self.user_events \
+                    and not self._confirm_replace(new_key):
+                return
 
         self._hide_event_input_widget()
         if editing_key is not None and new_key != editing_key:

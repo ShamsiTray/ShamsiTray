@@ -7,14 +7,18 @@ calendar window and the event manager for adding or editing user events.
 It includes a text area, a recurrence selector (one-time / monthly / yearly),
 an auto-delete checkbox for one-time events, plus save/cancel buttons.
 
-An optional date-selector row (year input / month / day combos) can be shown
-for the event manager's «افزودن رویداد» flow, where the event date is not
-inherited from a clicked calendar cell. It is hidden for the calendar and
-for regular edits so those flows behave exactly as before. The year is a
-text input (Persian or Latin digits) rather than a bounded dropdown, so the
-flow keeps working no matter how far ahead the user plans.
+An optional date-selector row (year input / month / day combos) is shown for
+the event manager's «افزودن رویداد» flow (where the event date is not
+inherited from a clicked calendar cell) and for its edit flow, so an event's
+date can be changed from the manager too - prefilled with the event's real
+anchor date. It is hidden for the calendar so that flow behaves exactly as
+before. The year is a text input (Persian or Latin digits) rather than a
+bounded dropdown, so the flow keeps working no matter how far ahead the user
+plans.
 """
 import jdatetime
+from typing import Optional
+
 from PyQt6.QtCore import Qt, pyqtSignal, QRegularExpression
 from PyQt6.QtGui import QColor, QPainter, QRegularExpressionValidator, QTextOption
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
@@ -161,26 +165,31 @@ class EventInputWidget(QWidget):
 
     # --- date selector (optional row) ---
 
-    def set_date_selector_visible(self, visible: bool):
-        """Show the date picker (manager add-flow) and reset it to today."""
+    def set_date_selector_visible(self, visible: bool,
+                                  initial_date: Optional[jdatetime.date] = None):
+        """Show the date picker; reset it to ``initial_date`` (default: today).
+
+        The event manager passes the event's own anchor here so editing an
+        existing event opens with its real date instead of today.
+        """
         if not visible:
             self.date_row.hide()
             # Editing an existing event drops the picker; a stale red hint from
             # a previous add attempt must not survive into that flow.
             self._set_year_error(False)
             return
-        today = jdatetime.date.today()
-        self.year_input.setText(to_persian_digits(today.year))
+        anchor = initial_date if initial_date is not None else jdatetime.date.today()
+        self.year_input.setText(to_persian_digits(anchor.year))
 
         self.month_combo.blockSignals(True)
         self.month_combo.clear()
         for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
             self.month_combo.addItem(name, i)
         center_combo_items(self.month_combo)
-        self.month_combo.setCurrentIndex(today.month - 1)
+        self.month_combo.setCurrentIndex(anchor.month - 1)
         self.month_combo.blockSignals(False)
 
-        self._repopulate_days(today.year, today.month, today.day)
+        self._repopulate_days(anchor.year, anchor.month, anchor.day)
         self.date_row.show()
 
     def _repopulate_days(self, year: int, month: int, keep_day: int):
