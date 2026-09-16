@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from config import APP_CONFIG
 from utils.asset_loader import verify_assets, load_fonts
 from utils.json_settings import JsonSettings
-from utils.logger import setup_logging
+from utils.logger import install_qt_message_handler, setup_logging
 from utils.settings_migration import migrate_from_registry
 from core.app_controller import SystemTrayIcon
 from ui.windows.tutorial_window import TutorialWindow
@@ -31,6 +31,10 @@ def main():
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    # Route Qt's own diagnostics into the rotating log and drop the two
+    # known-benign internals warnings (QSslSocket teardown, QSS font resolve)
+    # that kept popping up as stderr noise after normal operations.
+    install_qt_message_handler()
 
     logger.info(f"Starting {APP_CONFIG.APP_NAME} v{APP_CONFIG.APP_VERSION}")
 
