@@ -66,10 +66,27 @@ class ClickableLabel(QLabel):
         # The cursor check is what keeps a stale timer (menus and overlays
         # interrupt the enter/leave chain) from popping a tooltip for a cell
         # the cursor is no longer over - and from floating above the modal
-        # event editor that opened since.
+        # event editor that opened since. The visibility check stops a timer
+        # that outlived its whole window (calendar hidden mid-hover) from
+        # floating the tooltip over unrelated applications.
+        if not self.isVisible():
+            return
         if self._tooltip_text and not self._context_menu_open and self._cursor_inside():
             global_pos = QCursor.pos()
             CustomTooltip.instance().show_tooltip(self._tooltip_text, global_pos)
+
+    def cancel_pending_tooltip(self):
+        """Stop a pending tooltip timer and dismiss the shared tooltip window.
+
+        Closing the context menu re-arms the cell under the cursor (the menu's
+        mouse grab interrupts the enter/leave chain), so a timer can fire while
+        a modal surface - the event editor overlay or the delete confirmation -
+        is already open, and the tooltip (a top-level ToolTip window) would
+        float ON TOP of it. The host calendar calls this on every cell the
+        moment such a surface opens; it is safe to call redundantly.
+        """
+        self._tooltip_timer.stop()
+        CustomTooltip.instance().hide()
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         if not self.jalali_date or not self.text():
@@ -118,7 +135,8 @@ class ClickableLabel(QLabel):
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
-            # Delay emission slightly to ensure the context menu fully closes before opening any new dialogs or widgets.
+        # Delay emission slightly to ensure the context menu fully closes
+        # before opening any new dialogs or widgets.
         QTimer.singleShot(50, lambda: self.add_event_requested.emit(jdate))
 
     def _trigger_remove_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):

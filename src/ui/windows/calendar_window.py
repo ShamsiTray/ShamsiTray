@@ -24,7 +24,6 @@ from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import EventInputWidget
 from ui.widgets.menu_widgets import MenuActionWidget
-from ui.widgets.tooltip import CustomTooltip
 from .base_window import BaseFramelessWindow
 
 @dataclass
@@ -73,8 +72,20 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.event_input_widget.hide()
             self.editing_date = None
         self.overlay_blocker.hide()
-        CustomTooltip.instance().hide()
+        self._cancel_day_tooltips()
         super().hideEvent(event)
+
+    def _cancel_day_tooltips(self):
+        """Kill every pending cell tooltip (and hide the shared tooltip window).
+
+        Closing a day-cell context menu re-arms the cell under the cursor, and
+        500ms later its tooltip would pop on top of whatever opened in between
+        - reported floating over the event editor (holiday reason over the
+        add-event panel) and over the delete confirmation alike. Called whenever
+        a modal surface opens over the grid and when the window itself hides."""
+        for row in self.day_labels:
+            for cell in row:
+                cell.cancel_pending_tooltip()
 
     def set_user_events(self, user_events: dict):
         self.user_events = user_events
@@ -469,7 +480,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # The tooltip is a top-level window; without an explicit hide it can
         # keep floating above the editor overlay (right-click opens the menu
         # without ever leaving the cell, so nothing else dismisses it).
-        CustomTooltip.instance().hide()
+        # Pending cell timers are cancelled too: the menu close re-armed one,
+        # and it would pop the holiday tooltip over this editor 500ms later.
+        self._cancel_day_tooltips()
         self.editing_date = jdate
         matched = events_for_date(self.user_events, jdate)
         if matched is None:
@@ -510,20 +523,26 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # Both the tooltip (top-level window) and a stale hover flag would
         # outlive the editor otherwise - the former floats above the grid,
         # the latter leaves a cell lit as if the cursor were still on it.
-        CustomTooltip.instance().hide()
+        self._cancel_day_tooltips()
         self.normalize_day_hover()
 
     def _confirm_remove(self, jdate: jdatetime.date) -> bool:
         """Ask before deleting; a context-menu click must never delete silently.
 
         Uses the themed in-app dialog (the stock QMessageBox ignored the app
-        palette and its long-winded wording read like a system error)."""
+        palette and its long-winded wording read like a system error). The
+        dialog is narrower than the default: the calendar is only 305px wide,
+        and the 340px default literally overflowed the window on both sides.
+        Pending day-cell tooltips are cancelled first: the dialog is a separate
+        top-level window and a re-armed timer would otherwise draw the holiday
+        reason over it."""
+        self._cancel_day_tooltips()
         matched = events_for_date(self.user_events, jdate)
         text = str(matched[1].get("text", "")) if matched else ""
         preview = text if len(text) <= 40 else text[:40] + "…"
         return ConfirmDialog.ask(
             self, "حذف رویداد", "این رویداد حذف شود؟", detail=preview,
-            confirm_text="حذف", cancel_text="انصراف", danger=True)
+            confirm_text="حذف", cancel_text="انصراف", danger=True, width=280)
 
     def _remove_event(self, jdate: jdatetime.date):
         if not jdate:
