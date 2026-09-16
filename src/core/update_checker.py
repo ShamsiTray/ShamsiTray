@@ -9,10 +9,20 @@ the setup installer's download URL together with its sha256 digest (GitHub
 provides it, so downloads can be verified without a separate checksum file).
 The holiday check downloads the raw holidays file, validates it, and swaps the
 AppData store atomically. Network failures are logged, never raised.
+
+Reply hygiene: every reply is handled exactly once (the finished handler
+disconnects itself), is never read after the transport was aborted, and is
+released with deleteLater() right after handling. Reading an aborted TLS
+transport is what makes Qt print "QIODevice::read (QSslSocket): device not
+open" - the warning accompanies the failure, it is not a failure itself.
+The installer download additionally streams to disk in readyRead chunks:
+nothing is buffered whole in RAM and the reply is never read after finished
+beyond whatever bytes are still demonstrably available.
 """
 import hashlib
 import json
 import logging
+import os
 from typing import Optional, Tuple
 
 from PyQt6.QtCore import QObject, QUrl, pyqtSignal
@@ -23,10 +33,15 @@ from utils import holiday_io
 
 logger = logging.getLogger(__name__)
 
-NETWORK_TIMEOUT_MS = 15000
+NETWORK_TIMEOUT_MS = 20000  # slow GitHub routes timed out at 15s too often
 INSTALLER_ASSET_PREFIX = "ShamsiTraySetup"
 INSTALLER_ASSET_SUFFIX = ".exe"
 DAY_MS = 24 * 60 * 60 * 1000
+
+# Test hook: point the holiday check at a local server (e.g.
+# `python -m http.server` serving a hand-made holidays.json) without touching
+# config.py. Set before launch; read on every check.
+HOLIDAYS_URL_ENV = "SHAMSITRAY_HOLIDAYS_URL"
 
 
 def is_newer_version(latest: str, current: str) -> bool:
@@ -64,6 +79,7 @@ class UpdateChecker(QObject):
     holidays_updated = pyqtSignal()
     no_updates = pyqtSignal()
     check_failed = pyqtSignal(str)
+    check_concluded = pyqtSignal(bool)  # True when any part of the check failed
     download_progress = pyqtSignal(int, int)  # received bytes, total bytes (-1 if unknown)
     installer_downloaded = pyqtSignal(str)  # local file path
     download_failed = pyqtSignal(str)
@@ -89,8 +105,9 @@ class UpdateChecker(QObject):
         self._app_failed = False
         self._holidays_applied = False
         self._holidays_failed = False
+        holidays_url = os.environ.get(HOLIDAYS_URL_ENV, "").strip() or APP_CONFIG.HOLIDAYS_UPDATE_URL
         self._get(APP_CONFIG.APP_RELEASES_API_URL, self._on_app_reply)
-        self._get(APP_CONFIG.HOLIDAYS_UPDATE_URL, self._on_holidays_reply)
+        self._get(holidays_url, self._on_holidays_reply)
 
     def cancel_download(self):
         if self._download_reply is not None:
@@ -105,8 +122,23 @@ class UpdateChecker(QObject):
             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy)
         request.setRawHeader(b"User-Agent", f"{APP_CONFIG.APP_NAME}/{APP_CONFIG.APP_VERSION}".encode())
         reply = self._manager.get(request)
-        reply.finished.connect(lambda: handler(reply))
         self._pending += 1
+
+        def on_finished():
+            # One-shot by construction: a reply's finished() must be handled
+            # exactly once, then the reply is released. The old lambda stayed
+            # connected forever; combined with timeout aborts this produced
+            # re-entries that read an already-closed device ("device not open").
+            try:
+                reply.finished.disconnect(on_finished)
+            except TypeError:
+                pass
+            try:
+                handler(reply)
+            finally:
+                reply.deleteLater()
+
+        reply.finished.connect(on_finished)
 
     @staticmethod
     def _error_text(reply: QNetworkReply) -> str:
@@ -128,12 +160,19 @@ class UpdateChecker(QObject):
                 self.check_failed.emit("network")
             else:
                 self.no_updates.emit()
+        # Definitive end of this round, success or not: lets the controller
+        # stamp "last checked" only for real answers and retry the rest.
+        self.check_concluded.emit(self._app_failed or self._holidays_failed)
 
     def _on_app_reply(self, reply: QNetworkReply):
         try:
             if reply.error() != QNetworkReply.NetworkError.NoError:
                 raise RuntimeError(self._error_text(reply))
-            payload = json.loads(bytes(reply.readAll()).decode('utf-8'))
+            # Aborted replies (timeout / remote close) must never be read:
+            # reading a closed TLS transport is exactly what makes Qt print
+            # "QIODevice::read (QSslSocket): device not open".
+            payload_text = bytes(reply.readAll()).decode('utf-8') if reply.isOpen() else ''
+            payload = json.loads(payload_text)
             tag = str(payload.get('tag_name', '')).strip()
             if not is_newer_version(tag, APP_CONFIG.APP_VERSION):
                 logger.info(f"App is up to date (latest release: {tag or 'unknown'}).")
@@ -164,7 +203,7 @@ class UpdateChecker(QObject):
         try:
             if reply.error() != QNetworkReply.NetworkError.NoError:
                 raise RuntimeError(self._error_text(reply))
-            payload = bytes(reply.readAll())
+            payload = bytes(reply.readAll()) if reply.isOpen() else b""
             remote_version = holiday_io.read_version_from_payload(payload)
             if remote_version <= self._current_data_version:
                 logger.info(f"Holiday data is up to date (remote version {remote_version}).")
@@ -183,36 +222,98 @@ class UpdateChecker(QObject):
     # --- installer download ---
 
     def download_installer(self, url: str, destination, expected_sha256: str = ''):
-        """Stream the installer to `destination`; emits download_progress, then
-        installer_downloaded(path) after sha256 verification, or download_failed."""
+        """Stream the installer to `destination` chunk by chunk; emits
+        download_progress, then installer_downloaded(path) after sha256
+        verification, or download_failed.
+
+        Data is consumed in readyRead as it arrives and written straight to a
+        `<name>.part` file, which is renamed over `destination` only after the
+        digest verifies. The old implementation buffered the entire installer
+        inside the reply and read it once at finished: a 60 MB download held
+        60 MB of RAM, and the finished-time readAll() could land after the
+        transport had already closed - the exact "read a closed device"
+        pattern behind Qt's "QIODevice::read (QSslSocket): device not open"
+        noise when the remote (or a middlebox) drops the connection right at
+        the end of the transfer. A crash mid-download leaves at worst a
+        harmless stray .part file in Downloads.
+        """
         request = QNetworkRequest(QUrl(url))
         request.setTransferTimeout(0)
         request.setAttribute(
             QNetworkRequest.Attribute.RedirectPolicyAttribute,
             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy)
         request.setRawHeader(b"User-Agent", f"{APP_CONFIG.APP_NAME}/{APP_CONFIG.APP_VERSION}".encode())
+        destination_path = os.fspath(destination)
+        part_path = destination_path + ".part"
+        try:
+            file_handle = open(part_path, "wb")
+        except OSError as e:
+            logger.error(f"Installer download failed: cannot write {part_path}: {e}")
+            self.download_failed.emit(str(e))
+            return
+
         self._download_reply = self._manager.get(request)
         reply = self._download_reply
         reply.downloadProgress.connect(self.download_progress.emit)
         hasher = hashlib.sha256()
 
-        def on_finished():
+        def on_ready_read():
+            # Consume whatever arrived now; readAll() is only ever called on
+            # the open transport inside this handler.
+            data = bytes(reply.readAll())
+            if data:
+                hasher.update(data)
+                file_handle.write(data)
+
+        def release_reply():
             self._download_reply = None
             try:
-                if reply.error() == QNetworkReply.NetworkError.OperationCanceledError:
-                    self.download_failed.emit("canceled")
-                    return
-                if reply.error() != QNetworkReply.NetworkError.NoError:
-                    raise RuntimeError(self._error_text(reply))
-                data = bytes(reply.readAll())
-                hasher.update(data)
+                reply.finished.disconnect(on_finished)
+            except TypeError:
+                pass
+            try:
+                reply.readyRead.disconnect(on_ready_read)
+            except TypeError:
+                pass
+            reply.deleteLater()
+
+        def on_finished():
+            # One-shot by construction: disconnect both handlers, then decide.
+            # No readAll() "just in case" here: the transport may already be
+            # closed by the time finished runs, and only bytesAvailable() data
+            # (a final readyRead racing finished) is still legitimately there.
+            nonlocal file_handle
+            release_reply()
+            try:
+                error = reply.error()
+                if error != QNetworkReply.NetworkError.NoError:
+                    raise RuntimeError(
+                        "canceled" if error == QNetworkReply.NetworkError.OperationCanceledError
+                        else self._error_text(reply))
+                if reply.bytesAvailable():
+                    tail = bytes(reply.readAll())
+                    hasher.update(tail)
+                    file_handle.write(tail)
+                file_handle.close()
+                file_handle = None
                 if expected_sha256 and hasher.hexdigest() != expected_sha256.lower():
                     raise RuntimeError("Downloaded installer failed the sha256 check; it was not saved.")
-                with open(destination, 'wb') as f:
-                    f.write(data)
-                self.installer_downloaded.emit(str(destination))
+                os.replace(part_path, destination_path)
+                logger.info(f"Installer saved to {destination_path} (sha256 verified).")
+                self.installer_downloaded.emit(destination_path)
             except Exception as e:
+                if file_handle is not None:
+                    try:
+                        file_handle.close()
+                    except OSError:
+                        pass
+                    file_handle = None
+                try:
+                    os.remove(part_path)
+                except OSError:
+                    pass
                 logger.error(f"Installer download failed: {e}")
                 self.download_failed.emit(str(e))
 
+        reply.readyRead.connect(on_ready_read)
         reply.finished.connect(on_finished)

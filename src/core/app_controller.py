@@ -10,15 +10,16 @@ controller for the application. It manages:
 - Creating and managing the lifecycle of the main application windows (calendar, converter).
 - Handling system events like time changes and application activation.
 """
+import os
 import sys
 import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
 import jdatetime
-from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt
+from PyQt6.QtCore import QCoreApplication, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QProgressDialog, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from ui.windows.calendar_window import PersianCalendarWidget
@@ -28,6 +29,7 @@ from ui.windows.holiday_viewer_window import HolidayViewerWindow
 from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, TrayMenu
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from ui.widgets.confirm_dialog import ConfirmDialog
+from ui.widgets.download_dialog import DownloadUpdateDialog
 from core.update_checker import DAY_MS, UpdateChecker, should_notify
 from utils.date_utils import ms_until_midnight, persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import (
@@ -52,6 +54,16 @@ if sys.platform == 'win32':
     import winreg
 
 logger = setup_logging(__name__)
+
+# A failed AUTO check no longer black-holes for 24h: it is retried on this
+# cadence, at most this many times per session (reset on any clean check).
+AUTO_CHECK_RETRY_DELAY_MS = 10 * 60 * 1000
+AUTO_CHECK_MAX_RETRIES = 3
+
+# Test hook for the holiday updater: pretend the local store has this data
+# version instead of the real one. Set to 0 to force the updater to see the
+# remote file (currently version 140500) as newer and apply it.
+DEBUG_DATA_VERSION_ENV = "SHAMSITRAY_DEBUG_DATA_VERSION"
 
 class SystemTrayIcon(QSystemTrayIcon):
     """The main application controller, managing the tray icon, windows, and settings."""
@@ -165,12 +177,22 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _setup_update_checker(self):
         self._manual_update_check = False
         self._update_dialog_open = False
-        self._download_dialog: Optional[QProgressDialog] = None
-        self.update_checker = UpdateChecker(current_data_version=read_version(APP_CONFIG.HOLIDAYS_STORE_PATH), parent=self)
+        self._download_dialog = None
+        self._auto_check_retries = 0
+        data_version = read_version(APP_CONFIG.HOLIDAYS_STORE_PATH)
+        debug_version = os.environ.get(DEBUG_DATA_VERSION_ENV, "").strip()
+        if debug_version:
+            try:
+                data_version = int(debug_version)
+                logger.info(f"Debug holiday data version override active: {data_version}")
+            except ValueError:
+                logger.warning(f"Ignoring invalid {DEBUG_DATA_VERSION_ENV}={debug_version!r}.")
+        self.update_checker = UpdateChecker(current_data_version=data_version, parent=self)
         self.update_checker.app_update_available.connect(self._on_app_update_available)
         self.update_checker.holidays_updated.connect(self._on_holidays_updated)
         self.update_checker.no_updates.connect(self._on_no_updates)
         self.update_checker.check_failed.connect(self._on_check_failed)
+        self.update_checker.check_concluded.connect(self._on_check_concluded)
         self.update_checker.download_progress.connect(self._on_download_progress)
         self.update_checker.installer_downloaded.connect(self._on_installer_downloaded)
         self.update_checker.download_failed.connect(self._on_download_failed)
@@ -187,11 +209,26 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._check_for_updates(manual=False)
 
     def _check_for_updates(self, manual: bool):
+        # No "last checked" stamp here: writing it up front is how a failed
+        # check used to count as done and silence auto-checks for a day. The
+        # stamp moves to _on_check_concluded, where a real answer arrived.
         self._manual_update_check = manual
-        now_ms = int(datetime.datetime.now().timestamp() * 1000)
-        self.settings.setValue(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, now_ms)
         logger.info(f"Checking for updates ({'manual' if manual else 'automatic'}).")
         self.update_checker.check()
+
+    def _on_check_concluded(self, failed: bool):
+        """End of one check round: stamp success, schedule retries on failure."""
+        if not failed:
+            self._auto_check_retries = 0
+            now_ms = int(datetime.datetime.now().timestamp() * 1000)
+            self.settings.setValue(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, now_ms)
+            return
+        if not self._manual_update_check and self._auto_check_retries < AUTO_CHECK_MAX_RETRIES:
+            self._auto_check_retries += 1
+            logger.warning(
+                f"Automatic update check failed; retry "
+                f"{self._auto_check_retries}/{AUTO_CHECK_MAX_RETRIES} in {AUTO_CHECK_RETRY_DELAY_MS // 60000} minutes.")
+            QTimer.singleShot(AUTO_CHECK_RETRY_DELAY_MS, self._auto_check_updates)
 
     def _on_app_update_available(self, version: str, installer_url: str, sha256: str):
         if not self._manual_update_check:
@@ -227,28 +264,24 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _download_update(self, version: str, installer_url: str, sha256: str):
         downloads_dir = Path.home() / 'Downloads'
         destination = (downloads_dir if downloads_dir.exists() else APP_CONFIG.USER_DATA_DIR) / f"ShamsiTraySetup-{version}.exe"
-        dialog = QProgressDialog("در حال دانلود بروزرسانی...", "لغو", 0, 0, QApplication.activeWindow())
-        dialog.setWindowTitle("دانلود بروزرسانی")
-        dialog.setMinimumDuration(0)
-        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        # Themed progress card matching the rest of the update flow; the
+        # stock QProgressDialog ignored the palette entirely.
+        dialog = DownloadUpdateDialog(version, QApplication.activeWindow())
         dialog.canceled.connect(self.update_checker.cancel_download)
         self._download_dialog = dialog
+        dialog.show()
         logger.info(f"Downloading update {version} to {destination}")
         self.update_checker.download_installer(installer_url, destination, sha256)
 
     def _on_download_progress(self, received: int, total: int):
-        dialog = self._download_dialog
-        if dialog is None:
-            return
-        if total > 0:
-            if dialog.maximum() != total:
-                dialog.setRange(0, total)
-            dialog.setValue(received)
+        if self._download_dialog is not None:
+            self._download_dialog.set_progress(received, total)
 
     def _close_download_dialog(self):
         if self._download_dialog is not None:
-            self._download_dialog.reset()
-            self._download_dialog = None
+            dialog = self._download_dialog
+            self._download_dialog = None  # clear first: close() re-enters reject paths
+            dialog.close()
 
     def _on_installer_downloaded(self, path: str):
         self._close_download_dialog()
@@ -259,6 +292,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE, danger=False,
             confirm_text="اجرا", cancel_text="بعداً")
         if run_requested:
+            logger.info(f"Launching installer {path}")
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
         else:
             logger.info(f"Installer saved to {path}")
