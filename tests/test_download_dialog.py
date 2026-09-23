@@ -64,6 +64,19 @@ def test_cancel_button_emits_canceled_once(qtbot):
     assert rejected == [1]
 
 
+def test_dismiss_does_not_emit_canceled(qtbot):
+    """UPD-4: the controller's post-success/failure close must not re-fire
+    `canceled` - Qt's closeEvent -> reject() chain used to emit it every
+    time, misreporting successful downloads as user cancellations."""
+    dialog = DownloadUpdateDialog("1.0.0")
+    fired = []
+    dialog.canceled.connect(lambda: fired.append(1))
+    dialog.show()
+    dialog.dismiss()
+    assert fired == []
+    assert not dialog.isVisible()
+
+
 def test_reject_path_emits_canceled(qtbot):
     """Esc / programmatic dismiss must abort the download too."""
     dialog = DownloadUpdateDialog("1.4.0")
@@ -85,6 +98,32 @@ def test_update_styles_and_paint(qtbot):
     assert dialog.cancel_button.styleSheet()
     pixmap = dialog.grab()  # exercises paintEvent's rounded card
     assert not pixmap.isNull()
+
+
+def test_message_label_uses_readable_text_color(qtbot):
+    """The download card's one explanatory sentence must read as normal text,
+    not the de-emphasised grey reserved for secondary/minor metadata."""
+    palette = APP_CONFIG.get_current_palette()
+    dialog = DownloadUpdateDialog("1.4.0")
+    qtbot.addWidget(dialog)
+    assert palette["TEXT_COLOR"] in dialog.message_label.styleSheet()
+    assert palette["GREY_COLOR"] not in dialog.message_label.styleSheet()
+
+
+def test_message_label_height_fits_its_wrapped_text(qtbot):
+    """Spacing regression: a one-line message must sit compactly under the
+    title — the word-wrapped label's inflated sizeHint used to leave a band
+    of dead air around it (title 25px + message 21px need rendered as
+    28px + 29px inside a taller card)."""
+    dialog = DownloadUpdateDialog("1.4.0")
+    qtbot.addWidget(dialog)
+    dialog.adjustSize()
+    dialog.show()
+    margins = dialog.layout().contentsMargins()
+    inner_width = dialog.width() - margins.left() - margins.right()
+    needed = dialog.message_label.heightForWidth(inner_width)
+    assert needed > 0
+    assert dialog.message_label.height() == needed
 
 
 def test_drag_from_blank_surface_moves_dialog(qtbot):

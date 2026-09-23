@@ -308,3 +308,58 @@ def test_combo_stylesheet_dropdown_variants(palette):
     assert "text-align: center" in custom
     # The popup scrollbar shares the round-pill rules with its own selector.
     assert "QAbstractItemView::verticalScrollBar" in custom
+
+
+# --- mouse-event routing lives on the mixin itself (REF-7) -------------------------
+
+
+def test_mixin_mouse_press_starts_drag_without_per_host_wrappers(qtbot):
+    """REF-7: BaseFramelessWindow / ConfirmDialog / DownloadUpdateDialog used
+    to repeat identical mousePressEvent/mouseMoveEvent/mouseReleaseEvent
+    wrappers around the handle_drag_* helpers; the routing is now part of the
+    mixin, so a plain host gets full drag behaviour with zero extra code."""
+    from tests.qt_mousing import press as raw_press
+    surface = _surface(qtbot)
+    event = raw_press(surface, local=(10, 10))
+    surface.mousePressEvent(event)  # inherited from FramelessDragMixin
+    assert surface._drag_position is not None
+    assert event.isAccepted()
+
+
+def test_mixin_mouse_release_ends_drag_without_per_host_wrappers(qtbot):
+    from tests.qt_mousing import press as raw_press, release
+    surface = _surface(qtbot)
+    surface.mousePressEvent(raw_press(surface, local=(10, 10)))
+    surface.mouseReleaseEvent(release(surface))
+    assert surface._drag_position is None
+
+
+# --- centralized stylesheets (REF-4) -------------------------------------------------
+
+
+def test_global_scrollbar_stylesheet_uses_shared_rules(palette):
+    from utils.ui_helpers import global_scrollbar_stylesheet
+    qss = global_scrollbar_stylesheet(palette)
+    assert "QScrollBar:vertical" in qss
+    assert palette['SCROLLBAR_GROOVE_COLOR'] in qss
+    assert palette['SCROLLBAR_HANDLE_COLOR'] in qss
+    assert palette['ACCENT_COLOR'] in qss  # hover reaction
+
+
+def test_controller_global_stylesheet_delegates_to_ui_helpers(palette):
+    """The controller must not re-inline scrollbar rules (REF-4)."""
+    from core.app_controller import SystemTrayIcon
+    from utils.ui_helpers import global_scrollbar_stylesheet
+    from config import APP_CONFIG
+    assert SystemTrayIcon._build_global_stylesheet() == \
+        global_scrollbar_stylesheet(APP_CONFIG.get_current_palette())
+
+
+def test_nav_button_stylesheet_variants(palette):
+    from utils.ui_helpers import nav_button_stylesheet
+    ghost = nav_button_stylesheet(palette, "transparent")
+    assert "background-color: transparent" in ghost
+    assert palette['HOVER_BG'] in ghost  # hover fill for the arrows
+    today = nav_button_stylesheet(palette, palette['ACCENT_COLOR'], is_today_button=True)
+    assert palette['ACCENT_COLOR'] in today
+    assert ":pressed" in today  # accent pill lightens/darkens

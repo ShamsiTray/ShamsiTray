@@ -13,9 +13,8 @@ from ui.windows.base_window import BaseFramelessWindow
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.tooltip import CustomTooltip
-from ui.windows.event_manager_window import (EventManagerWindow,
-                                             _event_date_label,
-                                             _event_recurrence)
+from ui.windows.event_manager_window import EventManagerWindow, _event_date_label
+from utils.event_io import recurrence_of_key as _event_recurrence
 from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.event_input import EventInputWidget
 from ui.windows.holiday_viewer_window import HolidayViewerWindow
@@ -50,6 +49,22 @@ def test_manager_lists_all_events(manager):
     manager.refresh_list()
     rows = manager.rows_layout.count() - 1  # trailing stretch
     assert rows == 3
+
+
+def test_manager_count_label_reflects_active_filter(manager):
+    """EM-1: while a filter narrows the list, the counter shows "X of Y"."""
+    manager.controller.user_events["1405-01-01"] = {"text": "نخست", "recurrence": "none", "remove_after_finish": False}
+    manager.controller.user_events["1405-02-01"] = {"text": "دوم", "recurrence": "none", "remove_after_finish": False}
+    manager.refresh_list()
+    # Unfiltered: the plain total.
+    assert manager.count_label.text() == to_persian_digits(2) + " رویداد"
+
+    manager.search_input.setText("نخست")
+    assert manager.rows_layout.count() - 1 == 1
+    assert manager.count_label.text() == f"{to_persian_digits(1)} از {to_persian_digits(2)} رویداد"
+
+    manager.search_input.setText("")
+    assert manager.count_label.text() == to_persian_digits(2) + " رویداد"
 
 
 def test_manager_search_filters_by_text(manager):
@@ -518,6 +533,56 @@ def test_confirm_dialog_shows_detail_box_and_centers_content():
     assert plain.detail_label.isVisibleTo(plain) is False
 
 
+def test_confirm_dialog_message_uses_readable_text_color():
+    """The main reason/message line must read as normal text — the muted grey
+    is reserved for secondary metadata and disabled rows, not for the one
+    sentence that explains why the dialog opened."""
+    palette = APP_CONFIG.get_current_palette()
+    dialog = ConfirmDialog(None, "برنامه در حال اجراست",
+                           "یک نسخه دیگر از برنامه در حال اجرا است.")
+    assert palette["TEXT_COLOR"] in dialog.message_label.styleSheet()
+    assert palette["GREY_COLOR"] not in dialog.message_label.styleSheet()
+    # The title keeps its own (already readable) style.
+    assert palette["TEXT_COLOR"] in dialog.title_label.styleSheet()
+
+
+def test_confirm_dialog_short_message_leaves_no_dead_space(qtbot):
+    """Spacing regression: the word-wrapped message label's sizeHint badly
+    over-estimated short one-line messages, and the surplus height was
+    smeared across the title and message rows — a visible empty band
+    between the header and the reason text. The label is pinned to its real
+    heightForWidth need, so both rows sit at their exact height."""
+    dialog = ConfirmDialog(None, "برنامه در حال اجراست",
+                           "یک نسخه دیگر از برنامه در حال اجرا است.")
+    qtbot.addWidget(dialog)
+    dialog.adjustSize()
+    dialog.show()
+    margins = dialog.layout().contentsMargins()
+    inner_width = dialog.width() - margins.left() - margins.right()
+    needed = dialog.message_label.heightForWidth(inner_width)
+    assert needed > 0
+    # The message occupies exactly its wrapped height (no dead band around it)…
+    assert dialog.message_label.height() == needed
+    # …and the title gets exactly its own one-line height (no surplus to smear).
+    assert dialog.title_label.height() == dialog.title_label.sizeHint().height()
+
+
+def test_confirm_dialog_wrapped_message_still_fits(qtbot):
+    """A message that wraps to several lines keeps fitting: the pin uses the
+    same heightForWidth measurement the layout grants, so nothing clips."""
+    dialog = ConfirmDialog(None, "عنوان",
+                           "این پیام نسبتاً طولانی برای آزمودن شکستن خط در عرض کارت محاوره "
+                           "عمداً نوشته شده است تا رفتار چیدمان در حالت دو یا سه خطی بررسی شود")
+    qtbot.addWidget(dialog)
+    dialog.adjustSize()
+    dialog.show()
+    margins = dialog.layout().contentsMargins()
+    inner_width = dialog.width() - margins.left() - margins.right()
+    needed = dialog.message_label.heightForWidth(inner_width)
+    assert dialog.message_label.height() == needed
+    assert dialog.height() >= dialog.layout().minimumSize().height()
+
+
 # --- event year cap and greyed-out year field ---
 
 def test_event_year_input_rejects_years_beyond_calendar_range(manager):
@@ -907,3 +972,36 @@ def test_day_cell_tooltip_skipped_when_cursor_is_elsewhere(calendar):
     cell._show_custom_tooltip()
     assert CustomTooltip.instance().isVisible()
     CustomTooltip.instance().hide()
+
+
+# --- failure notices style their OK button as an error (#5) --------------------------
+
+
+def test_notify_danger_styles_ok_button_as_danger(qtbot, monkeypatch):
+    """(#5) A failed-operation notice must not look like a success: with
+    danger=True the single OK button uses the destructive (holiday-red)
+    style instead of the accent blue."""
+    captured = {}
+
+    def fake_choose(parent, title, message, *, actions, danger, glyph, width):
+        captured['actions'] = actions
+        captured['danger'] = danger
+        return None
+
+    monkeypatch.setattr(ConfirmDialog, "choose", staticmethod(fake_choose))
+    ConfirmDialog.notify(None, "ذخیره رویدادها", "ذخیره رویدادها ناموفق بود.", danger=True)
+    assert captured['actions'] == [("باشه", "danger")]
+    ConfirmDialog.notify(None, "خروجی گرفتن از رویدادها", "موفق بود.")  # default danger=False
+    assert captured['actions'] == [("باشه", "accent")]
+
+
+def test_danger_notify_button_gets_danger_stylesheet(qtbot):
+    """End-to-end visual check: the built dialog's OK button really carries
+    the danger stylesheet (holiday red), not the accent one."""
+    from config import APP_CONFIG
+    from utils.ui_helpers import danger_button_stylesheet
+
+    dialog = ConfirmDialog(None, "ذخیره رویدادها", "ناموفق", danger=True,
+                           actions=[("باشه", "danger")])
+    qtbot.addWidget(dialog)
+    assert dialog.buttons[0].styleSheet() == danger_button_stylesheet(APP_CONFIG.get_current_palette())
