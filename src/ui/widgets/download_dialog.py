@@ -21,10 +21,8 @@ Design notes:
   the close path go through ``reject`` so they cancel the download too.
 - Draggable from blank surfaces, like every other frameless card.
 """
-from typing import Optional
-
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QPainter
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QIcon, QPainter
 from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QProgressBar,
                              QPushButton, QVBoxLayout)
 
@@ -54,8 +52,11 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         # open (tray flow), where WindowModal would guard nothing.
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        # Alt-Tab / preview title names the action, not the app.
+        self.setWindowTitle("دانلود بروزرسانی")
+        if APP_CONFIG.ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
         self.setFixedWidth(340)
-        self._drag_position: Optional[QPoint] = None
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 16)
@@ -92,6 +93,25 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         main_layout.addLayout(button_row)
 
         self.update_styles()
+        self._pin_message_height()
+
+    def _pin_message_height(self):
+        """Fit the message label exactly around its wrapped text.
+
+        Same word-wrapped-label sizeHint inflation as in ConfirmDialog: the short
+        «نسخه … در حال دریافت است…» line reported double its real height, and the
+        surplus showed up as dead air around the message. Pinning to
+        ``heightForWidth`` at the card's real inner width keeps the card compact
+        without changing its design.
+        """
+        if not self.message_label.text():
+            return
+        self.message_label.ensurePolished()
+        margins = self.layout().contentsMargins()
+        inner_width = self.width() - margins.left() - margins.right()
+        height = self.message_label.heightForWidth(inner_width)
+        if height > 0:
+            self.message_label.setFixedHeight(height)
 
     # --- progress ---------------------------------------------------------------
 
@@ -121,6 +141,16 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         self.canceled.emit()
         super().reject()
 
+    def dismiss(self):
+        """Close WITHOUT emitting ``canceled``.
+
+        The controller closes the dialog programmatically after the download
+        succeeded or failed; Qt's default closeEvent -> reject() chain would
+        route through the overridden reject() and re-emit ``canceled`` for a
+        transfer the user never cancelled. Bypasses the override directly.
+        """
+        QDialog.reject(self)
+
     # --- look -------------------------------------------------------------------
 
     def paintEvent(self, event):
@@ -134,8 +164,10 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         self.title_label.setStyleSheet(
             f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"font-size: 16px; font-weight: bold; background: transparent; border: none;")
+        # The message is the dialog's one explanatory sentence - readable text
+        # color, not de-emphasised grey (matches ConfirmDialog's hierarchy).
         self.message_label.setStyleSheet(
-            f"color: {palette['GREY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
+            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"font-size: 13px; background: transparent; border: none;")
         self.progress.setStyleSheet(
             f"QProgressBar {{ background-color: {palette['INPUT_BG_COLOR']};"
@@ -147,18 +179,5 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         self.cancel_button.setStyleSheet(danger_button_stylesheet(palette))
 
     # --- dragging ---------------------------------------------------------------
-
-    def mousePressEvent(self, event):
-        if self.handle_drag_press(event):
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.handle_drag_move(event):
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if self.handle_drag_release(event):
-            return
-        super().mouseReleaseEvent(event)
+    # Dragging comes from FramelessDragMixin's own mouse-event routing; blank-card
+    # presses drag the card, the cancel button consumes its events.
