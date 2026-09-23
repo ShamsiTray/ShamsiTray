@@ -86,13 +86,22 @@ class JsonSettings:
             logger.error(f"Settings file has unexpected root type ({type(data).__name__}); starting empty.")
 
     def _flush(self):
+        tmp = self._path.with_suffix(self._path.suffix + ".tmp")
         try:
             if not APP_CONFIG.ensure_user_data_dirs():
                 logger.error("User data directory unavailable; settings not persisted.")
                 return
-            tmp = self._path.with_suffix(self._path.suffix + ".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, ensure_ascii=False, indent=2)
             os.replace(tmp, self._path)
-        except OSError as e:
+        except (OSError, TypeError) as e:
+            # OSError: disk/permission trouble. TypeError: a value that cannot
+            # be serialized (the app controls its values, so this is a net).
             logger.error(f"Failed to persist settings (in-memory state kept): {e}")
+        finally:
+            # An interrupted write must never leave a stale .tmp beside the store.
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
