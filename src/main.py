@@ -10,9 +10,9 @@ tray icon controller.
 import ctypes
 import sys
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QLockFile, Qt
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
 from config import APP_CONFIG
 from utils.asset_loader import verify_assets, load_fonts
@@ -20,6 +20,7 @@ from utils.json_settings import JsonSettings
 from utils.logger import install_qt_message_handler, setup_logging
 from utils.settings_migration import migrate_from_registry
 from core.app_controller import SystemTrayIcon
+from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.windows.tutorial_window import TutorialWindow
 
 logger = setup_logging(__name__)
@@ -41,12 +42,20 @@ def main():
     try:
         verify_assets()
     except FileNotFoundError as e:
-        QMessageBox.critical(None, "Application File Error", str(e))
+        # Themed dialogs everywhere: the stock QMessageBox ignored the app
+        # palette and its system styling clashed with every other surface.
+        ConfirmDialog.notify(None, "خطای فایل‌های برنامه", str(e),
+                             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         sys.exit(1)
 
     if sys.platform == 'win32':
         try:
-            myappid = f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}.1"
+            # Stable AppUserModelID: Microsoft's AppUserModelID guidance says the
+            # version segment is only for apps that must coexist as separate
+            # taskbar entities, and should be omitted otherwise so an upgrade
+            # keeps the same identity (pinning, jump lists). A version-qualified
+            # ID here reset taskbar identity on every release.
+            myappid = f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}"
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             logger.debug("Windows AppUserModelID set successfully")
         except Exception as e:
@@ -55,7 +64,8 @@ def main():
     try:
         load_fonts()
     except (RuntimeError, FileNotFoundError) as e:
-        QMessageBox.critical(None, "Font Error", str(e))
+        ConfirmDialog.notify(None, "خطای فونت", str(e),
+                             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         sys.exit(1)
 
     # Give every widget a concrete default font. Without this, widgets that
@@ -65,8 +75,28 @@ def main():
     app.setFont(QFont(APP_CONFIG.FONT_FAMILY, 10))
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        QMessageBox.critical(None, "Error", "No system tray was found on this system.")
+        ConfirmDialog.notify(None, "خطا", "No system tray was found on this system.",
+                             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         sys.exit(1)
+
+    # Single-instance guard, acquired BEFORE any user-state work: the installer's
+    # auto-run plus a manual launch used to produce two tray icons racing on the
+    # same settings and events files. The lock must also cover the one-time
+    # registry->JSON migration, which is exactly the kind of stateful step two
+    # near-simultaneous launches could both run before either acquired a later
+    # lock. The lock lives in the user-data dir and auto-heals when a crashed
+    # process leaves it behind (QLockFile tests staleness itself).
+    APP_CONFIG.ensure_user_data_dirs()
+    lock = QLockFile(str(APP_CONFIG.USER_DATA_DIR / "app.lock"))
+    if not lock.tryLock(0):
+        logger.warning("Another ShamsiTray instance is already running; exiting.")
+        # The single-instance notice is the app's most-seen dialog and used to be
+        # the last unstyled message box in the app: it now matches the themed
+        # ConfirmDialog surfaces (rounded card, palette, Vazirmatn).
+        ConfirmDialog.notify(None, "اجرای برنامه",
+                             "یک نسخه دیگر از برنامه در حال اجرا است.",
+                             glyph=APP_CONFIG.FAS.FA_CIRCLE_INFO)
+        sys.exit(0)
 
     settings = JsonSettings()
     migrate_from_registry(settings)
