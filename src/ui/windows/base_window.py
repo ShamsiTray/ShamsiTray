@@ -11,9 +11,7 @@ It handles common functionality such as:
 - Translucent background.
 - A taskbar presence for tool windows (see ``TASKBAR_ICON``).
 """
-from typing import Optional
-
-from PyQt6.QtCore import QPoint, QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath
 from PyQt6.QtWidgets import QWidget
 
@@ -30,9 +28,10 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
     popup would be noise); the converter and the other tool windows show in
     the taskbar like the converter always did.
 
-    Dragging comes from ``FramelessDragMixin``: the top ``DRAGGABLE_AREA_HEIGHT``
-    pixels act as the grab strip, and the window keeps its historical vertical
-    clamp (only the top 50 px must stay above the screen's bottom edge).
+    Dragging comes from ``FramelessDragMixin`` - including the Qt mouse-event
+    routing: the top ``DRAGGABLE_AREA_HEIGHT`` pixels act as the grab strip, and
+    the window keeps its historical vertical clamp (only the top 50 px must stay
+    above the screen's bottom edge).
     """
     TASKBAR_ICON = False
     drag_strip_height = APP_CONFIG.DRAGGABLE_AREA_HEIGHT
@@ -40,7 +39,6 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._drag_position: Optional[QPoint] = None
         if self.TASKBAR_ICON:
             self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
             if APP_CONFIG.ICON_PATH.exists():
@@ -63,18 +61,3 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
         painter.drawPath(path)
         painter.setClipPath(path)
         super().paintEvent(event)
-
-    def mousePressEvent(self, event):
-        if self.handle_drag_press(event):
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.handle_drag_move(event):
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if self.handle_drag_release(event):
-            return
-        super().mouseReleaseEvent(event)

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle, QStyleOptionComboB
                              QStylePainter)
 
 from config import APP_CONFIG
+from utils.date_utils import from_persian_digits
 
 def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius: float) -> QPainterPath:
     """Paint the app's rounded-card background (antialiased fill + 1px border).
@@ -33,20 +34,24 @@ def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius
 
 
 class FramelessDragMixin:
-    """Shared drag logic for frameless windows and cards.
+    """Shared drag logic and Qt mouse-event routing for frameless surfaces.
 
     Was duplicated in three places (base window, ConfirmDialog,
-    DownloadUpdateDialog) with slightly different clamping; the mixin keeps
-    one implementation. Call the three handlers from the widget's mouse
-    events and return early when they report the event handled. Configure via
-    the ``drag_strip_height`` class attribute: an int restricts dragging to a
-    top strip of that many logical pixels (the calendar/tool windows drag by
-    their title area only), ``None`` makes the whole blank surface draggable
+    DownloadUpdateDialog) with slightly different clamping; the mixin keeps one
+    implementation. It also carries the ``mousePressEvent``/``mouseMoveEvent``/
+    ``mouseReleaseEvent`` wrappers those hosts each repeated verbatim, so mixing
+    this class in is the whole integration. Configure via the
+    ``drag_strip_height`` class attribute: an int restricts dragging to a top
+    strip of that many logical pixels (the calendar/tool windows drag by their
+    title area only), ``None`` makes the whole blank surface draggable
     (dialogs). ``drag_bottom_keep_visible`` tunes the vertical clamp: ``None``
-    keeps the window fully inside the screen (dialogs), an int N keeps only
-    the top N px of the window reachable above the screen's bottom edge - the
-    tool windows' historical rule, letting most of the window hang below it
-    without ever losing it entirely. A card can never be lost off-screen.
+    keeps the window fully inside the screen (dialogs), an int N keeps only the
+    top N px of the window reachable above the screen's bottom edge - the tool
+    windows' historical rule, letting most of the window hang below it without
+    ever losing it entirely. A card can never be lost off-screen.
+
+    Interactive children (buttons, inputs) consume their own mouse events, so a
+    press on them never reaches these handlers and never starts a drag.
     """
 
     drag_strip_height: Optional[int] = None
@@ -84,6 +89,83 @@ class FramelessDragMixin:
         self._drag_position = None
         event.accept()
         return True
+
+    # --- Qt event routing ---------------------------------------------------------
+
+    def mousePressEvent(self, event):
+        if self.handle_drag_press(event):
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.handle_drag_move(event):
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.handle_drag_release(event):
+            return
+        super().mouseReleaseEvent(event)
+
+
+class YearRangeValidationMixin:
+    """Shared 'red border + hint' validation for a year QLineEdit.
+
+    The block was copy-pasted three times (converter, event input, go-to-date)
+    with only trivial differences - the same shape ``FramelessDragMixin`` was
+    extracted to remove elsewhere. The host class provides:
+
+    - ``self.year_input``: the QLineEdit to validate
+    - ``self._year_bounds() -> (min, max)``: the allowed year range
+    - optionally ``self.year_hint_label``: a label shown while errored
+    - optionally ``self._year_hint_text()``: builds that label's text from the
+      live bounds (the converter's range depends on the calendar mode)
+    - optionally ``self._year_style_kwargs(errored) -> dict``: extra kwargs for
+      the shared line-edit stylesheet builders
+    - optionally ``self._on_year_error_changed(errored)``: called when the state
+      flips (the go-to-date window resizes its fixed-size card)
+    """
+
+    _year_error: bool = False
+
+    def _year_is_out_of_range(self) -> bool:
+        """True when the text forms a complete year but outside the bounds."""
+        text = self.year_input.text().strip()
+        if not text:
+            return False
+        try:
+            year = int(from_persian_digits(text))
+        except (ValueError, TypeError):
+            return False
+        lo, hi = self._year_bounds()
+        return not lo <= year <= hi
+
+    def _update_year_error_state(self, *_args):
+        """Keep the red 'invalid year' border in sync with the typed text."""
+        self._set_year_error(self._year_is_out_of_range())
+
+    def _set_year_error(self, errored: bool):
+        if getattr(self, "_year_error", False) == errored:
+            return
+        self._year_error = errored
+        self._apply_year_style()
+        hint = getattr(self, "year_hint_label", None)
+        if hint is not None:
+            if errored and hasattr(self, "_year_hint_text"):
+                hint.setText(self._year_hint_text())
+            hint.setVisible(errored)
+        self._on_year_error_changed(errored)
+
+    def _on_year_error_changed(self, errored: bool):
+        """Host hook: the error state just flipped. Default no-op."""
+
+    def _apply_year_style(self):
+        """Style the year input, switching to the shared error look when flagged."""
+        palette = APP_CONFIG.get_current_palette()
+        errored = getattr(self, "_year_error", False)
+        kwargs = self._year_style_kwargs(errored) if hasattr(self, "_year_style_kwargs") else {}
+        builder = error_line_edit_stylesheet if errored else line_edit_stylesheet
+        self.year_input.setStyleSheet(builder(palette, **kwargs))
 
 
 def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
@@ -257,6 +339,37 @@ def scrollbar_stylesheet(palette: dict, *, width: int = 10) -> str:
     scrollbar in the app now shares.
     """
     return _scrollbar_rules(palette, width=width, selector="QScrollBar", min_handle=24)
+
+
+def global_scrollbar_stylesheet(palette: dict) -> str:
+    """App-wide scrollbar style applied at the QApplication level.
+
+    The controller used to re-inline the same rounded rules; building them here
+    keeps every scrollbar rule in one place so a theme tweak cannot drift between
+    the app-wide and per-widget styles.
+    """
+    return _scrollbar_rules(palette, width=10, selector="QScrollBar", min_handle=20)
+
+
+def nav_button_stylesheet(palette: dict, bg_color: str, *, is_today_button: bool = False) -> str:
+    """Calendar header buttons (month arrows, «امروز») shared style.
+
+    Arrow buttons sit on the transparent header (hover = the palette's hover
+    fill); the today button is a solid accent pill that lightens on hover and
+    darkens on press. Was a private method on the calendar window, moved here so
+    theme-driven button styles stay centralized.
+    """
+    text_color = palette['TEXT_COLOR']
+    if is_today_button:
+        base_color = QColor(bg_color)
+        hover_color = base_color.lighter(120).name()
+        pressed_color = base_color.darker(120).name()
+        return (f"QPushButton {{ background-color: {base_color.name()}; color: white; border: none; border-radius: 8px; }}"
+                f"QPushButton:hover {{ background-color: {hover_color}; }}"
+                f"QPushButton:pressed {{ background-color: {pressed_color}; }}")
+    hover_color = QColor(bg_color).darker(120).name() if bg_color != "transparent" else palette['HOVER_BG']
+    return (f"QPushButton {{ background-color: {bg_color}; color: {text_color}; border: none; border-radius: 8px; }}"
+            f"QPushButton:hover {{ background-color: {hover_color}; }}")
 
 
 def line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bool = False,
