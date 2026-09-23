@@ -10,6 +10,7 @@ The registry keys are deliberately left in place so an upgrade can always be
 rolled back to an older app version without data loss.
 """
 import logging
+from pathlib import Path
 
 from config import APP_CONFIG
 from utils.json_settings import JsonSettings
@@ -17,6 +18,11 @@ from utils.json_settings import JsonSettings
 logger = logging.getLogger(__name__)
 
 _MIGRATION_FLAG_KEY = "Migration/RegistryMigratedToJSON"
+
+# Registry-era key the old builds stored the event blob under. Events moved to
+# user_events.json, but the string is still needed to READ the legacy blob, so
+# it lives here next to its only user instead of in config.py.
+LEGACY_USER_EVENTS_SETTING_KEY = "UserData/Events"
 
 _SETTING_KEYS = (
     APP_CONFIG.AUTO_START_SETTING_KEY,
@@ -28,10 +34,12 @@ _SETTING_KEYS = (
 def migrate_from_registry(settings: JsonSettings, legacy=None) -> None:
     """Copy legacy registry values into the JSON stores once, then flag completion.
 
-    Idempotent: skipped entirely when the flag is already set, and JSON values
-    win if both stores hold data (i.e. the app already ran on the new store).
-    On failure the flag is not set, so the next launch retries. ``legacy`` may
-    be injected (anything with ``.value(key)``); it defaults to QSettings.
+    Idempotent: skipped entirely when the flag is already set. JSON values win if
+    both stores hold data (i.e. the app already ran on the new store): a setting
+    is only copied when the JSON store does not have that key yet, and the event
+    store is only written when it does not exist yet. On failure the flag is not
+    set, so the next launch retries. ``legacy`` may be injected (anything with
+    ``.value(key)``); it defaults to QSettings.
     """
     if settings.value(_MIGRATION_FLAG_KEY, False, type=bool):
         return
@@ -44,7 +52,10 @@ def migrate_from_registry(settings: JsonSettings, legacy=None) -> None:
     try:
         for key in _SETTING_KEYS:
             value = legacy.value(key)
-            if value is not None:
+            # JSON wins: a value already living in the JSON store (the app ran
+            # on the new store before, or a partial migration retried) must
+            # never be clobbered by the stale registry copy.
+            if value is not None and settings.value(key) is None:
                 settings.setValue(key, value)
                 migrated.append(key)
     except Exception as e:
@@ -63,13 +74,24 @@ def migrate_from_registry(settings: JsonSettings, legacy=None) -> None:
 
 
 def _migrate_user_events(legacy) -> bool:
-    """Move the legacy registry events blob into the events file. Returns success."""
+    """Move the legacy registry events blob into the events file. Returns success.
+
+    The migration only ever CREATES the events file: when a JSON store already
+    exists it wins and the registry blob is left untouched (the registry is never
+    deleted, so the old app version keeps working). Writing the blob over an
+    existing store would bulldoze events the user created on the new store.
+    """
     import json
 
     from utils import event_io
 
+    events_path = Path(APP_CONFIG.USER_EVENTS_FILE_PATH)
+    if events_path.exists():
+        logger.info("A JSON event store already exists; skipping registry event migration (JSON wins).")
+        return True
+
     try:
-        raw = legacy.value(APP_CONFIG.USER_EVENTS_SETTING_KEY)
+        raw = legacy.value(LEGACY_USER_EVENTS_SETTING_KEY)
     except Exception as e:
         logger.error(f"Could not read legacy user events: {e}")
         return False
