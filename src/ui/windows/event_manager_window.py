@@ -42,7 +42,8 @@ from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
-                            make_event_key, next_occurrence_jdate, parse_event_key)
+                            make_event_key, next_occurrence_jdate, parse_event_key,
+                            recurrence_of_key)
 from utils.logger import setup_logging
 from utils.ui_helpers import (accent_button_stylesheet, center_combo_items,
                               combo_stylesheet, fit_combo_width,
@@ -61,17 +62,8 @@ AUTO_DELETE_BADGE = "حذف خودکار"
 AUTO_DELETE_TOOLTIP = "این رویداد پس از گذشت تاریخ به‌صورت خودکار حذف می‌شود"
 
 
-def _event_recurrence(key: str) -> str:
-    """Recurrence mode implied by a store key."""
-    parsed = parse_event_key(key)
-    if parsed is None:
-        return RECURRENCE_NONE
-    year, month, _day = parsed
-    if year is None and month is None:
-        return RECURRENCE_MONTHLY
-    if year is None:
-        return RECURRENCE_YEARLY
-    return RECURRENCE_NONE
+# Recurrence-from-key now lives in event_io.recurrence_of_key: the key model
+# belongs to the module that owns make_event_key/parse_event_key.
 
 
 def _event_date_label(key: str) -> str:
@@ -117,8 +109,8 @@ class EventRow(QFrame):
         self.date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.date_label.setObjectName("EventDateLabel")
         date_box.addWidget(self.date_label)
-        if _event_recurrence(key) != RECURRENCE_NONE:
-            badge = QLabel(recurrence_label(_event_recurrence(key)))
+        if recurrence_of_key(key) != RECURRENCE_NONE:
+            badge = QLabel(recurrence_label(recurrence_of_key(key)))
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             badge.setObjectName("EventRecurrenceBadge")
             date_box.addWidget(badge)
@@ -329,6 +321,16 @@ class EventManagerWindow(BaseFramelessWindow):
     def user_events(self) -> Dict[str, dict]:
         return self.controller.user_events
 
+    @property
+    def event_store(self):
+        """The EventService owning the store.
+
+        The manager requests operations (delete/upsert) from the service instead
+        of mutating persistence itself: transactional saves, rollback and the
+        save-failure dialog are handled in one place.
+        """
+        return self.controller._events
+
     def refresh_list(self):
         """Rebuild the event rows from the live store, applying search + filters."""
         search_text = self.search_input.text().strip().lower()
@@ -345,7 +347,7 @@ class EventManagerWindow(BaseFramelessWindow):
         shown = 0
         for key in events_sorted_by_next_occurrence(self.user_events):
             entry = self.user_events[key]
-            recurrence = _event_recurrence(key)
+            recurrence = recurrence_of_key(key)
             parsed = parse_event_key(key)
             next_date = next_occurrence_jdate(key, today) if parsed else None
             is_expired = (
@@ -375,7 +377,14 @@ class EventManagerWindow(BaseFramelessWindow):
             shown += 1
 
         total = len(self.user_events)
-        self.count_label.setText(f"{to_persian_digits(total)} رویداد" if total else "")
+        filtered = bool(search_text) or selected_month != _MONTH_ANY or selected_type is not None
+        if total and filtered:
+            # While a filter narrows the list, show "X of Y" so the counter
+            # cannot contradict the rows below it.
+            self.count_label.setText(
+                f"{to_persian_digits(shown)} از {to_persian_digits(total)} رویداد")
+        else:
+            self.count_label.setText(f"{to_persian_digits(total)} رویداد" if total else "")
         self.empty_label.setVisible(shown == 0)
         self.scroll_area.setVisible(shown > 0)
         self._restyle_dynamic_children()
@@ -398,11 +407,14 @@ class EventManagerWindow(BaseFramelessWindow):
             return
         if not self._confirm_delete(key):
             return
-        del self.user_events[key]
-        logger.info(f"Event {key!r} deleted from the event manager.")
-        self.controller._save_user_events()
-        self.events_changed.emit()
-        self.refresh_list()
+        # Through the service: the save is transactional, and on failure the
+        # store rolls back while the themed error dialog fires via the service's
+        # on_save_error hook - so no refresh happens here and the list still
+        # matches what was persisted.
+        if self.event_store.delete_key(key):
+            logger.info(f"Event {key!r} deleted from the event manager.")
+            self.events_changed.emit()
+            self.refresh_list()
 
     def _on_add_requested(self):
         """Open the same editor the calendar uses, plus a date picker row."""
@@ -494,14 +506,19 @@ class EventManagerWindow(BaseFramelessWindow):
                 return
 
         self._hide_event_input_widget()
+        replace_keys = []
         if editing_key is not None and new_key != editing_key:
-            del self.user_events[editing_key]
-        self.user_events[new_key] = {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
-        action = "added" if editing_key is None else "updated"
-        logger.info(f"Event {new_key!r} {action} via the event manager.")
-        self.controller._save_user_events()
-        self.events_changed.emit()
-        self.refresh_list()
+            replace_keys.append(editing_key)
+        entry = {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
+        # Through the service: one transactional save. The manager no longer
+        # writes the store dict directly, so a failed save rolls the store back
+        # here too (previously the manager kept the mutated state that never
+        # reached the disk).
+        if self.event_store.upsert(new_key, entry, replace_keys=replace_keys):
+            action = "added" if editing_key is None else "updated"
+            logger.info(f"Event {new_key!r} {action} via the event manager.")
+            self.events_changed.emit()
+            self.refresh_list()
 
     def _confirm_replace(self, key: str) -> bool:
         """Adding onto a date that already holds an event replaces it; ask first."""

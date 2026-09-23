@@ -46,6 +46,22 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.update_styles()
         apply_windows_styles(self)
 
+    def set_holidays(self, holidays_cache: Dict[int, Dict[Tuple[int, int], List[str]]]):
+        """Swap the holiday cache and rebuild the visible year.
+
+        An open viewer used to keep showing the old data after a live holiday
+        auto-update until it was closed and reopened. The currently browsed year
+        is restored when the new data still offers it.
+        """
+        self.holidays_cache = holidays_cache
+        previous_year = self._current_year()
+        self._populate_years()
+        if previous_year is not None:
+            index = self.year_combo.findData(previous_year)
+            if index >= 0:
+                self.year_combo.setCurrentIndex(index)
+        self._fill_year()
+
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(18, 14, 18, 14)
