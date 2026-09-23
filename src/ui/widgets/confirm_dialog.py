@@ -10,9 +10,12 @@ wrong font, square corners - so destructive actions felt bolted-on.
 Design notes:
 - It is a real ``QDialog`` (``exec()`` works) but painted like every other
   frameless window of the app: rounded card, Vazirmatn, palette colors.
-- Content is centered around an icon badge (trash for destructive asks,
-  rotate for replacements/updates) so the dialog reads as a deliberate app
-  surface instead of a bland left-aligned system strip.
+ - Content is centered around an icon badge (trash for destructive asks,
+   rotate for replacements/updates) so the dialog reads as a deliberate app
+   surface instead of a bland left-aligned system strip.
+- The main message/reason line is plain readable ``TEXT_COLOR`` - it is the
+  one sentence that explains what is about to happen and must never read as
+  de-emphasised grey; only secondary metadata stays muted.
 - The optional ``detail`` text (the event preview) is shown in its own rounded
   quote box, separating "what happens" from "to what".
 - The confirming button is red only when the action is destructive; neutral
@@ -34,8 +37,8 @@ Design notes:
 """
 from typing import List, Optional, Tuple
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QFont, QFontMetrics, QPainter
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QFont, QFontMetrics, QPainter
 from PyQt6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from config import APP_CONFIG
@@ -64,7 +67,12 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self._drag_position: Optional[QPoint] = None
+        # Frameless cards still carry a native title for Alt-Tab / taskbar
+        # previews: give every dialog the ACTION's name, not the generic app
+        # name, so each surface reads as its own thing.
+        self.setWindowTitle(title)
+        if APP_CONFIG.ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
         self._danger = danger
         # (text, kind) list driving the button row; defaults to confirm/cancel.
         self._actions = actions if actions else [
@@ -133,6 +141,29 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
             self.cancel_button = self.buttons[1]
 
         self.update_styles()
+        self._pin_message_height()
+
+    def _pin_message_height(self):
+        """Fit the message label exactly around its wrapped text.
+
+        A word-wrapped QLabel's sizeHint badly over-estimates (Qt's wrapped-text
+        hint heuristic prefers a roughly square block). The card's height was
+        fixed from those inflated hints and then re-flowed at the real width, and
+        the surplus was smeared across the title and message rows - a visible band
+        of dead air between the header and the reason text (worst on short
+        one-line messages, whose inflated hint claimed twice the real need).
+        Pinning the label to ``heightForWidth`` at the card's real inner width
+        gives the layout its true need. Long, wrapping messages already matched
+        their hint and are unaffected.
+        """
+        if not self.message_label.text():
+            return
+        self.message_label.ensurePolished()
+        margins = self.layout().contentsMargins()
+        inner_width = self.width() - margins.left() - margins.right()
+        height = self.message_label.heightForWidth(inner_width)
+        if height > 0:
+            self.message_label.setFixedHeight(height)
 
     def _minimum_width_for_buttons(self) -> int:
         """Dialog width at which no button caption ever clips.
@@ -155,23 +186,8 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         return int(total * 1.1)
 
     # --- dragging ---------------------------------------------------------------
-
-    def mousePressEvent(self, event):
-        # Blank-card press only: buttons (and any future interactive child)
-        # consume their own events, so a click there never starts a drag.
-        if self.handle_drag_press(event):
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.handle_drag_move(event):
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if self.handle_drag_release(event):
-            return
-        super().mouseReleaseEvent(event)
+    # FramelessDragMixin supplies the mouse-event routing: blank-card presses
+    # start a drag, buttons consume their own events.
 
     def _make_choice_handler(self, button: QPushButton, kind: str):
         """Close the dialog, remembering which action was clicked.
@@ -209,7 +225,7 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
             f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"font-size: 16px; font-weight: bold; background: transparent; border: none;")
         self.message_label.setStyleSheet(
-            f"color: {palette['GREY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
+            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"font-size: 13px; background: transparent; border: none;")
         self.detail_label.setStyleSheet(
             f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
@@ -232,6 +248,19 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
                 geo = screen.availableGeometry()
                 self.move(geo.center().x() - self.width() // 2,
                           geo.center().y() - self.height() // 2)
+            return
+        # Centering over a parent parked near a screen edge (the 305px calendar
+        # sits bottom-right) can push a 340px dialog partly off-screen; the drag
+        # clamp only helps while dragging, so clamp the centered position against
+        # the parent's screen here.
+        screen = parent.screen()
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        if screen is not None:
+            geo = screen.availableGeometry()
+            x = max(geo.left(), min(self.x(), geo.right() - self.width()))
+            y = max(geo.top(), min(self.y(), geo.bottom() - self.height()))
+            self.move(x, y)
 
     # --- ready-made flows -------------------------------------------------------
 
@@ -264,7 +293,12 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
     def notify(parent, title: str, message: str, *, danger: bool = False,
                glyph: Optional[str] = None, button_text: str = "باشه",
                width: int = 340) -> None:
-        """Single-button themed notice (replaces the stock informational boxes)."""
+        """Single-button themed notice (replaces the stock informational boxes).
+
+        Failure notices (``danger=True``) style the OK button in the holiday red
+        of the destructive actions instead of the accent blue, so an error dialog
+        reads as an error at a glance - icon, badge and button all agree.
+        """
         ConfirmDialog.choose(parent, title, message,
-                             actions=[(button_text, "accent")], danger=danger,
-                             glyph=glyph, width=width)
+                             actions=[(button_text, "danger" if danger else "accent")],
+                             danger=danger, glyph=glyph, width=width)
