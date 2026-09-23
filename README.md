@@ -15,7 +15,7 @@
 ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows that displays the current day of the month in the system tray as an icon. It provides an intuitive calendar popup, a date conversion tool, holiday tracking, and the ability to add user events to dates.
 
 ### 
-<a href="https://github.com/ShamsiTray/ShamsiTray/releases/download/v1.3.1/ShamsiTraySetup-1.3.1.exe">
+<a href="https://github.com/ShamsiTray/ShamsiTray/releases/latest">
   <img src="https://img.shields.io/badge/Download-Green?style=flat" width="150" />
 </a>
 <br>
@@ -34,7 +34,10 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 - Quick access to a small calendar popup.
 - Displays detailed information in the tray icon tooltip, including day of the week, month and year, holidays, and user-added events.
 - Includes a simple Shamsi(Jalali)–Gregorian date converter.
-- Allows adding events with options for yearly recurrence, automatic deletion after the event date passes, and full edit/delete support.
+- Allows adding events with options for yearly/monthly recurrence, automatic deletion after the event date passes, and full edit/delete support.
+- Provides an Event Manager window to search, filter, edit, delete, import and export all events at once.
+- Provides a Holiday Viewer window to browse official holidays year by year.
+- Checks for new app releases automatically (downloads and sha256-verifies the installer) and keeps the local holiday data up to date.
 - Provides a “Go to Date” option.
 - The tray icon date color turns red on holidays and Fridays.
 - Shows holiday or event details when hovering over a highlighted date in the calendar popup (red for holidays, green/blue for events).
@@ -61,14 +64,14 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 ## 📝 Notes
 The concept of this app was inspired by the software [LeoMoon JalaliTray](https://leomoon.com/downloads/desktop-apps/leomoon-jalalitray/), but I found it lacking in features, so I kept adding more until I ended up with **ShamsiTray**. The calendar popup UI was inspired by [Widgetify](https://widgetify.ir/).
 
-I think this app is mostly complete since it has all the features I need, which means I don’t plan to add any new features or updates anymore.  
-I initially planned to use an API to fetch holiday reasons, but due to the lack of a stable and dependable API, I opted for a local, file-based implementation instead.
+The app keeps getting small improvements — recent releases added the Event Manager, the Holiday Viewer, and an automatic update checker.  
+I initially planned to use an API to fetch holiday reasons, but due to the lack of a stable and dependable API, I opted for a local, file-based implementation instead (the bundled data now updates itself automatically).
 
 Also this app was almost entirely vibe-coded.
 
 ## 🛠️ Contributing
 
-While I don’t actively plan new features, bug reports and small fixes are welcome.  
+Bug reports, small fixes and suggestions are welcome.  
 Feel free to open an issue or submit a pull request.
 
 ## 📜 License
