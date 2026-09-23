@@ -200,16 +200,43 @@ def test_check_is_noop_while_a_round_is_pending(http_server, checker, qtbot, mon
 def test_check_up_to_date_emits_no_updates(http_server, checker, qtbot, monkeypatch, user_data):
     handler, base = http_server
     handler.routes["/api"] = (200, {}, _release_payload("1.0.0"))
-    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(0))  # <= current (0)
+    # Valid remote data, genuinely older than the local store (HOL-2: a
+    # version-0/unversioned payload is now treated as invalid, not "up to date").
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+    stale_checker = UpdateChecker(current_data_version=990002)
+
+    got = _collect(stale_checker)
+    stale_checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["none"] == 1
+    assert got["app"] == [] and got["holidays"] == 0
+    assert got["concluded"] == [False]
+
+
+def test_check_unversioned_remote_is_refused_not_applied(http_server, checker, qtbot, monkeypatch, user_data):
+    """HOL-2: the live GitHub file has no version field; it must be refused
+    (never silently applied as version 0), logged, and - since the holiday
+    refresh has its own lifecycle - it must NOT fail the round for the app
+    update's retry machinery. With the remote file unversioned, every round
+    used to conclude 'failed' and the auto-retry kept re-offering the update
+    popup every 10 minutes no matter what the user answered."""
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload("1.0.0"))
+    handler.routes["/holidays.json"] = (200, {}, json.dumps({"holidays": {"1403": {"01-01": ["N"]}}}).encode())
     monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
     monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
 
     got = _collect(checker)
     checker.check()
     qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
-    assert got["none"] == 1
-    assert got["app"] == [] and got["holidays"] == 0
-    assert got["concluded"] == [False]
+    assert got["holidays"] == 0                          # never applied
+    assert not APP_CONFIG.HOLIDAYS_STORE_PATH.exists()   # store untouched
+    # App check was clean (up to date) and stays the round's verdict:
+    assert got["failed"] == []                           # no check_failed
+    assert got["none"] == 1                              # "no updates" fired
+    assert got["concluded"] == [False]                   # no 10-min retry loop
 
 
 def test_check_holiday_only_update_still_concludes_clean(http_server, checker, qtbot, monkeypatch, user_data):
@@ -257,16 +284,54 @@ def test_check_bad_json_counts_as_failed(http_server, checker, qtbot, monkeypatc
 def test_check_release_without_installer_asset_skips_offer(http_server, checker, qtbot, monkeypatch, user_data):
     handler, base = http_server
     handler.routes["/api"] = (200, {}, _release_payload("99.0.0", asset=False))
-    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(0))
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
     monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
     monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+    stale_checker = UpdateChecker(current_data_version=990002)
 
-    got = _collect(checker)
-    checker.check()
+    got = _collect(stale_checker)
+    stale_checker.check()
     qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
     assert got["app"] == []            # no installer -> no offer
     assert got["none"] == 1            # but the round was clean
     assert got["concluded"] == [False]
+
+
+def test_check_release_without_valid_digest_skips_offer(http_server, checker, qtbot, monkeypatch, user_data):
+    """UPD-1: a missing or malformed digest must never be offered for download.
+
+    The empty digest used to slip through as '' and skip the download-time
+    sha256 comparison entirely - an unverified installer was accepted.
+    """
+    handler, base = http_server
+    for digest in (None, "", "sha256:short", "sha256:" + "zz" * 32, "md5:" + "ab" * 32):
+        payload = _release_payload()
+        obj = json.loads(payload)
+        if digest is None:
+            del obj["assets"][0]["digest"]
+        else:
+            obj["assets"][0]["digest"] = digest
+        handler.routes["/api"] = (200, {}, json.dumps(obj).encode())
+        handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+        monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+        monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+        got = _collect(checker)
+        checker.check()
+        qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+        assert got["app"] == [], f"digest {digest!r} must not be offered"
+
+
+def test_is_valid_sha256_rules():
+    from core.update_checker import is_valid_sha256
+    assert is_valid_sha256("ab" * 32)
+    assert is_valid_sha256("AB" * 32)
+    assert not is_valid_sha256(None)
+    assert not is_valid_sha256("")
+    assert not is_valid_sha256("ab" * 31)   # 63 chars
+    assert not is_valid_sha256("ab" * 33)   # 65 chars
+    assert not is_valid_sha256("zz" * 32)   # non-hex
+    assert not is_valid_sha256("sha256:" + "ab" * 32)  # raw field, not the digest
 
 
 def test_find_installer_asset_matching_rules():
@@ -278,6 +343,34 @@ def test_find_installer_asset_matching_rules():
     assert UpdateChecker._find_installer_asset(payload)["name"] == "ShamsiTraySetup-1.4.0.exe"
     assert UpdateChecker._find_installer_asset({"assets": []}) is None
     assert UpdateChecker._find_installer_asset({}) is None
+
+
+def test_find_installer_asset_prefers_tag_version():
+    """UPD-2: with duplicate installer assets, the release's own version wins."""
+    payload = {"tag_name": "v99.0.0", "assets": [
+        {"name": "ShamsiTraySetup-98.0.0.exe", "browser_download_url": "stale"},
+        {"name": "ShamsiTraySetup-99.0.0.exe", "browser_download_url": "fresh"},
+    ]}
+    assert UpdateChecker._find_installer_asset(payload)["name"] == "ShamsiTraySetup-99.0.0.exe"
+    # No tag match (or no tag at all) falls back to the first candidate.
+    no_tag = {"assets": payload["assets"]}
+    assert UpdateChecker._find_installer_asset(no_tag)["name"] == "ShamsiTraySetup-98.0.0.exe"
+    other = {"tag_name": "v100.0.0", "assets": payload["assets"]}
+    assert UpdateChecker._find_installer_asset(other)["name"] == "ShamsiTraySetup-98.0.0.exe"
+
+
+def test_check_returns_true_only_when_a_round_starts(checker):
+    """UPD-6: callers must be able to tell a no-op check from a real one."""
+    assert checker.check() is True
+    assert checker.check() is False  # pending round: no-op
+
+
+def test_file_sha256_matches_hashlib(tmp_path):
+    from core.update_checker import file_sha256
+    p = tmp_path / "blob.bin"
+    p.write_bytes(b"some installer bytes")
+    assert file_sha256(p) == hashlib.sha256(b"some installer bytes").hexdigest()
+    assert file_sha256(tmp_path / "missing.bin") is None
 
 
 # --- installer download ----------------------------------------------------------
@@ -401,6 +494,21 @@ def test_cancel_download_aborts_and_cleans_up(http_server, checker, qtbot, tmp_p
         release.set()
         server2.shutdown()
         server2.server_close()
+
+
+def test_download_ignored_while_another_is_in_progress(checker, tmp_path):
+    """UPD-7: a second download_installer call must fail fast (False, and NO
+    signal) instead of overwriting the shared reply/hasher state of the
+    running one. Emitting download_failed here used to close the live
+    download dialog and show "download failed" while the first transfer was
+    still running fine in the background."""
+    failed = []
+    checker.download_failed.connect(lambda reason: failed.append(reason))
+    checker._download_reply = object()  # simulate an in-flight download
+    started = checker.download_installer("http://127.0.0.1:9/x.exe", tmp_path / "out.exe", "")
+    assert started is False
+    assert failed == []  # the running download's dialog must stay untouched
+    assert not (tmp_path / "out.exe").exists()
 
 
 def test_cancel_download_without_active_reply_is_noop(checker):

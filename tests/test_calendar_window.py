@@ -164,6 +164,17 @@ def test_navigation_wraps_year_boundaries(calendar):
     assert (calendar.display_date.year, calendar.display_date.month) == (1404, 2)
 
 
+def test_navigation_stops_at_supported_year_bounds(calendar):
+    """UI-7: navigation clamps to the app-wide 1200-1600 range."""
+    calendar.display_date = jdatetime.date(APP_CONFIG.SUPPORTED_MIN_YEAR, 1, 15)
+    calendar.prev_month()
+    assert calendar.display_date.year == APP_CONFIG.SUPPORTED_MIN_YEAR
+
+    calendar.display_date = jdatetime.date(APP_CONFIG.SUPPORTED_MAX_YEAR, 12, 15)
+    calendar.next_month()
+    assert calendar.display_date.year == APP_CONFIG.SUPPORTED_MAX_YEAR
+
+
 def test_navigation_clamps_day_to_target_month_length(calendar):
     # Jalali months 1-6 have 31 days, 7-11 have 30: 06-31 -> 07-30 clamps.
     calendar.display_date = jdatetime.date(1404, 6, 31)

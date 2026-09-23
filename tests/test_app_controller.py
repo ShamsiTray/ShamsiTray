@@ -4,9 +4,9 @@ import datetime
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import QUrl
 
 import core.app_controller as controller_module
+import core.event_service as event_service_module
 from config import APP_CONFIG
 from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_MS,
                                  DEBUG_DATA_VERSION_ENV, SystemTrayIcon)
@@ -145,19 +145,53 @@ def test_auto_notification_respects_ignored_version(tray):
     assert popup_calls == []
 
 
-def test_auto_notification_fires_for_new_version(tray):
+def test_auto_notification_fires_for_new_version(tray, qtbot):
+    """The popup is deferred out of the checker's signal path (singleShot 0):
+    _conclude() must be able to finish its check_concluded bookkeeping while
+    nobody is blocking inside a modal dialog."""
     tray._manual_update_check = False
     popup_calls, _ = _spy(tray, "_show_update_popup")
     tray._on_app_update_available("9.9.9", "http://x", "")
-    assert len(popup_calls) == 1
+    qtbot.waitUntil(lambda: len(popup_calls) == 1, timeout=5000)
 
 
-def test_manual_notification_ignores_ignored_version(tray):
+def test_manual_notification_ignores_ignored_version(tray, qtbot):
     tray._manual_update_check = True
     tray.settings.setValue(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY, "9.9.9")
     popup_calls, _ = _spy(tray, "_show_update_popup")
     tray._on_app_update_available("9.9.9", "http://x", "")
-    assert len(popup_calls) == 1  # a manual check always reports
+    qtbot.waitUntil(lambda: len(popup_calls) == 1, timeout=5000)  # manual always reports
+
+
+def test_update_popup_pending_blocks_duplicate_schedule(tray, qtbot):
+    """Two app_update_available emissions inside one tick (original round +
+    a retry that concluded while the first popup was still pending) must
+    produce exactly one dialog."""
+    tray._manual_update_check = False
+    popup_calls, _ = _spy(tray, "_show_update_popup")
+    tray._on_app_update_available("9.9.9", "http://x", "")
+    tray._on_app_update_available("9.9.9", "http://x", "")
+    qtbot.waitUntil(lambda: len(popup_calls) == 1, timeout=5000)
+    qtbot.wait(50)  # allow any (wrongly) scheduled second popup to fire
+    assert len(popup_calls) == 1
+    tray._update_popup_pending = False  # restore for later tests on this tray
+
+
+def test_check_failed_quiet_while_update_popup_is_open(tray, monkeypatch):
+    """A check failing while the update popup is up must never stack the
+    offline dialog on top of the user's decision - the exact bug where
+    hitting 'remind later' seemed to summon a 'no internet' error."""
+    notified = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: notified.append(a)))
+    tray._manual_update_check = True  # would normally notify
+    tray._update_dialog_open = True
+    tray._on_check_failed("network")
+    tray._update_dialog_open = False
+    tray._update_popup_pending = True
+    tray._on_check_failed("network")
+    tray._update_popup_pending = False
+    assert notified == []
 
 
 def test_update_popup_dialog_open_guard(tray, monkeypatch):
@@ -203,20 +237,20 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
         def __init__(self, version, parent=None):
             self.version = version
             self.shown = False
-            self.closed = False
+            self.dismissed = False
             self.canceled = type("Signal", (), {
                 "connect": staticmethod(lambda slot: canceled_slots.append(slot))})()
 
         def show(self):
             self.shown = True
 
-        def close(self):
-            self.closed = True
+        def dismiss(self):
+            self.dismissed = True
 
     monkeypatch.setattr(controller_module, "DownloadUpdateDialog", FakeDialog)
     download_calls = []
     monkeypatch.setattr(tray.update_checker, "download_installer",
-                        lambda url, dest, sha: download_calls.append((url, dest, sha)))
+                        lambda url, dest, sha: download_calls.append((url, dest, sha)) or True)
 
     tray._download_update("1.4.1", "http://x/installer.exe", "sha")
 
@@ -281,7 +315,8 @@ def test_download_failed_canceled_is_quiet(tray, monkeypatch):
     assert opened == []
 
 
-def test_download_failed_shows_error_and_opens_releases(tray, monkeypatch):
+def test_download_failed_shows_error_without_opening_releases(tray, monkeypatch):
+    """UPD-8: the failure notice is themed and informative; no browser opens."""
     notified = []
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: notified.append(a)))
@@ -290,7 +325,7 @@ def test_download_failed_shows_error_and_opens_releases(tray, monkeypatch):
                         staticmethod(lambda url: opened.append(url)))
     tray._on_download_failed("network exploded")
     assert len(notified) == 1
-    assert opened == [QUrl(APP_CONFIG.APP_RELEASES_PAGE_URL)]
+    assert opened == []  # the release page is no longer auto-opened
 
 
 def test_holidays_updated_refreshes_calendar_and_tray(tray, monkeypatch):
@@ -463,12 +498,26 @@ def test_toggle_theme_flips_and_persists(tray):
 def test_toggle_open_at_boot_persists_setting(tray, monkeypatch):
     registry_calls = []
     monkeypatch.setattr(tray, "_set_startup_registry",
-                        lambda enable: registry_calls.append(enable))
+                        lambda enable: registry_calls.append(enable) or True)
     tray._toggle_open_at_boot(True)
     assert tray.is_open_at_login is True
     assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is True
     assert registry_calls == [True]
     tray._toggle_open_at_boot(False)
+
+
+def test_toggle_open_at_boot_failure_keeps_setting(tray, monkeypatch):
+    """WIN-2: a failed registry write must not flip the application setting."""
+    monkeypatch.setattr(tray, "_set_startup_registry", lambda enable: False)
+    # Explicit precondition: booting the tray persists the first-run autostart
+    # default whenever the temp settings file starts empty, so the stored value
+    # is not guaranteed to be False by the time the test runs. This test is
+    # about what the TOGGLE writes, not about what the boot left behind.
+    tray.settings.setValue(APP_CONFIG.AUTO_START_SETTING_KEY, False)
+    tray.is_open_at_login = False
+    tray._toggle_open_at_boot(True)
+    assert tray.is_open_at_login is False
+    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is False
 
 
 def test_startup_registry_skipped_off_windows(tray):
@@ -480,6 +529,172 @@ def test_startup_registry_skipped_off_windows(tray):
 def test_validate_startup_setting_early_return_off_windows(tray):
     # is_open_at_login False on Linux default → early return either way.
     tray._validate_and_apply_startup_setting()  # must not raise
+
+
+# --- autostart opt-out default (fresh install = ON) --------------------------------------
+
+def _boot_tray(user_data, settings_overrides=None):
+    """Boot a tray with a fresh (or pre-seeded) settings store."""
+    from utils.json_settings import JsonSettings
+
+    settings = JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH)
+    for key, value in (settings_overrides or {}).items():
+        settings.setValue(key, value)
+    return SystemTrayIcon(settings=settings)
+
+
+def _patch_windows(monkeypatch):
+    """Fake the win32 guard for registry-path tests (winreg access is patched
+    away at the method level, so the real module is never touched)."""
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+
+
+def test_fresh_install_defaults_autostart_on(user_data, qtbot, monkeypatch):
+    """Test A — brand-new install: no saved preference → Run entry written
+    first, preference persisted ON, checkbox state ON."""
+    _patch_windows(monkeypatch)
+    writes = []
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: writes.append(enable) or True)
+    tray = _boot_tray(user_data)
+    assert tray._autostart_pref_exists is False
+    assert writes == [True]
+    assert tray.is_open_at_login is True
+    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is True
+
+
+def test_fresh_install_registry_failure_leaves_preference_unset(user_data, qtbot, monkeypatch):
+    """Test D — a failed registry write must not produce a false success:
+    the preference stays unset (next launch retries) and the in-memory state
+    is honestly OFF so the checkbox can never claim a startup Windows won't do."""
+    _patch_windows(monkeypatch)
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry", lambda self, enable: False)
+    tray = _boot_tray(user_data)
+    assert tray.is_open_at_login is False
+    assert not tray.settings.contains(APP_CONFIG.AUTO_START_SETTING_KEY)
+
+
+def test_existing_disabled_preference_stays_off(user_data, qtbot, monkeypatch):
+    """Test E — an explicit OFF must survive the new default untouched."""
+    _patch_windows(monkeypatch)
+    writes = []
+    monkeypatch.setattr(SystemTrayIcon, "_startup_entry_exists", lambda self: False)
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: writes.append(enable) or True)
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: False})
+    assert tray._autostart_pref_exists is True
+    assert tray.is_open_at_login is False
+    assert writes == []  # no entry, no write: nothing touches the registry
+
+
+def test_existing_disabled_preference_heals_stale_run_entry(user_data, qtbot, monkeypatch):
+    """Test E (self-heal) — a leftover Run entry despite an OFF preference is
+    removed; the OFF preference is never re-enabled."""
+    _patch_windows(monkeypatch)
+    calls = []
+    monkeypatch.setattr(SystemTrayIcon, "_startup_entry_exists", lambda self: True)
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: calls.append(enable) or True)
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: False})
+    assert tray.is_open_at_login is False
+    assert calls == [False]  # only a delete — never a re-enable
+    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, True, type=bool) is False
+
+
+def test_existing_enabled_preference_reapplies_missing_entry(user_data, qtbot, monkeypatch):
+    """Existing ON with the Run entry gone (e.g. wiped externally) is repaired."""
+    from types import SimpleNamespace
+
+    _patch_windows(monkeypatch)
+
+    class _MissingKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    fake_winreg = SimpleNamespace(
+        HKEY_CURRENT_USER="HKCU", KEY_READ=1, KEY_ALL_ACCESS=2, REG_SZ="REG_SZ",
+        OpenKey=lambda *a, **k: _MissingKey(),
+        QueryValueEx=lambda key, name: (_ for _ in ()).throw(FileNotFoundError(name)),
+        SetValueEx=lambda *a, **k: None, DeleteValue=lambda *a, **k: None,
+        CloseKey=lambda key: None,
+    )
+    monkeypatch.setattr(controller_module, "winreg", fake_winreg, raising=False)
+    calls = []
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: calls.append(enable) or True)
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True})
+    assert tray.is_open_at_login is True
+    assert calls == [True]
+
+
+def test_existing_enabled_preference_with_correct_entry_is_left_alone(user_data, qtbot, monkeypatch):
+    """Existing ON with the Run entry already correct: no registry writes."""
+    from types import SimpleNamespace
+
+    _patch_windows(monkeypatch)
+
+    class _CorrectKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    fake_winreg = SimpleNamespace(
+        HKEY_CURRENT_USER="HKCU", KEY_READ=1, KEY_ALL_ACCESS=2, REG_SZ="REG_SZ",
+        OpenKey=lambda *a, **k: _CorrectKey(),
+        QueryValueEx=lambda key, name: (controller_module._startup_executable_value(), "REG_SZ"),
+        SetValueEx=lambda *a, **k: None, DeleteValue=lambda *a, **k: None,
+        CloseKey=lambda key: None,
+    )
+    monkeypatch.setattr(controller_module, "winreg", fake_winreg, raising=False)
+    calls = []
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: calls.append(enable) or True)
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True})
+    assert tray.is_open_at_login is True
+    assert calls == []
+
+
+def test_toggle_then_restart_keeps_disabled_state(user_data, qtbot, monkeypatch):
+    """Test B/C — disable via the toggle, then reboot: the preference must
+    persist and the boot path must keep it OFF (never re-default it)."""
+    _patch_windows(monkeypatch)
+    registry = {"entry": False}
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: registry.__setitem__("entry", enable) or True)
+    tray = _boot_tray(user_data)
+    tray._toggle_open_at_boot(False)
+    assert registry["entry"] is False
+    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, True, type=bool) is False
+
+    monkeypatch.setattr(SystemTrayIcon, "_startup_entry_exists", lambda self: False)
+    writes = []
+    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
+                        lambda self, enable: writes.append(enable) or True)
+    rebooted = _boot_tray(user_data)
+    assert rebooted.is_open_at_login is False
+    assert writes == []
+
+
+# --- startup executable value ----------------------------------------------------------
+
+
+def test_startup_executable_value_is_absolute_and_quoted():
+    from pathlib import Path
+
+    value = controller_module._startup_executable_value()
+    assert value.startswith('"') and value.endswith('"')
+    assert Path(value[1:-1]).is_absolute()
+
+
+def test_startup_executable_value_frozen_uses_executable(monkeypatch):
+    monkeypatch.setattr(controller_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(controller_module.sys, "executable", r"C:\Program Files\ShamsiTray\ShamsiTray.exe")
+    assert controller_module._startup_executable_value() == '"C:\\Program Files\\ShamsiTray\\ShamsiTray.exe"'
 
 
 # --- windows lifecycle --------------------------------------------------------------------
@@ -617,7 +832,7 @@ def test_import_events_from_dialog_success(tray, monkeypatch, tmp_path):
     monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
                         staticmethod(lambda *a, **k: (str(import_file), "")))
     boxes = []
-    monkeypatch.setattr(controller_module.QMessageBox, "information",
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: boxes.append(a)))
 
     assert tray.import_events_from_dialog() is True
@@ -637,7 +852,7 @@ def test_import_events_from_dialog_bad_file(tray, monkeypatch, tmp_path):
     monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
                         staticmethod(lambda *a, **k: (str(bad), "")))
     errors = []
-    monkeypatch.setattr(controller_module.QMessageBox, "critical",
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: errors.append(a)))
     assert tray.import_events_from_dialog() is False
     assert errors
@@ -646,7 +861,7 @@ def test_import_events_from_dialog_bad_file(tray, monkeypatch, tmp_path):
 def test_export_events_empty_shows_info(tray, monkeypatch):
     tray.user_events = {}
     boxes = []
-    monkeypatch.setattr(controller_module.QMessageBox, "information",
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: boxes.append(a)))
     assert tray.export_events_to_dialog() is False
     assert boxes
@@ -658,7 +873,7 @@ def test_export_events_success(tray, monkeypatch, tmp_path):
     monkeypatch.setattr(controller_module.QFileDialog, "getSaveFileName",
                         staticmethod(lambda *a, **k: (str(out), "")))
     boxes = []
-    monkeypatch.setattr(controller_module.QMessageBox, "information",
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: boxes.append(a)))
     assert tray.export_events_to_dialog() is True
     assert out.exists()
@@ -671,6 +886,189 @@ def test_export_events_canceled(tray, monkeypatch):
                         staticmethod(lambda *a, **k: ("", "")))
     assert tray.export_events_to_dialog() is False
     tray.remove_user_event(jdatetime.date(1405, 9, 11))
+
+
+# --- prewarm / tray date tracking --------------------------------------------------------
+
+
+def test_prewarm_skips_when_calendar_is_visible(tray, qtbot):
+    """UI-1: prewarming prepares a HIDDEN window; a calendar the user opened
+    within the first second must not be yanked off-screen by the timer."""
+    tray.show_calendar()
+    assert tray.calendar_widget.isVisible()
+    position_before = tray.calendar_widget.pos()
+
+    tray._prewarm_calendar()
+
+    assert tray.calendar_widget.isVisible(), "the open calendar must stay open"
+    assert tray.calendar_widget.pos() == position_before
+
+
+def test_prewarm_runs_when_calendar_is_hidden(tray, qtbot):
+    assert not tray.calendar_widget.isVisible()
+    tray._prewarm_calendar()
+    assert not tray.calendar_widget.isVisible()  # parked off-screen again
+
+
+def test_update_tray_icon_tracks_last_tray_date_and_cleans_expiry(tray):
+    """TRAY-4/EVT-9: the tray keeps its own date and a real date change runs
+    the expired-event cleanup, so a sleep across midnight self-heals."""
+    clean_calls, _ = _spy(tray, "_clean_expired_events")
+    tray.update_tray_icon(force=True)
+    first_date = tray._last_tray_date
+    assert first_date is not None
+
+    # Simulate a day change without force (the minute-tick path).
+    tray._last_tray_date = jdatetime.date(first_date.year - 1, 1, 1)
+    tray.update_tray_icon(force=False)
+    assert len(clean_calls) == 1
+
+    # Same date again: no repeat cleanup, no repaint work.
+    tray.update_tray_icon(force=False)
+    assert len(clean_calls) == 1
+
+
+def test_fit_tooltip_caps_at_windows_limit(tray):
+    """TRAY-3: the tooltip never exceeds Windows' ~128-char cap."""
+    lines = ["شنبه", "1404/05/05", "۵ مرداد ۱۴۰۴"]
+    event_text = "رویداد طولانی " * 20
+    fitted = tray._fit_tooltip(lines + ["رویداد:"] + event_text.split("\n"))
+    assert len(fitted) <= 127
+    assert fitted.startswith("شنبه")  # priority lines survive
+
+
+def test_fit_tooltip_trims_lowest_priority_first(tray):
+    lines = ["شنبه", "1404/05/05", "۵ مرداد ۱۴۰۴", "تعطیلی:", "جشن بزرگ"]
+    event_text = "y" * 200
+    fitted = tray._fit_tooltip(lines + ["رویداد:"] + [event_text])
+    assert "جشن بزرگ" in fitted  # holiday reasons outrank the event text
+    assert event_text not in fitted  # the oversized event text was trimmed
+
+
+# --- persistence-failure handling (EVT-7) -------------------------------------------------
+
+
+def test_add_user_event_rolls_back_on_save_failure(tray, monkeypatch):
+    # The EventService owns the save (EVT-6), so patch it there.
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: None))
+
+    date = jdatetime.date(1405, 3, 3)
+    tray.user_events = {"1405-03-01": {"text": "keep me", "recurrence": "none",
+                                       "remove_after_finish": False}}
+    snapshot = dict(tray.user_events)
+
+    tray.add_user_event(date, "will fail to persist")
+
+    assert tray.user_events == snapshot, "in-memory state must roll back"
+
+
+def test_remove_user_event_rolls_back_on_save_failure(tray, monkeypatch):
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: None))
+
+    key = "1405-03-01"
+    tray.user_events = {key: {"text": "keep me", "recurrence": "none",
+                              "remove_after_finish": False}}
+    snapshot = dict(tray.user_events)
+
+    tray.remove_user_event(jdatetime.date(1405, 3, 1))
+
+    assert tray.user_events == snapshot
+
+
+def test_background_cleanup_save_failure_stays_quiet(tray, monkeypatch):
+    """EVT-7 revisited: expired-event cleanup runs from timers (startup,
+    midnight, time-change, minute tick). A failed save there must roll the
+    in-memory state back and LOG, never fire a modal - a modal per minute
+    while the disk is down was dialog spam, not UX."""
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+    notified = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: notified.append(a)))
+
+    expired_key = "1400-01-01"
+    tray.user_events = {expired_key: {"text": "old one-shot", "recurrence": "none",
+                                      "remove_after_finish": True}}
+    snapshot = dict(tray.user_events)
+
+    tray._clean_expired_events()
+
+    assert notified == [], "background cleanup must not raise a modal dialog"
+    assert tray.user_events == snapshot  # rolled back, still consistent
+
+
+def test_interactive_save_failure_notifies(tray, monkeypatch):
+    """Interactive mutations keep the themed failure dialog: the save result
+    and the UI notification are separated, not removed."""
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+    notified = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: notified.append(a)))
+
+    tray.add_user_event(jdatetime.date(1405, 3, 3), "interactive add")
+
+    assert len(notified) == 1
+    title = notified[0][1]
+    assert title == "ذخیره رویدادها"
+
+
+# --- UPD-6 / UPD-9 controller wiring ------------------------------------------------------
+
+
+def test_manual_check_flag_not_set_when_check_is_noop(tray, monkeypatch):
+    """UPD-6: a manual check arriving during an in-flight auto round must not
+    re-flag that round as manual."""
+    monkeypatch.setattr(tray.update_checker, "check", lambda: False)
+    tray._manual_update_check = False
+    tray._check_for_updates(manual=True)
+    assert tray._manual_update_check is False
+
+
+def test_download_update_reuses_verified_existing_installer(tray, monkeypatch, tmp_path):
+    """UPD-9: an existing, digest-verified installer skips the download."""
+    import hashlib
+
+    # _download_update prefers ~/Downloads when it exists; pin home to the
+    # tmp tree so the destination is deterministic.
+    monkeypatch.setattr(controller_module.Path, "home", staticmethod(lambda: tmp_path))
+    (tmp_path / "Downloads").mkdir()
+    destination = tmp_path / "Downloads" / "ShamsiTraySetup-1.4.1.exe"
+    payload = b"installer-bytes"
+    destination.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+
+    download_calls = []
+    monkeypatch.setattr(tray.update_checker, "download_installer",
+                        lambda url, dest, sha: download_calls.append((url, dest, sha)))
+    reuse_offers = []
+    monkeypatch.setattr(tray, "_on_installer_downloaded",
+                        lambda path: reuse_offers.append(path))
+
+    tray._download_update("1.4.1", "http://x/installer.exe", digest)
+
+    assert download_calls == []            # no re-download
+    assert reuse_offers == [str(destination)]
+
+
+def test_download_update_redownloads_on_digest_mismatch(tray, monkeypatch, tmp_path):
+    import hashlib
+
+    monkeypatch.setattr(controller_module.Path, "home", staticmethod(lambda: tmp_path))
+    (tmp_path / "Downloads").mkdir()
+    destination = tmp_path / "Downloads" / "ShamsiTraySetup-1.4.1.exe"
+    destination.write_bytes(b"stale bytes")
+
+    download_calls = []
+    monkeypatch.setattr(tray.update_checker, "download_installer",
+                        lambda url, dest, sha: download_calls.append((url, dest, sha)))
+
+    tray._download_update("1.4.1", "http://x/installer.exe",
+                          hashlib.sha256(b"fresh").hexdigest())
+
+    assert len(download_calls) == 1        # stale file: re-download
 
 
 # --- event add/remove guards -----------------------------------------------------------
@@ -689,3 +1087,179 @@ def test_add_user_event_rejects_none_date(tray):
 
 def test_remove_user_event_with_no_match_is_safe(tray):
     tray.remove_user_event(jdatetime.date(1500, 1, 1))  # no matching events
+
+
+# --- import collision confirmation (EVT-5 / #1) -----------------------------------------
+
+
+def _write_import_file(tmp_path, events):
+    import json
+
+    from utils.event_io import EVENTS_STORE_VERSION
+
+    path = tmp_path / "import.json"
+    path.write_text(json.dumps({"version": EVENTS_STORE_VERSION, "events": events},
+                               ensure_ascii=False), encoding="utf-8")
+    return str(path)
+
+
+def _entry(text, recurrence="none", remove_after_finish=False):
+    return {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
+
+
+def test_import_warns_and_aborts_on_exact_key_collision(tray, monkeypatch, tmp_path):
+    tray.user_events = {"1405-08-01": _entry("existing event")}
+    import_file = _write_import_file(tmp_path, {"1405-08-01": _entry("imported event")})
+    monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    asks = []
+
+    def fake_ask(parent, title, message, **kwargs):
+        asks.append((title, message, kwargs))
+        return False  # user declines
+
+    monkeypatch.setattr(controller_module.ConfirmDialog, "ask", staticmethod(fake_ask))
+    assert tray.import_events_from_dialog() is False
+    # Nothing changed: the store still holds the original event.
+    assert tray.user_events == {"1405-08-01": _entry("existing event")}
+    assert len(asks) == 1
+    title, message, kwargs = asks[0]
+    assert title == "وارد کردن رویدادها"
+    assert "جایگزین" in message
+    assert kwargs["detail"] == "existing event"
+
+
+def test_import_confirms_before_replacing_on_exact_collision(tray, monkeypatch, tmp_path):
+    tray.user_events = {"1405-08-01": _entry("existing event")}
+    import_file = _write_import_file(tmp_path, {"1405-08-01": _entry("imported event")})
+    monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    monkeypatch.setattr(controller_module.ConfirmDialog, "ask", staticmethod(lambda *a, **k: True))
+    boxes = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append((a[1], a[2]))))
+    assert tray.import_events_from_dialog() is True
+    assert tray.user_events == {"1405-08-01": _entry("imported event")}
+    # Summary mentions both the import and the replacement (Grok's «N جایگزین شد»).
+    summary = boxes[0][1]
+    assert "وارد شد" in summary and "جایگزین شد" in summary
+
+
+def test_import_warns_on_cross_representation_collision(tray, monkeypatch, tmp_path):
+    """A one-time event and an imported yearly event landing on the same
+    visible day used to stack silently: the calendar picked a winner while
+    the manager listed both."""
+    tray.user_events = {"1405-08-01": _entry("one-time existing")}
+    import_file = _write_import_file(tmp_path, {"0000-08-01": _entry("yearly imported", "yearly")})
+    monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    asks = []
+
+    def fake_ask(parent, title, message, **kwargs):
+        asks.append((message, kwargs))
+        return True
+
+    monkeypatch.setattr(controller_module.ConfirmDialog, "ask", staticmethod(fake_ask))
+    boxes = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a)))
+    assert tray.import_events_from_dialog() is True
+    # The confirm promised exactly ONE replacement:
+    assert len(asks) == 1 and "جایگزین" in asks[0][0]
+    assert asks[0][1]["detail"] == "one-time existing"
+    # And applying it kept the one-event-per-date invariant: the imported
+    # yearly took over, the shadowed one-time is gone everywhere.
+    assert tray.user_events == {"0000-08-01": _entry("yearly imported", "yearly")}
+
+
+def test_import_without_collisions_never_asks(tray, monkeypatch, tmp_path):
+    tray.user_events = {"1405-08-01": _entry("existing")}
+    import_file = _write_import_file(tmp_path, {"1406-03-05": _entry("imported")})
+    monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+
+    def boom(*a, **k):
+        raise AssertionError("confirm dialog must not appear without collisions")
+
+    monkeypatch.setattr(controller_module.ConfirmDialog, "ask", staticmethod(boom))
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify", staticmethod(lambda *a, **k: None))
+    assert tray.import_events_from_dialog() is True
+    assert set(tray.user_events) == {"1405-08-01", "1406-03-05"}
+
+
+def test_import_save_failure_leaves_disk_and_memory_untouched(tray, monkeypatch, tmp_path):
+    """Review item #2, failure side: with the single atomic save there is no
+    half-imported file to outlive the in-memory rollback."""
+    import json
+
+    original = {"version": 2, "events": {"1405-08-01": _entry("existing event")}}
+    store = APP_CONFIG.USER_EVENTS_FILE_PATH
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+    tray.user_events = {"1405-08-01": _entry("existing event")}
+
+    import_file = _write_import_file(tmp_path, {"1406-01-01": _entry("imported")})
+    monkeypatch.setattr(controller_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    errors = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: errors.append(a)))
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+
+    assert tray.import_events_from_dialog() is False
+    assert tray.user_events == {"1405-08-01": _entry("existing event")}
+    assert json.loads(store.read_text(encoding="utf-8")) == original, \
+        "the store file must be byte-identical after a failed import"
+    assert errors  # themed failure notice shown
+
+
+# --- download dialog duplicate guard (#3) ------------------------------------------------
+
+
+def test_download_update_ignored_while_download_in_progress(tray, monkeypatch):
+    """(#3) A second download request must not even CREATE a progress dialog:
+    the live one owns the progress, and a second card would freeze forever."""
+    monkeypatch.setattr(tray.update_checker, "is_downloading", lambda: True)
+
+    class MustNotBuild:
+        def __init__(self, *a, **k):
+            raise AssertionError("dialog must not be created while a download runs")
+
+    monkeypatch.setattr(controller_module, "DownloadUpdateDialog", MustNotBuild)
+    calls = []
+    monkeypatch.setattr(tray.update_checker, "download_installer",
+                        lambda *a, **k: calls.append(a))
+
+    tray._download_update("1.4.1", "http://x/installer.exe", "a" * 64)
+
+    assert calls == []
+
+
+def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
+    """Defense in depth: if the request is ever rejected after the dialog was
+    built, the freshly opened dialog is dismissed instead of orphaned."""
+    canceled_slots = []
+
+    class FakeDialog:
+        def __init__(self, version, parent=None):
+            self.shown = False
+            self.dismissed = False
+            self.canceled = type("Signal", (), {
+                "connect": staticmethod(lambda slot: canceled_slots.append(slot))})()
+
+        def show(self):
+            self.shown = True
+
+        def dismiss(self):
+            self.dismissed = True
+
+    dialog = FakeDialog("1.4.1")
+    monkeypatch.setattr(controller_module, "DownloadUpdateDialog",
+                        lambda version, parent=None: dialog)
+    monkeypatch.setattr(tray.update_checker, "is_downloading", lambda: False)
+    monkeypatch.setattr(tray.update_checker, "download_installer", lambda *a, **k: False)
+
+    tray._download_update("1.4.1", "http://x/installer.exe", "a" * 64)
+
+    assert dialog.shown and dialog.dismissed
+    assert tray._download_dialog is None

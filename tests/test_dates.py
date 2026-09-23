@@ -168,3 +168,19 @@ def test_ms_until_midnight_across_month_end():
 def test_ms_until_midnight_never_negative():
     value = ms_until_midnight(datetime.datetime(2025, 6, 15, 13, 59, 59, 999999))
     assert value >= 0
+
+
+# --- numeric copy formats (کپی تاریخ submenu) ---
+
+def test_format_jalali_numeric_zero_pads():
+    from utils.date_utils import format_jalali_numeric
+    assert format_jalali_numeric(jdatetime.date(1405, 7, 1)) == "1405/07/01"
+    assert format_jalali_numeric(jdatetime.date(1200, 12, 29)) == "1200/12/29"
+
+
+def test_format_gregorian_numeric_zero_pads_and_converts():
+    from utils.date_utils import format_gregorian_numeric
+    assert format_gregorian_numeric(jdatetime.date(1405, 7, 1)) == "2026/09/23"
+    gdate = jdatetime.date(1404, 5, 2).togregorian()
+    assert format_gregorian_numeric(jdatetime.date(1404, 5, 2)) == \
+        f"{gdate.year}/{gdate.month:02d}/{gdate.day:02d}"

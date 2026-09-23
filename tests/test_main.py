@@ -106,9 +106,9 @@ def stubbed(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "load_fonts", lambda: None)
     monkeypatch.setattr(main_module, "migrate_from_registry", lambda settings: None)
 
-    critical = []
-    monkeypatch.setattr(main_module.QMessageBox, "critical",
-                        staticmethod(lambda *a: critical.append(a)))
+    notifies = []
+    monkeypatch.setattr(main_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: notifies.append((a, k))))
     monkeypatch.setattr(main_module.QSystemTrayIcon, "isSystemTrayAvailable",
                         staticmethod(lambda: True))
 
@@ -116,7 +116,7 @@ def stubbed(monkeypatch, tmp_path):
                                exit=lambda code=0: (_ for _ in ()).throw(SystemExit(code)))
     monkeypatch.setattr(main_module, "sys", fake_sys)
     return SimpleNamespace(apps=FakeApp.instances, trays=FakeTray.instances,
-                           tutorials=FakeTutorial.instances, critical=critical,
+                           tutorials=FakeTutorial.instances, notifies=notifies,
                            sys=fake_sys)
 
 
@@ -176,7 +176,9 @@ def test_main_missing_assets_exits_with_error(stubbed, monkeypatch):
     with pytest.raises(SystemExit) as exit_info:
         main_module.main()
     assert exit_info.value.code == 1
-    assert stubbed.critical and "App icon" in stubbed.critical[0][2]
+    # Fatal surfaces use the themed dialog (no stock QMessageBox left).
+    assert stubbed.notifies and "App icon" in stubbed.notifies[0][0][2]
+    assert stubbed.notifies[0][1]["danger"] is True
     assert stubbed.trays == []  # never reached the tray boot
 
 
@@ -188,7 +190,7 @@ def test_main_font_failure_exits_with_error(stubbed, monkeypatch):
     with pytest.raises(SystemExit) as exit_info:
         main_module.main()
     assert exit_info.value.code == 1
-    assert stubbed.critical and "Font" in stubbed.critical[0][1]
+    assert stubbed.notifies and "fonts were loaded" in stubbed.notifies[0][0][2]
 
 
 def test_main_without_tray_exits(stubbed):
@@ -201,6 +203,28 @@ def test_main_without_tray_exits(stubbed):
         main_module.main()
     assert exit_info.value.code == 1
     assert stubbed.trays == []
+    assert stubbed.notifies  # themed error dialog instead of QMessageBox
+
+
+def test_main_single_instance_shows_themed_notice(stubbed, monkeypatch):
+    """WIN-1 revisited: the 'another instance is running' popup is a themed
+    ConfirmDialog (the last native QMessageBox in the app), then exit 0."""
+
+    class LockedLock:
+        def __init__(self, _path):
+            pass
+
+        def tryLock(self, timeout):
+            return False  # another instance holds the lock
+
+    monkeypatch.setattr(main_module, "QLockFile", LockedLock)
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main()
+    assert exit_info.value.code == 0
+    assert stubbed.trays == []  # never booted a second tray
+    assert stubbed.notifies and "در حال اجرا" in stubbed.notifies[0][0][2]
+    # Informational notice: not styled as a failure (danger=False default).
+    assert stubbed.notifies[0][1].get("danger") is None
 
 
 def test_main_registers_windows_appid_only_on_windows(stubbed, monkeypatch):
@@ -212,3 +236,22 @@ def test_main_registers_windows_appid_only_on_windows(stubbed, monkeypatch):
     with pytest.raises(SystemExit):
         main_module.main()
     assert calls == []  # on Linux the win32 branch is skipped entirely
+
+
+def test_main_appusermodelid_is_stable_across_releases(stubbed, monkeypatch):
+    """WIN-3 revisited: the AppUserModelID must NOT carry the version.
+
+    Microsoft's AppUserModelID docs: the version segment is only for apps
+    whose versions must coexist as distinct taskbar entities and should be
+    omitted otherwise, so an upgrade keeps the same identity (pinning, jump
+    lists). The version-qualified ID reset taskbar identity every release."""
+    calls = []
+
+    fake_ctypes = SimpleNamespace(windll=SimpleNamespace(shell32=SimpleNamespace(
+        SetCurrentProcessExplicitAppUserModelID=lambda appid: calls.append(appid))))
+    monkeypatch.setattr(main_module, "ctypes", fake_ctypes)
+    stubbed.sys.platform = "win32"
+    with pytest.raises(SystemExit):
+        main_module.main()
+    assert calls == [f"{APP_CONFIG.COMPANY_NAME}.{APP_CONFIG.APP_NAME}"]
+    assert APP_CONFIG.APP_VERSION not in calls[0]  # stable, version-free

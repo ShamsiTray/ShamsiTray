@@ -129,3 +129,34 @@ def test_elapsed_time_for_a_past_date(window):
     window._convert_date()
     assert "گذشته" in window.elapsed_text.text()
     assert "مانده" not in window.elapsed_text.text()
+
+
+# --- live year-range error (#6) -----------------------------------------------------------
+
+
+def test_out_of_range_year_keeps_range_message_visible(window):
+    """Changing any input clears the results strip; while the year is out of
+    range the strip must immediately re-show WHAT range is valid (#6)."""
+    window.show()
+    window.year_input.setText(to_persian_digits(3000))
+    assert window.status_message.isVisible()
+    assert to_persian_digits(DateConverterWindow.MAX_JALALI_YEAR) in window.status_message.text()
+    assert window.height() > window._initial_height
+
+
+def test_valid_year_hides_the_range_message(window):
+    window.show()
+    window.year_input.setText(to_persian_digits(3000))
+    assert window.status_message.isVisible()
+    window.year_input.setText(to_persian_digits(1400))
+    assert not window.status_message.isVisible()
+    assert window.height() == window._initial_height
+
+
+def test_range_message_follows_the_calendar_mode(window):
+    window.show()
+    window.conversion_type_combo.setCurrentIndex(1)  # «میلادی به شمسی»
+    window.year_input.setText("3000")
+    assert window.status_message.isVisible()
+    assert str(DateConverterWindow.MAX_GREGORIAN_YEAR) in window.status_message.text()
+    assert str(DateConverterWindow.MIN_GREGORIAN_YEAR) in window.status_message.text()

@@ -42,7 +42,9 @@ def test_midnight_trigger_updates_icon_and_reschedules(tray, monkeypatch):
 
 def test_midnight_trigger_cleans_expired_events(tray):
     today = jdatetime.date.today()
-    yesterday_key = make_event_key(today.replace(day=max(1, today.day - 1)), "none")
+    # timedelta arithmetic, not replace(day=day-1): on the 1st of a month
+    # replace() pins the date to TODAY and the "expired" event never expires.
+    yesterday_key = make_event_key(today - datetime.timedelta(days=1), "none")
     tray.user_events[yesterday_key] = {"text": "old", "recurrence": "none", "remove_after_finish": True}
     tray.schedule_next_midnight_check()
 
