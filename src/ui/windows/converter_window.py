@@ -16,25 +16,22 @@ from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxL
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, days_in_jalali_month, days_in_gregorian_month, validate_year_range, persian_month_name, gregorian_month_name, persian_weekday_name
 from utils.logger import setup_logging
-from utils.ui_helpers import (DigitsFirstCombo, accent_button_stylesheet,
-                              combo_stylesheet, error_line_edit_stylesheet,
-                              line_edit_stylesheet)
+from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
+                              accent_button_stylesheet, combo_stylesheet)
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
 
+from dateutil.relativedelta import relativedelta  # pinned in requirements.txt
+
 logger = setup_logging(__name__)
 
-try:
-    from dateutil.relativedelta import relativedelta
-    RELATIVEDELTA_AVAILABLE = True
-except ImportError:
-    logger.warning("dateutil.relativedelta not available. Elapsed time calculation will be less precise.")
-    RELATIVEDELTA_AVAILABLE = False
-
-class DateConverterWindow(BaseFramelessWindow):
+class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     """A window for converting dates between Jalali and Gregorian calendars."""
     MIN_JALALI_YEAR, MAX_JALALI_YEAR = 1, 1600
+    # 623 is intentional (owner decision): the Gregorian input floor stays at
+    # 623 even though Jalali year 1 technically begins on 622-03-21. Kept at
+    # 623 on purpose - do not "fix" this back to 622 without asking.
     MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR = 623, 2200
     TASKBAR_ICON = True  # show in the taskbar so a minimized window is reachable
 
@@ -51,7 +48,6 @@ class DateConverterWindow(BaseFramelessWindow):
 
         self._initialize_date_inputs()
         self._apply_windows_styles()
-        self._year_error = False
 
     def _current_year_bounds(self):
         """(min, max) year for the active input mode (jalali vs gregorian)."""
@@ -59,35 +55,22 @@ class DateConverterWindow(BaseFramelessWindow):
             return self.MIN_JALALI_YEAR, self.MAX_JALALI_YEAR
         return self.MIN_GREGORIAN_YEAR, self.MAX_GREGORIAN_YEAR
 
-    def _year_is_out_of_range(self) -> bool:
-        """Live flag for the red year border: typed year complete but out of bounds."""
-        text = self.year_input.text().strip()
-        if not text:
-            return False
-        try:
-            year = int(from_persian_digits(text))
-        except ValueError:
-            return False
+    # --- YearRangeValidationMixin host hooks ---
+
+    def _year_bounds(self):
+        return self._current_year_bounds()
+
+    def _year_hint_text(self) -> str:
+        """Live range message for the active mode: while the typed year is out
+        of range, the error strip stays up and says what to enter - the red
+        border alone left the user guessing."""
         lo, hi = self._current_year_bounds()
-        return not lo <= year <= hi
+        if self.conversion_type_combo.currentText() == "شمسی به میلادی":
+            return f"سال شمسی باید بین {to_persian_digits(lo)} و {to_persian_digits(hi)} باشد."
+        return f"سال میلادی باید بین {lo} و {hi} باشد."
 
-    def _update_year_error_state(self, *_args):
-        """Keep the red 'invalid year' border in sync with the typed text."""
-        self._set_year_error(self._year_is_out_of_range())
-
-    def _set_year_error(self, errored: bool):
-        if getattr(self, "_year_error", False) == errored:
-            return
-        self._year_error = errored
-        self._apply_year_style()
-
-    def _apply_year_style(self):
-        """Style the year input, switching to the shared error look when flagged."""
-        palette = APP_CONFIG.get_current_palette()
-        style = (error_line_edit_stylesheet(palette, center_text=True)
-                 if getattr(self, "_year_error", False)
-                 else line_edit_stylesheet(palette, center_text=True))
-        self.year_input.setStyleSheet(style)
+    def _year_style_kwargs(self, errored: bool) -> dict:
+        return {"center_text": True}
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -358,6 +341,15 @@ class DateConverterWindow(BaseFramelessWindow):
         return days_in_gregorian_month(year, month)
 
     def _clear_results(self, *args):
+        self._hide_results()
+        # While the year is out of range, KEEP the range message on screen -
+        # every input change clears the results strip, and without this the
+        # "what would a valid year look like" text vanished the moment the user
+        # started fixing the year.
+        if self._year_is_out_of_range():
+            self._show_error(self._year_hint_text())
+
+    def _hide_results(self):
         if self.status_message.isVisible():
             self.status_message.clear()
             self.status_message.hide()
@@ -370,7 +362,7 @@ class DateConverterWindow(BaseFramelessWindow):
             self.setFixedSize(650, self._initial_height)
 
     def _show_error(self, message: str):
-        self._clear_results()
+        self._hide_results()
         self.status_message.setText(message)
         self.status_message.show()
         new_height = self._initial_height + self.status_message.sizeHint().height() + 20
@@ -436,7 +428,10 @@ class DateConverterWindow(BaseFramelessWindow):
     def _update_elapsed_time(self, target_date: datetime.date):
         """
         Calculates human-readable elapsed time between today and the target date.
-        Uses dateutil.relativedelta when available, otherwise falls back to approximation.
+
+        python-dateutil is a hard, pinned dependency of the shipped app, so the
+        old "crude fallback when dateutil is missing" branch (a flat 365/30-day
+        approximation) was unreachable dead code and untested.
         """
         today = datetime.date.today()
         if target_date == today:
@@ -444,14 +439,8 @@ class DateConverterWindow(BaseFramelessWindow):
              return
 
         future = target_date > today
-        if RELATIVEDELTA_AVAILABLE:
-            delta = relativedelta(today, target_date)
-            parts = [f"{to_persian_digits(abs(d))} {n}" for d, n in [(delta.years, "سال"), (delta.months, "ماه"), (delta.days, "روز")] if d]
-        else:
-            total_days = abs((today - target_date).days)
-            years, rem = divmod(total_days, 365)
-            months, days = divmod(rem, 30)
-            parts = [f"{to_persian_digits(d)} {n}" for d, n in [(years, "سال"), (months, "ماه"), (days, "روز")] if d]
+        delta = relativedelta(today, target_date)
+        parts = [f"{to_persian_digits(abs(d))} {n}" for d, n in [(delta.years, "سال"), (delta.months, "ماه"), (delta.days, "روز")] if d]
 
         status = "مانده" if future else "گذشته"
         self.elapsed_text.setText(f"فاصله زمانی: {' '.join(parts)} {status}")
