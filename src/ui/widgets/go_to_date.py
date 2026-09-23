@@ -12,20 +12,29 @@ from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_helpers import (DigitsFirstCombo, accent_button_stylesheet,
-                              combo_stylesheet, danger_button_stylesheet,
-                              error_line_edit_stylesheet, line_edit_stylesheet)
+from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
+                              accent_button_stylesheet, combo_stylesheet,
+                              danger_button_stylesheet)
 
 # The «NN - month» items mix digits with Persian text, which is bidi-ambiguous:
 # their visual order depends on the base direction of whatever paints them.
 # DigitsFirstCombo pins closed label and popup rows to the digits-first order
 # («۰۶ - شهریور") on every platform.
 
-class GoToDateWindow(QWidget):
+
+def _year_range_hint(min_year: int, max_year: int) -> str:
+    """The live range message: the red border says "wrong", this says what
+    "right" is."""
+    return f"سال باید بین {to_persian_digits(min_year)} تا {to_persian_digits(max_year)} باشد"
+
+
+class GoToDateWindow(YearRangeValidationMixin, QWidget):
     """A small, non-movable window to jump to a specific month and year."""
     date_selected = pyqtSignal(int, int)
-    MIN_YEAR = 1200
-    MAX_YEAR = 1600
+    # The app-wide supported Jalali range (config), kept as class aliases for
+    # readability and backwards-compatible access from tests.
+    MIN_YEAR = APP_CONFIG.SUPPORTED_MIN_YEAR
+    MAX_YEAR = APP_CONFIG.SUPPORTED_MAX_YEAR
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -36,7 +45,6 @@ class GoToDateWindow(QWidget):
         self._initial_height = 200
         self.setFixedSize(200, self._initial_height)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self._year_error = False
         self._setup_ui()
         self.update_styles()
 
@@ -84,6 +92,10 @@ class GoToDateWindow(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.hide()
         main_layout.addWidget(self.error_label)
+        # The mixin shows this same label (with the range text) for as long as
+        # the typed year is out of range: the red border alone left the user
+        # guessing which years WOULD be accepted.
+        self.year_hint_label = self.error_label
 
         today = jdatetime.date.today()
         self.month_combo.setCurrentIndex(today.month - 1)
@@ -99,50 +111,127 @@ class GoToDateWindow(QWidget):
 
         self.confirm_button.clicked.connect(self._on_confirm)
         self.cancel_button.clicked.connect(self.close)
-        self.year_input.returnPressed.connect(self._on_confirm)
+        # Enter goes through the BUTTON, not straight to _on_confirm: a disabled
+        # تایید button then swallows the key on an empty/invalid year exactly
+        # like a click would. _on_confirm keeps its own guard for other callers.
+        self.year_input.returnPressed.connect(self.confirm_button.click)
         self.year_input.textChanged.connect(self._clear_error)
         self.year_input.textChanged.connect(self._update_year_error_state)
+        self.year_input.textChanged.connect(self._update_confirm_state)
+        # The button state always derives from the CURRENT input (an empty year
+        # is not submittable even before any edit event), so derive it once here
+        # too and the card never opens with a stale button.
+        self._update_confirm_state()
 
         main_layout.addLayout(button_layout)
 
-    def _year_is_out_of_range(self) -> bool:
+    # --- YearRangeValidationMixin host hooks ---
+
+    def _year_bounds(self):
+        return self.MIN_YEAR, self.MAX_YEAR
+
+    def _year_hint_text(self) -> str:
+        return _year_range_hint(self.MIN_YEAR, self.MAX_YEAR)
+
+    def _error_label_height(self) -> int:
+        """The height the error/hint label actually needs at the card's inner width.
+
+        A word-wrapped QLabel's sizeHint badly over-estimates (Qt's wrapped-text
+        hint heuristic prefers a roughly square block), which used to grow this
+        card far past the message and leave a band of dead space under it before
+        the button row. ``heightForWidth`` answers the exact height the label
+        gets once the layout assigns the inner width.
+        """
+        self.error_label.ensurePolished()
+        margins = self.layout().contentsMargins()
+        inner_width = 200 - margins.left() - margins.right()
+        height = self.error_label.heightForWidth(inner_width)
+        if height <= 0:  # no heightForWidth (defensive): fall back to the hint
+            height = self.error_label.sizeHint().height()
+        return height
+
+    def _resize_for_error(self):
+        """Fit the card exactly around the visible message.
+
+        The label's measured height is pinned with setFixedHeight so the layout
+        can never inflate it beyond the text, then the card takes the layout's
+        own required height - never smaller than the base card.
+        """
+        self.error_label.setFixedHeight(self._error_label_height())
+        needed = self.layout().sizeHint().height()
+        self.setFixedSize(200, max(self._initial_height, needed))
+
+    def _year_is_submittable(self) -> bool:
+        """True when the current input can actually be confirmed.
+
+        Distinct from ``_year_is_out_of_range`` (shared mixin): an EMPTY or
+        non-numeric field is not "out of range" (the red-border hint must not
+        claim otherwise), but it is definitely not submittable - so the تایید
+        button's enabling comes from this predicate instead: empty / non-numeric
+        / out of range all keep it greyed out.
+        """
         text = self.year_input.text().strip()
         if not text:
             return False
         try:
             year = int(from_persian_digits(text))
-        except ValueError:
+        except (ValueError, TypeError):
             return False
-        return not self.MIN_YEAR <= year <= self.MAX_YEAR
+        return self.MIN_YEAR <= year <= self.MAX_YEAR
 
-    def _update_year_error_state(self, *_args):
-        errored = self._year_is_out_of_range()
-        if self._year_error == errored:
-            return
-        self._year_error = errored
-        self._apply_year_style()
+    def _update_confirm_state(self, *_args):
+        """Grey the تایید button in and out with the input's submittability.
 
-    def _apply_year_style(self):
-        palette = APP_CONFIG.get_current_palette()
-        style = (error_line_edit_stylesheet(palette, padding="5px", center_text=True)
-                 if self._year_error
-                 else line_edit_stylesheet(palette, padding="5px", center_text=True,
-                                           placeholder_color=palette['GREY_COLOR']))
-        self.year_input.setStyleSheet(style)
+        Driven by textChanged (plus one initial call), it covers every case the
+        out-of-range flip cannot see: the empty and non-numeric states never
+        change the mixin's error state, so without this the button would stay
+        enabled after clearing the field. The shared accent style dims disabled
+        buttons.
+        """
+        self.confirm_button.setEnabled(self._year_is_submittable())
+
+    def _on_year_error_changed(self, errored: bool):
+        """Grow/shrink the fixed-size card with the live range hint.
+
+        Same sizing rule _show_error uses for confirm-time errors, applied
+        whenever the live out-of-range state flips.
+        """
+        if errored:
+            self._resize_for_error()
+        else:
+            self.setFixedSize(200, self._initial_height)
+
+    def _year_style_kwargs(self, errored: bool) -> dict:
+        kwargs = {"padding": "5px", "center_text": True}
+        if not errored:
+            kwargs["placeholder_color"] = APP_CONFIG.get_current_palette()['GREY_COLOR']
+        return kwargs
 
     def _clear_error(self):
-        """Clear error and reset window size when user types."""
+        """Clear confirm-time errors when the user types.
+
+        The LIVE range hint is owned by the mixin's year-error state: while that
+        state is set this must not hide the label - this handler runs before
+        ``_update_year_error_state`` on textChanged, and hiding here would
+        flicker the message away on every keystroke of an out-of-range year.
+        """
+        if getattr(self, "_year_error", False):
+            return
         if self.error_label.isVisible():
             self.error_label.hide()
             self.setFixedSize(200, self._initial_height)
 
     def _show_error(self, message: str):
-        """Show error and resize window to fit error message."""
+        """Show error and grow the window to fit it.
+
+        The label is measured exactly (``heightForWidth`` at the card's inner
+        width), so any wrap the fixed 200px width produces fits - and the card
+        no longer grows past the message, which used to leave dead space between
+        the hint and the button row.
+        """
         self.error_label.setText(message)
         self.error_label.show()
-
-        error_height = 230
-        self.setFixedSize(200, error_height)
+        self._resize_for_error()
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
@@ -168,21 +257,18 @@ class GoToDateWindow(QWidget):
         self.cancel_button.setStyleSheet(danger_button_stylesheet(palette))
 
     def _on_confirm(self):
-        year_str = self.year_input.text()
-        if not year_str:
-            self._show_error("لطفاً سال را وارد کنید")
+        """Accept the displayed month/year (تایید click, or Enter via it).
+
+        Enter is wired to ``confirm_button.click`` so a disabled button swallows
+        the key; this guard is the second layer - ANY path into here (a direct
+        call included) must prove the year submittable first, and
+        ``_year_is_submittable`` stays the single source of truth. An
+        un-submittable year is ignored silently, matching what a disabled button
+        does.
+        """
+        if not self._year_is_submittable():
             return
-
-        try:
-            year = int(from_persian_digits(year_str))
-            if not self.MIN_YEAR <= year <= self.MAX_YEAR:
-                min_y = to_persian_digits(str(self.MIN_YEAR))
-                max_y = to_persian_digits(str(self.MAX_YEAR))
-                self._show_error(f"سال باید بین {min_y} تا {max_y} باشد")
-                return
-
-            month = self.month_combo.currentIndex() + 1
-            self.date_selected.emit(year, month)
-            self.close()
-        except (ValueError, TypeError):
-            self._show_error("ورودی نامعتبر است")
+        year = int(from_persian_digits(self.year_input.text().strip()))
+        month = self.month_combo.currentIndex() + 1
+        self.date_selected.emit(year, month)
+        self.close()

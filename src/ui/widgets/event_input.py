@@ -26,10 +26,9 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButt
 from config import APP_CONFIG
 from utils.date_utils import days_in_jalali_month, from_persian_digits, to_persian_digits
 from utils.event_io import RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEARLY
-from utils.ui_helpers import (accent_button_stylesheet, center_combo_items,
-                              combo_stylesheet, danger_button_stylesheet,
-                              error_line_edit_stylesheet, fit_combo_width,
-                              line_edit_stylesheet)
+from utils.ui_helpers import (YearRangeValidationMixin, accent_button_stylesheet,
+                              center_combo_items, combo_stylesheet,
+                              danger_button_stylesheet, fit_combo_width)
 from .checkbox import CustomCheckbox
 
 # Combo index <-> recurrence mode mapping (kept explicit for signal safety).
@@ -70,7 +69,7 @@ class RTLTextEdit(QTextEdit):
             rect.adjust(5, 5, -5, -5)
             painter.drawText(rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, self.placeholder_text)
 
-class EventInputWidget(QWidget):
+class EventInputWidget(YearRangeValidationMixin, QWidget):
     """An integrated widget for adding or editing a user event."""
     saved = pyqtSignal(str, str, bool)  # text, recurrence, remove_after_finish
     canceled = pyqtSignal()
@@ -159,8 +158,7 @@ class EventInputWidget(QWidget):
         self.year_input.textChanged.connect(self._update_year_error_state)
         self.month_combo.currentIndexChanged.connect(self._on_date_anchor_changed)
 
-        self._year_error = False  # live flag: typed year is complete but out of range
-        self.update_styles()
+        self.update_styles()  # _year_error default lives on the shared mixin
         self._update_save_button_state()
 
     # --- date selector (optional row) ---
@@ -215,36 +213,13 @@ class EventInputWidget(QWidget):
             return None
         return year if MIN_EVENT_YEAR <= year <= MAX_EVENT_YEAR else None
 
-    def _year_is_out_of_range(self) -> bool:
-        """True when the text forms a complete year but outside the supported
-        range (e.g. 3213) - the case that deserves a visible error."""
-        text = self.year_input.text().strip()
-        if not text:
-            return False
-        try:
-            year = int(from_persian_digits(text))
-        except (ValueError, TypeError):
-            return False
-        return not (MIN_EVENT_YEAR <= year <= MAX_EVENT_YEAR)
+    # --- YearRangeValidationMixin host hooks ---
 
-    def _update_year_error_state(self, *_args):
-        """Keep the red 'invalid year' border in sync with the typed text."""
-        self._set_year_error(self._year_is_out_of_range())
+    def _year_bounds(self):
+        return MIN_EVENT_YEAR, MAX_EVENT_YEAR
 
-    def _set_year_error(self, errored: bool):
-        if self._year_error == errored:
-            return
-        self._year_error = errored
-        self._apply_year_style()
-        self.year_hint_label.setVisible(errored)
-
-    def _apply_year_style(self):
-        """Style the year input, switching to the shared error look when flagged."""
-        palette = APP_CONFIG.get_current_palette()
-        style = (error_line_edit_stylesheet(palette, padding="4px 8px", center_text=True)
-                 if self._year_error
-                 else line_edit_stylesheet(palette, padding="4px 8px", center_text=True))
-        self.year_input.setStyleSheet(style)
+    def _year_style_kwargs(self, errored: bool) -> dict:
+        return {"padding": "4px 8px", "center_text": True}
 
     def _on_date_anchor_changed(self, *_args):
         year = self._picked_year()
