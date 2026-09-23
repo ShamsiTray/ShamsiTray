@@ -14,14 +14,15 @@ import os
 import sys
 import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
+from core.event_service import EventService
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
 from ui.windows.event_manager_window import EventManagerWindow
@@ -30,25 +31,22 @@ from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, T
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.download_dialog import DownloadUpdateDialog
-from core.update_checker import DAY_MS, UpdateChecker, should_notify
+from core.update_checker import DAY_MS, UpdateChecker, file_sha256, should_notify
 from utils.date_utils import ms_until_midnight, persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import (
     RECURRENCE_NONE,
-    clean_expired_keys,
     events_for_date,
     export_events_to_file,
     import_events_from_file,
-    keys_matching_date,
-    load_user_events,
-    make_event_key,
-    save_user_events,
 )
 from utils.holiday_io import read_version, resolve_holidays_store
 from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
-from utils.ui_helpers import create_tray_pixmap
-from ui.windows.tutorial_window import TutorialWindow
+from utils.ui_helpers import create_tray_pixmap, global_scrollbar_stylesheet
+
+if TYPE_CHECKING:
+    from ui.windows.tutorial_window import TutorialWindow
 
 if sys.platform == 'win32':
     import winreg
@@ -59,6 +57,33 @@ logger = setup_logging(__name__)
 # cadence, at most this many times per session (reset on any clean check).
 AUTO_CHECK_RETRY_DELAY_MS = 10 * 60 * 1000
 AUTO_CHECK_MAX_RETRIES = 3
+
+# Windows silently truncates tray tooltips at ~128 characters. Build the tooltip
+# by priority (weekday, date, holidays, then the event text) and trim the
+# lowest-priority content ourselves instead of losing the tail mid-line.
+WINDOWS_TOOLTIP_MAX_CHARS = 127
+
+# Autostart is OPT-OUT: a brand-new installation has no saved preference yet and
+# defaults to ENABLED. An existing explicit False must never be read as "missing"
+# and re-enabled, which is why the missing-vs-False distinction is made with
+# JsonSettings.contains() instead of a value() default.
+AUTOSTART_FIRST_RUN_DEFAULT = True
+
+_RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def _startup_executable_value() -> str:
+    """The quoted executable path the autostart Run entry should hold.
+
+    Frozen builds point at the running executable; development runs resolve
+    ``sys.argv[0]`` to an ABSOLUTE path first - a bare relative name would make
+    the Run entry depend on whatever working directory the process happened to
+    be launched from, and the entry would not survive a launch from another
+    directory.
+    """
+    if getattr(sys, 'frozen', False):
+        return f'"{sys.executable}"'
+    return f'"{Path(sys.argv[0]).resolve()}"'
 
 # Test hook for the holiday updater: pretend the local store has this data
 # version instead of the real one. Set to 0 to force the updater to see the
@@ -72,6 +97,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         super().__init__()
         self.settings = settings if settings is not None else JsonSettings()
         self.holidays_cache = resolve_holidays_store()
+        # The event store is owned by the EventService: every mutation and every
+        # save goes through it, so the calendar, the tray and the disk can never
+        # disagree. ``user_events`` below is a live view of ``self._events.events``.
+        self._events = EventService()
+        # The service stays Qt-free; the application supplies the themed failure
+        # dialog for interactive saves (background cleanup passes notify=False
+        # inside the service and never calls this).
+        self._events.on_save_error = self._notify_save_failed
         # Window references are created lazily; they must exist (as None) before
         # _clean_expired_events can run, because it refreshes the calendar when
         # events expire. Previously this raised AttributeError on startup whenever
@@ -82,7 +115,6 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.holiday_viewer_window: Optional[HolidayViewerWindow] = None
         self.tutorial_window: Optional["TutorialWindow"] = None
 
-        self.user_events = self._load_user_events()
         self._clean_expired_events()
 
         self.calendar_widget = PersianCalendarWidget(self.holidays_cache, self.user_events)
@@ -99,6 +131,23 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._setup_update_checker()
         self.update_tray_icon(force=True)
 
+    # --- user-event store (live view of the EventService state) -----------------
+
+    @property
+    def user_events(self) -> Dict[str, dict]:
+        """The live event store (the EventService's own dict object).
+
+        A property, not a plain attribute: rebinding it would orphan the
+        reference the calendar widget holds. The setter syncs IN PLACE for the
+        same reason, so external holders always read current state.
+        """
+        return self._events.events
+
+    @user_events.setter
+    def user_events(self, value: Dict[str, dict]):
+        self._events.events.clear()
+        self._events.events.update(value)
+
     def _get_windows_theme(self) -> str:
         """Detects if Windows is in light or dark mode. Defaults to dark if detection fails."""
         if not sys.platform == 'win32':
@@ -113,7 +162,16 @@ class SystemTrayIcon(QSystemTrayIcon):
             return APP_CONFIG.Theme.DARK
 
     def _load_settings(self):
-        self.is_open_at_login = self.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool)
+        # Autostart is opt-out (AUTOSTART_FIRST_RUN_DEFAULT): a MISSING
+        # preference means the setting has never been initialized (fresh install)
+        # and defaults to enabled - it must NOT be read as "the user disabled
+        # it". contains() makes the missing-vs-False distinction; the preference
+        # is only persisted after the registry agrees.
+        self._autostart_pref_exists = self.settings.contains(APP_CONFIG.AUTO_START_SETTING_KEY)
+        if self._autostart_pref_exists:
+            self.is_open_at_login = self.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool)
+        else:
+            self.is_open_at_login = AUTOSTART_FIRST_RUN_DEFAULT
 
         saved_theme = self.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
         if saved_theme:
@@ -177,6 +235,10 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _setup_update_checker(self):
         self._manual_update_check = False
         self._update_dialog_open = False
+        # True between the scheduling of a deferred popup and the popup actually
+        # opening; closes the one-tick window in which a second
+        # app_update_available could schedule a duplicate dialog.
+        self._update_popup_pending = False
         self._download_dialog = None
         self._auto_check_retries = 0
         data_version = read_version(APP_CONFIG.HOLIDAYS_STORE_PATH)
@@ -212,9 +274,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         # No "last checked" stamp here: writing it up front is how a failed
         # check used to count as done and silence auto-checks for a day. The
         # stamp moves to _on_check_concluded, where a real answer arrived.
-        self._manual_update_check = manual
-        logger.info(f"Checking for updates ({'manual' if manual else 'automatic'}).")
-        self.update_checker.check()
+        #
+        # The manual flag moves behind check()'s return value: setting it
+        # unconditionally mis-flagged an in-flight AUTO round as manual when a
+        # manual check arrived while one was already running.
+        started = self.update_checker.check()
+        if started:
+            self._manual_update_check = manual
+            logger.info(f"Checking for updates ({'manual' if manual else 'automatic'}).")
 
     def _on_check_concluded(self, failed: bool):
         """End of one check round: stamp success, schedule retries on failure."""
@@ -236,9 +303,19 @@ class SystemTrayIcon(QSystemTrayIcon):
             if not should_notify(version, ignored):
                 logger.info(f"Skipping update notification for ignored version {version}.")
                 return
-        self._show_update_popup(version, installer_url, sha256)
+        # Defer the popup out of the checker's signal path: _conclude() emits
+        # this signal and must still emit check_concluded afterwards. Running a
+        # modal dialog in between blocked the conclusion mid-flight, and a check
+        # started while the dialog was open reset the shared round state under
+        # it - the re-entrancy behind the phantom "check failed; retry in 10
+        # minutes" right after answering the popup.
+        if self._update_dialog_open or self._update_popup_pending:
+            return
+        self._update_popup_pending = True
+        QTimer.singleShot(0, lambda: self._show_update_popup(version, installer_url, sha256))
 
     def _show_update_popup(self, version: str, installer_url: str, sha256: str):
+        self._update_popup_pending = False
         if self._update_dialog_open:
             return
         self._update_dialog_open = True
@@ -262,8 +339,26 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info(f"Update to {version} will no longer be announced automatically.")
 
     def _download_update(self, version: str, installer_url: str, sha256: str):
+        # A download request arriving while ANOTHER download runs must not build
+        # a second progress card: the live dialog owns the real progress, and a
+        # second one would sit frozen forever (its request rejected). Check
+        # BEFORE creating the dialog at all.
+        if self.update_checker.is_downloading():
+            logger.warning("Download request ignored: a download is already in progress.")
+            return
         downloads_dir = Path.home() / 'Downloads'
         destination = (downloads_dir if downloads_dir.exists() else APP_CONFIG.USER_DATA_DIR) / f"ShamsiTraySetup-{version}.exe"
+        # Reuse an already-downloaded installer when its digest matches the
+        # release: the user may have run the update before, declined to install,
+        # and asked again later - re-downloading the same file was pure waste.
+        # Without a digest there is nothing to verify against, so the safe path
+        # is a fresh download.
+        if sha256 and destination.exists():
+            existing_digest = file_sha256(destination)
+            if existing_digest is not None and existing_digest.lower() == sha256.lower():
+                logger.info(f"Installer for {version} already downloaded and verified: {destination}")
+                self._on_installer_downloaded(str(destination))
+                return
         # Themed progress card matching the rest of the update flow; the
         # stock QProgressDialog ignored the palette entirely.
         dialog = DownloadUpdateDialog(version, QApplication.activeWindow())
@@ -271,7 +366,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._download_dialog = dialog
         dialog.show()
         logger.info(f"Downloading update {version} to {destination}")
-        self.update_checker.download_installer(installer_url, destination, sha256)
+        if not self.update_checker.download_installer(installer_url, destination, sha256):
+            # Defense in depth for the rejected-request case: the dialog we just
+            # opened has no download behind it and would freeze on screen, so
+            # close it immediately (the pre-check above makes this path
+            # unreachable today, but the dialog must never be left orphaned if
+            # the guard ever races).
+            logger.warning("Installer download request rejected; a download is already in progress.")
+            self._close_download_dialog()
 
     def _on_download_progress(self, received: int, total: int):
         if self._download_dialog is not None:
@@ -281,7 +383,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self._download_dialog is not None:
             dialog = self._download_dialog
             self._download_dialog = None  # clear first: close() re-enters reject paths
-            dialog.close()
+            # dismiss() skips the overridden reject(), so closing after a SUCCESS
+            # or a failure does not re-emit `canceled` (Qt's default
+            # closeEvent -> reject() chain would have fired it every time).
+            dialog.dismiss()
 
     def _on_installer_downloaded(self, path: str):
         self._close_download_dialog()
@@ -303,106 +408,92 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info("Update download canceled.")
             return
         logger.error(f"Update download failed: {reason}")
+        # No automatic redirect: a checksum failure especially deserves a moment
+        # of the user's attention ("this file failed verification") instead of a
+        # browser window quietly opening on the releases page. Dialogs are titled
+        # for the action they belong to, not the app name.
         ConfirmDialog.notify(
-            QApplication.activeWindow(), APP_CONFIG.APP_NAME,
-            "دانلود بروزرسانی ناموفق بود.", danger=True,
-            glyph=APP_CONFIG.FAS.FA_XMARK)
-        QDesktopServices.openUrl(QUrl(APP_CONFIG.APP_RELEASES_PAGE_URL))
+            QApplication.activeWindow(), "دانلود بروزرسانی",
+            "دانلود بروزرسانی ناموفق بود.",
+            detail="می‌توانید نصب‌کننده را به‌صورت دستی از صفحه Releases دریافت کنید.",
+            danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
 
     def _on_holidays_updated(self):
         logger.info("Holiday data updated; refreshing calendar and tray icon.")
         self.holidays_cache = resolve_holidays_store()
         self.calendar_widget.set_holidays(self.holidays_cache)
+        # An open Holiday Viewer used to keep showing the old cache until it was
+        # closed and reopened.
+        if self.holiday_viewer_window is not None and self.holiday_viewer_window.isVisible():
+            self.holiday_viewer_window.set_holidays(self.holidays_cache)
         self.update_tray_icon(force=True)
 
     def _on_no_updates(self):
         logger.info("No updates available.")
         if self._manual_update_check:
             ConfirmDialog.notify(
-                QApplication.activeWindow(), APP_CONFIG.APP_NAME,
+                QApplication.activeWindow(), "بررسی بروزرسانی",
                 "برنامه و فایل تعطیلات بروز است.",
                 glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
 
     def _on_check_failed(self, reason: str):
         logger.warning(f"Update check failed: {reason}")
+        # A failure arriving while the update popup is already up must never
+        # stack a second dialog on top of the user's decision: "remind later"
+        # would otherwise appear to summon an unrelated offline error.
+        if self._update_dialog_open or self._update_popup_pending:
+            return
         if self._manual_update_check:
             ConfirmDialog.notify(
-                QApplication.activeWindow(), APP_CONFIG.APP_NAME,
+                QApplication.activeWindow(), "بررسی بروزرسانی",
                 "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
                 danger=True,
-                glyph=APP_CONFIG.FAS.FA_XMARK)
+                glyph=APP_CONFIG.FAS.FA_WIFI)
 
-    def _build_global_stylesheet(self) -> str:
-        palette = APP_CONFIG.get_current_palette()
-        return (f"QScrollBar:vertical {{ border: none; background: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 10px; margin: 0px; border-radius: 5px;}}"
-                f"QScrollBar::handle:vertical {{ background: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 5px; min-height: 20px;}}"
-                f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}"
-                f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}")
+    @staticmethod
+    def _build_global_stylesheet() -> str:
+        # Shared builder in ui_helpers: no per-controller QSS inline.
+        return global_scrollbar_stylesheet(APP_CONFIG.get_current_palette())
 
-    def _load_user_events(self) -> Dict[str, dict]:
-        """Loads user events from the JSON event store (legacy registry blob is
-        handled by the one-time settings migration at startup)."""
-        self.user_events = load_user_events()
-        logger.info(f"Loaded {len(self.user_events)} user events.")
-        return self.user_events
+    def _notify_save_failed(self):
+        """Themed failure notice for interactive event saves.
 
-    def _save_user_events(self):
-        if not save_user_events(self.user_events):
-            # Persistence failed: keep the in-memory state valid and report it, never crash.
-            logger.error("Failed to persist user events (in-memory state kept).")
-
-    def add_user_event(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
-                       remove_after_finish: bool = False):
-        """Add (or replace) the event shown for ``jdate``.
-
-        One event per date: whatever previously matched this date (one-time,
-        yearly or monthly) is replaced. Recurring events ignore the
-        auto-delete flag because they repeat forever.
+        The EventService calls this via ``on_save_error`` after restoring the
+        in-memory state, so the message can honestly claim the current data was
+        kept.
         """
-        if not jdate:
-            return
-        if not text or not text.strip():
-            logger.warning("Ignoring attempt to add a user event with empty text.")
-            return
-        self.remove_user_event(jdate, save=False)
+        ConfirmDialog.notify(
+            QApplication.activeWindow(), "ذخیره رویدادها",
+            "ذخیره رویدادها ناموفق بود؛ تغییرات فعلی حفظ شده است.",
+            danger=True, glyph=APP_CONFIG.FAS.FA_SAVE)
 
-        if recurrence != RECURRENCE_NONE:
-            remove_after_finish = False
-        key = make_event_key(jdate, recurrence)
-        self.user_events[key] = {
-            "text": text,
-            "recurrence": recurrence,
-            "remove_after_finish": remove_after_finish,
-        }
-        self._save_user_events()
+    def _refresh_after_events_changed(self):
+        """Push a successful store mutation to the calendar, tray and manager."""
         self.calendar_widget.set_user_events(self.user_events)
         self.update_tray_icon(force=True)
         self._refresh_event_manager()
 
+    def add_user_event(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
+                       remove_after_finish: bool = False):
+        """Add (or replace) the event shown for ``jdate`` (one event per date).
+
+        All store rules and the transactional save live in the EventService;
+        this wrapper only refreshes the UI on success.
+        """
+        if self._events.add(jdate, text, recurrence, remove_after_finish):
+            self._refresh_after_events_changed()
+
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
         """Remove every event variant matching ``jdate`` (specific, yearly, monthly)."""
-        if not jdate:
-            return
-        matching = keys_matching_date(self.user_events, jdate)
-        if not matching:
-            return
-        for key in matching:
-            del self.user_events[key]
-        if save:
-            self._save_user_events()
-            self.calendar_widget.set_user_events(self.user_events)
-            self.update_tray_icon(force=True)
-            self._refresh_event_manager()
+        if self._events.remove_for_date(jdate, commit=save):
+            self._refresh_after_events_changed()
 
     def _clean_expired_events(self):
-        expired = clean_expired_keys(self.user_events)
-        if not expired:
+        # Background cleanup (startup / midnight / time-change / minute tick):
+        # the service logs quietly instead of raising a modal from a timer.
+        if not self._events.clean_expired(notify=False):
             return
-        logger.info(f"Removing {len(expired)} expired events.")
-        for key in expired:
-            del self.user_events[key]
-        self._save_user_events()
-        if self.calendar_widget:
+        if self.calendar_widget is not None:
             self.calendar_widget.set_user_events(self.user_events)
         self._refresh_event_manager()
 
@@ -414,8 +505,20 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def update_tray_icon(self, force: bool = False):
         new_date = jdatetime.date.today()
-        if not force and hasattr(self.calendar_widget, 'current_date') and new_date == self.calendar_widget.current_date:
+        last_date = getattr(self, '_last_tray_date', None)
+        if not force and new_date == last_date:
             return
+        date_changed = new_date != last_date
+        # The tray tracks its own date: piggy-backing on the calendar widget's
+        # current_date was fragile, and the hasattr guard was always true after
+        # __init__ anyway.
+        self._last_tray_date = new_date
+
+        if date_changed and self.calendar_widget is not None:
+            # A sleep across midnight without a WM_TIMECHANGE left expired events
+            # uncleaned until the next manual refresh - the minute tick now
+            # notices the date change and runs the cleanup.
+            self._clean_expired_events()
 
         logger.info(f"Updating tray icon for new date: {new_date}")
         self.calendar_widget.current_date = new_date
@@ -455,7 +558,23 @@ class SystemTrayIcon(QSystemTrayIcon):
             tooltip_lines.append("رویداد:")
             tooltip_lines.extend(user_event_text.split('\n'))
 
-        self.setToolTip("\n".join(tooltip_lines))
+        self.setToolTip(self._fit_tooltip(tooltip_lines))
+
+    @staticmethod
+    def _fit_tooltip(lines: list) -> str:
+        """Trim a tooltip to Windows' ~128-char cap, lowest priority first.
+
+        Lines are already built highest-priority-first (weekday, date, holiday
+        reasons, then the event text), so dropping from the end sacrifices the
+        event before it ever touches the identity lines; if even the identity
+        lines overflow, the last one is ellipsis-trimmed instead.
+        """
+        while len("\n".join(lines)) > WINDOWS_TOOLTIP_MAX_CHARS:
+            if len(lines) > 3:
+                lines.pop()
+            else:
+                lines[-1] = lines[-1][:max(WINDOWS_TOOLTIP_MAX_CHARS - 1, 0)].rstrip() + "…"
+        return "\n".join(lines)
 
     def _setup_context_menu(self):
         menu = TrayMenu()
@@ -529,21 +648,39 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.fill_calendar_grid()
         self.calendar_widget.update_styles()
 
-        screen = QApplication.primaryScreen().availableGeometry()
+        # Position on the monitor that actually hosts the tray icon (not blindly
+        # the primary), and guard the no-screen case (RDP disconnect) that used
+        # to dereference primaryScreen() unguarded.
         tray_geom = self.geometry()
+        screen = QApplication.screenAt(tray_geom.center()) if tray_geom.isValid() else None
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        if screen is None:
+            screens = QApplication.screens()
+            screen = screens[0] if screens else None
+        if screen is None:
+            logger.error("No screen available; showing the calendar without positioning.")
+            self.calendar_widget.show()
+            return
+        screen_geo = screen.availableGeometry()
         widget_size = self.calendar_widget.size()
-        x = screen.right() - widget_size.width() - 10 # Small gap so the widget doesn't touch the tray icon
-        y = screen.bottom() - widget_size.height() - 45 # Fallback offset to keep widget above taskbar
+        x = screen_geo.right() - widget_size.width() - 10 # Small gap so the widget doesn't touch the tray icon
+        y = screen_geo.bottom() - widget_size.height() - 45 # Fallback offset to keep widget above taskbar
         if tray_geom.isValid():
             x = tray_geom.center().x() - widget_size.width() // 2
             y = tray_geom.top() - widget_size.height() - 5
-            x = max(screen.left(), min(x, screen.right() - widget_size.width()))
-            y = max(screen.top(), min(y, screen.bottom() - widget_size.height()))
+            x = max(screen_geo.left(), min(x, screen_geo.right() - widget_size.width()))
+            y = max(screen_geo.top(), min(y, screen_geo.bottom() - widget_size.height()))
         self.calendar_widget.move(int(x), int(y))
         self.calendar_widget.show()
         self.calendar_widget.activateWindow()
 
     def _prewarm_calendar(self):
+        # Prewarming prepares a HIDDEN window for its first real open; if the
+        # user beat the 1s timer to it, the calendar is legitimately visible and
+        # must not be yanked off-screen.
+        if self.calendar_widget.isVisible():
+            return
         self.calendar_widget.move(-10000, -10000)
         self.calendar_widget.show()
         QApplication.processEvents()
@@ -555,46 +692,110 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.info(f"Theme toggled to: {self.current_theme}")
         self._apply_theme()
 
-    def _set_startup_registry(self, enable: bool):
+    def _set_startup_registry(self, enable: bool) -> bool:
+        """Write/remove the autostart Run key; True only when the registry now
+        matches ``enable`` (the UI setting is only updated after this succeeds)."""
         if not sys.platform.startswith('win'):
             logger.warning("Auto-start is only supported on Windows.")
-            return
+            return False
         try:
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
-            if enable:
-                executable_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
-                # Path must be quoted to support spaces when the app is frozen or installed in Program Files
-                winreg.SetValueEx(key, APP_CONFIG.APP_NAME, 0, winreg.REG_SZ, f'"{executable_path}"')
-                logger.info(f"Set startup registry key to: {executable_path}")
-            else:
-                winreg.DeleteValue(key, APP_CONFIG.APP_NAME)
-                logger.info("Removed startup registry key.")
-            winreg.CloseKey(key)
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH, 0, winreg.KEY_ALL_ACCESS) as key:
+                if enable:
+                    executable_path = _startup_executable_value()
+                    # Path must be quoted to support spaces when the app is frozen or installed in Program Files
+                    winreg.SetValueEx(key, APP_CONFIG.APP_NAME, 0, winreg.REG_SZ, executable_path)
+                    logger.info(f"Set startup registry key to: {executable_path}")
+                else:
+                    try:
+                        winreg.DeleteValue(key, APP_CONFIG.APP_NAME)
+                        logger.info("Removed startup registry key.")
+                    except FileNotFoundError:
+                        # The value is already gone: the desired state holds.
+                        logger.warning("Could not remove startup key (it may not exist).")
+            return True
         except FileNotFoundError:
             if not enable:
                 logger.warning("Could not remove startup key (it may not exist).")
-            else:
-                logger.error(f"Could not find registry key path: {key_path}")
+                return True
+            logger.error(f"Could not find registry key path: {_RUN_KEY_PATH}")
+            return False
         except Exception as e:
             logger.error(f"Error modifying Windows registry: {e}")
+            return False
+
+    def _startup_entry_exists(self) -> bool:
+        """True when the HKCU Run key currently holds a ShamsiTray value.
+
+        Read-only probe used to reconcile a disabled preference with a stale
+        entry; unknown states (unreadable registry) conservatively report False
+        so healing never fights a registry it cannot read.
+        """
+        if not sys.platform.startswith('win'):
+            return False
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH, 0, winreg.KEY_READ) as key:
+                winreg.QueryValueEx(key, APP_CONFIG.APP_NAME)
+                return True
+        except FileNotFoundError:
+            return False
+        except OSError as e:
+            logger.warning(f"Could not read startup registry key: {e}")
+            return False
 
     def _toggle_open_at_boot(self, checked: bool):
+        # The application setting and the menu checkbox may only claim the new
+        # state AFTER the registry write is known to have succeeded; otherwise a
+        # failed write left settings.json saying "enabled" while Windows never
+        # started the app.
+        if not self._set_startup_registry(checked):
+            logger.error("Autostart registry update failed; application setting left unchanged.")
+            self._setup_context_menu()  # rebuild so the checkbox shows the real state
+            return
         self.is_open_at_login = checked
         self.settings.setValue(APP_CONFIG.AUTO_START_SETTING_KEY, checked)
         logger.info(f"Setting 'Open at Login' to {checked}.")
-        self._set_startup_registry(checked)
 
     def _validate_and_apply_startup_setting(self):
-        if not sys.platform.startswith('win') or not self.is_open_at_login:
+        """Align the Windows Run entry with the autostart preference.
+
+        Opt-out behaviour, three states:
+        - Missing preference (first initialization of the setting / fresh
+          install): the Run entry is created FIRST and the preference is
+          persisted only after the registry write succeeded. A failed write
+          leaves the preference unset (next launch retries the default) and the
+          in-memory state honestly OFF, so the checkbox can never claim a
+          startup that Windows will not do.
+        - Existing preference OFF: stays OFF - never re-enabled - and a stale Run
+          entry (e.g. left behind by a failed delete once) is healed away so
+          Windows and the app agree.
+        - Existing preference ON: the Run value is validated to point at this
+          executable and re-applied when it drifted.
+        """
+        if not sys.platform.startswith('win'):
+            return
+        if not self._autostart_pref_exists:
+            logger.info("No autostart preference saved yet; applying the first-run default (enabled).")
+            if self._set_startup_registry(True):
+                self.is_open_at_login = True
+                self.settings.setValue(APP_CONFIG.AUTO_START_SETTING_KEY, True)
+            else:
+                # Do not pretend the preference was applied: keep the app state
+                # consistent with the registry result and leave the setting unset
+                # so the next launch retries the default.
+                self.is_open_at_login = False
+                logger.error("Autostart registry write failed; preference left unset and shown as disabled.")
+            return
+        if not self.is_open_at_login:
+            # Existing explicit OFF: remain OFF. Only heal a stale Run entry.
+            if self._startup_entry_exists():
+                logger.warning("Startup Run entry exists despite a disabled preference; removing it.")
+                self._set_startup_registry(False)
             return
         logger.info("Validating startup registry key...")
-        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-        executable_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
-        expected_value = f'"{executable_path}"'
+        expected_value = _startup_executable_value()
         needs_update = True
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH, 0, winreg.KEY_READ)
             current_value, _ = winreg.QueryValueEx(key, APP_CONFIG.APP_NAME)
             if current_value == expected_value:
                 logger.info("Startup registry key is correct.")
@@ -610,30 +811,30 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info("Re-applying startup registry key.")
             self._set_startup_registry(True)
 
+    def _show_or_raise(self, window_attr: str, factory):
+        """Shared window-opener: create+show the window stored on ``window_attr``,
+        or raise/activate the existing one. Returns the window."""
+        window = getattr(self, window_attr)
+        if window is None or not window.isVisible():
+            window = factory()
+            setattr(self, window_attr, window)
+            window.show()
+        window.activateWindow()
+        return window
+
     def _open_date_converter(self):
-        if self.converter_window is None or not self.converter_window.isVisible():
-            self.converter_window = DateConverterWindow()
-            self.converter_window.show()
-            self.converter_window.activateWindow()
-        else:
-            self.converter_window.activateWindow()
+        self._show_or_raise("converter_window", DateConverterWindow)
 
     def _open_event_manager(self):
-        if self.event_manager_window is None or not self.event_manager_window.isVisible():
-            self.event_manager_window = EventManagerWindow(self)
-            self.event_manager_window.events_changed.connect(self._on_events_changed_by_manager)
-            self.event_manager_window.show()
-            self.event_manager_window.activateWindow()
-        else:
-            self.event_manager_window.activateWindow()
+        def _factory():
+            window = EventManagerWindow(self)
+            window.events_changed.connect(self._on_events_changed_by_manager)
+            return window
+        self._show_or_raise("event_manager_window", _factory)
 
     def _open_holiday_viewer(self):
-        if self.holiday_viewer_window is None or not self.holiday_viewer_window.isVisible():
-            self.holiday_viewer_window = HolidayViewerWindow(self.holidays_cache)
-            self.holiday_viewer_window.show()
-            self.holiday_viewer_window.activateWindow()
-        else:
-            self.holiday_viewer_window.activateWindow()
+        self._show_or_raise("holiday_viewer_window",
+                            lambda: HolidayViewerWindow(self.holidays_cache))
 
     def _on_events_changed_by_manager(self):
         """The event manager mutated self.user_events; refresh calendar + tray."""
@@ -642,30 +843,81 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.update_tray_icon(force=True)
 
     def import_events_from_dialog(self, parent=None) -> bool:
-        """Reusable import flow for the event manager window. Returns True when events changed."""
+        """Reusable import flow for the event manager window. Returns True when events changed.
+
+        The import is reconciled against the store by *visible date* before
+        anything is applied. When it would replace existing events (exact-key
+        overwrites, or same-date collisions across recurrence forms - e.g. an
+        imported yearly «0000-08-01» taking over a stored one-time
+        «1405-08-01»), a themed confirm lists the count first.
+
+        The whole new state (merge + replaced-event removal + expiry cleanup) is
+        computed in memory and saved EXACTLY ONCE, so a failed save can never
+        leave a half-imported file on disk.
+        """
         path, _ = QFileDialog.getOpenFileName(parent, "وارد کردن رویدادها", "", "JSON (*.json)")
         if not path:
             return False
         result = import_events_from_file(path)
         if result is None:
-            QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خواندن فایل رویدادها ناموفق بود.")
+            ConfirmDialog.notify(parent, "وارد کردن رویدادها",
+                                 "خواندن فایل رویدادها ناموفق بود.",
+                                 danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
             return False
         imported, skipped = result
-        merged = dict(self.user_events)
-        merged.update(imported)
-        self.user_events = merged
-        self._clean_expired_events()
-        self._save_user_events()
-        summary = f"{len(imported)} رویداد وارد شد."
+        # Pure planning: nothing is mutated until the user confirms.
+        plan = self._events.plan_import(imported)
+        if plan.replaced_existing:
+            detail = self._import_collision_detail(plan)
+            count = to_persian_digits(len(plan.replaced_existing))
+            confirmed = ConfirmDialog.ask(
+                parent, "وارد کردن رویدادها",
+                f"این فایل {count} رویداد موجود را جایگزین می‌کند.",
+                detail=detail, confirm_text="جایگزینی", cancel_text="انصراف",
+                danger=True, glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
+            if not confirmed:
+                logger.info("Import canceled at the collision confirmation.")
+                return False
+        if not self._events.apply_import(plan):
+            # The themed failure notice fires via the service's on_save_error;
+            # in-memory state was rolled back to the pre-import store.
+            return False
+        if plan.internal_replaced:
+            logger.info(f"Import folded {plan.internal_replaced} same-date duplicate "
+                        f"entr{'y' if plan.internal_replaced == 1 else 'ies'} from the file (later entry won).")
+        summary = f"{to_persian_digits(len(plan.applied))} رویداد وارد شد."
+        if plan.replaced_existing:
+            summary += f"\n{to_persian_digits(len(plan.replaced_existing))} رویداد جایگزین شد."
         if skipped:
-            summary += f"\n{skipped} ورودی نامعتبر نادیده گرفته شد."
-        QMessageBox.information(parent, APP_CONFIG.APP_NAME, summary)
+            summary += f"\n{to_persian_digits(skipped)} ورودی نامعتبر نادیده گرفته شد."
+        ConfirmDialog.notify(parent, "وارد کردن رویدادها", summary,
+                             glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
+        self._refresh_after_events_changed()
         return True
+
+    @staticmethod
+    def _import_collision_detail(plan) -> str:
+        """Preview of the existing events the import would replace.
+
+        Text-only lines (the same style the delete confirmation uses), capped so
+        a bulk import cannot build an endless dialog.
+        """
+        lines = []
+        for _key, entry in list(plan.replaced_existing.items())[:6]:
+            text = str(entry.get("text", ""))
+            preview = text if len(text) <= 40 else text[:40] + "…"
+            lines.append(preview)
+        remaining = len(plan.replaced_existing) - len(lines)
+        if remaining > 0:
+            lines.append(f"… و {to_persian_digits(remaining)} مورد دیگر")
+        return "\n".join(lines)
 
     def export_events_to_dialog(self, parent=None) -> bool:
         """Reusable export flow for the event manager window. Returns True on success."""
         if not self.user_events:
-            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "هیچ رویدادی برای خروجی گرفتن وجود ندارد.")
+            ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
+                                 "هیچ رویدادی برای خروجی گرفتن وجود ندارد.",
+                                 glyph=APP_CONFIG.FAS.FA_UPLOAD)
             return False
         default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
         path, _ = QFileDialog.getSaveFileName(parent, "خروجی گرفتن از رویدادها", default_name, "JSON (*.json)")
@@ -673,7 +925,11 @@ class SystemTrayIcon(QSystemTrayIcon):
             return False
         if export_events_to_file(self.user_events, Path(path)):
             logger.info(f"Exported {len(self.user_events)} user events to {path}")
-            QMessageBox.information(parent, APP_CONFIG.APP_NAME, "رویدادها با موفقیت خروجی گرفته شدند.")
+            ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
+                                 "رویدادها با موفقیت خروجی گرفته شدند.",
+                                 glyph=APP_CONFIG.FAS.FA_UPLOAD)
             return True
-        QMessageBox.critical(parent, APP_CONFIG.APP_NAME, "خروجی گرفتن از رویدادها ناموفق بود.")
+        ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
+                             "خروجی گرفتن از رویدادها ناموفق بود.",
+                             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         return False
