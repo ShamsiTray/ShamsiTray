@@ -12,13 +12,14 @@ from html import escape
 from typing import List, Optional, Tuple
 
 import jdatetime
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QCursor, QFont
 from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
 from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from utils.event_io import RECURRENCE_NONE, events_for_date
+from utils.ui_helpers import nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.go_to_date import GoToDateWindow
@@ -217,19 +218,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
                     cell.update()
 
     def _get_nav_button_style(self, bg_color: str, is_today_button: bool = False) -> str:
-        palette = APP_CONFIG.get_current_palette()
-        text_color = palette['TEXT_COLOR']
-        if is_today_button:
-            base_color = QColor(bg_color)
-            hover_color = base_color.lighter(120).name()
-            pressed_color = base_color.darker(120).name()
-            return (f"QPushButton {{ background-color: {base_color.name()}; color: white; border: none; border-radius: 8px; }}"
-                    f"QPushButton:hover {{ background-color: {hover_color}; }}"
-                    f"QPushButton:pressed {{ background-color: {pressed_color}; }}")
-        else:
-            hover_color = QColor(bg_color).darker(120).name() if bg_color != "transparent" else palette['HOVER_BG']
-            return (f"QPushButton {{ background-color: {bg_color}; color: {text_color}; border: none; border-radius: 8px; }}"
-                    f"QPushButton:hover {{ background-color: {hover_color}; }}")
+        # Shared builder in ui_helpers: the header buttons keep the calendar's own
+        # look, but the style text lives with every other shared stylesheet so a
+        # theme tweak cannot drift.
+        return nav_button_stylesheet(APP_CONFIG.get_current_palette(), bg_color,
+                                     is_today_button=is_today_button)
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
@@ -399,6 +392,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 month -= 12
                 year += 1
 
+        # Navigation stops at the app's supported year range, the same clamp
+        # go-to-date and the event editor already enforce, instead of drifting
+        # below year 1200 where the rest of the UI cannot follow.
+        if not APP_CONFIG.SUPPORTED_MIN_YEAR <= year <= APP_CONFIG.SUPPORTED_MAX_YEAR:
+            return
+
         day = min(self.display_date.day, days_in_jalali_month(year, month))
         self.display_date = jdatetime.date(year, month, day)
         self.fill_calendar_grid()
@@ -437,8 +436,15 @@ class PersianCalendarWidget(BaseFramelessWindow):
         palette = APP_CONFIG.get_current_palette()
         menu.setStyleSheet(f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}")
         go_to_action = MenuActionWidget("برو به تاریخ", menu)
-        go_to_action.triggered.connect(self._open_go_to_date_window)
-        go_to_action.triggered.connect(menu.close)
+
+        def _open_after_menu_close():
+            # Close the menu first and open the popup once it has fully
+            # dismissed - the same sequencing the tray menu uses, avoiding
+            # focus/platform weirdness of dialogs over open menus.
+            menu.close()
+            QTimer.singleShot(50, self._open_go_to_date_window)
+
+        go_to_action.triggered.connect(_open_after_menu_close)
         action = QWidgetAction(self)
         action.setDefaultWidget(go_to_action)
         menu.addAction(action)
