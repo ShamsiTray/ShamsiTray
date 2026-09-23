@@ -81,9 +81,15 @@ class TutorialWindow(BaseFramelessWindow):
         # Same accent look as before; font size preserved via the shared style.
         self.close_button.setStyleSheet(accent_button_stylesheet(palette, font_size=16))
 
-    def _close_tutorial(self):
-        if hasattr(self, "movie") and self.movie:
+    def hideEvent(self, event):
+        # The movie cleanup used to live only in the close-button path, so
+        # closing via Alt+F4 (or any other path that skips the button) leaked a
+        # running QMovie. Tearing down in hideEvent covers them all.
+        if getattr(self, "movie", None) is not None:
             self.movie.stop()
             self.movie.deleteLater()
             self.movie = None
-        self.close()
+        super().hideEvent(event)
+
+    def _close_tutorial(self):
+        self.close()  # hideEvent performs the movie teardown
