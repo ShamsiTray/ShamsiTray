@@ -67,7 +67,12 @@
   },
   {
    "optionDest": "datas",
-   "value": "assets;assets/"
+   "value": [
+    "assets/fonts;assets/fonts/",
+    "assets/data/holidays.json;assets/data/",
+    "assets/images/icons/icon.ico;assets/images/icons/",
+    "assets/images/welcome.gif;assets/images/"
+   ]
   },
   {
    "optionDest": "pathex",
