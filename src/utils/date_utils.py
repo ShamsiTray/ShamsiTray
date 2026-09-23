@@ -41,6 +41,23 @@ def persian_weekday_name(weekday: int) -> str:
         return APP_CONFIG.PERSIAN_WEEKDAY_NAMES[weekday]
     raise ValueError("Weekday out of range (must be 0-6)")
 
+def format_jalali_numeric(jdate: jdatetime.date) -> str:
+    """Numeric Jalali string «1405/07/01» (English digits, zero-padded).
+
+    The same convention the tray tooltip uses for its date line, so a copied
+    date matches what the app shows elsewhere.
+    """
+    return f"{jdate.year}/{jdate.month:02d}/{jdate.day:02d}"
+
+def format_gregorian_numeric(jdate: jdatetime.date) -> str:
+    """Numeric Gregorian string «2026/09/23» for a Jalali date (zero-padded).
+
+    Mirrors ``format_jalali_numeric`` so the two halves of a copied date pair
+    are formatted identically.
+    """
+    gdate = jdate.togregorian()
+    return f"{gdate.year}/{gdate.month:02d}/{gdate.day:02d}"
+
 def is_gregorian_leap_year(year: int) -> bool:
     """Return True if a Gregorian year is a leap year."""
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
@@ -80,13 +97,6 @@ def validate_year_range(year: int, min_year: int, max_year: int, is_jalali: bool
     if is_jalali:
         return f"سال شمسی باید بین {to_persian_digits(min_year)} و {to_persian_digits(max_year)} باشد."
     return f"سال میلادی باید بین {min_year} و {max_year} باشد."
-
-def safe_jdate(year: int, month: int, day: int) -> Optional[jdatetime.date]:
-    """Safely create a Jalali date, returning None if invalid."""
-    try:
-        return jdatetime.date(year, month, day)
-    except ValueError:
-        return None
 
 def ms_until_midnight(now: datetime.datetime) -> int:
     """Milliseconds from ``now`` local time until the next local midnight.
