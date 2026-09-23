@@ -10,10 +10,20 @@ import math
 from typing import Optional
 
 from PyQt6.QtCore import QRect, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPainterPath
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QWidget
 
 from config import APP_CONFIG
+
+# The day-cell menu's item box, shared by the QSS rules in
+# calendar_day_cell._menu_stylesheet and by CenteredTextMenu's painter so the
+# native rows and the painted text cannot drift apart: the same 15px/6px inner
+# box MenuActionWidget uses as its layout margins (hence the same 34px row
+# height), and the same 12px arrow box CenteredTextMenu paints its submenu
+# indicator into. These values ARE the menu's existing conventions.
+MENU_ITEM_PADDING_H = 15
+MENU_ITEM_PADDING_V = 6
+SUBMENU_ARROW_SIZE = 12
 
 
 class HoverWidget(QWidget):
@@ -181,3 +191,99 @@ class TrayMenu(QMenu):
             center_x = rect.left() + rect.width() / 2.0
             left = round(center_x * dpr - rows / 2.0)
             painter.fillRect(QRectF(left / dpr, y0, rows / dpr, y1 - y0), color)
+
+
+class CenteredTextMenu(QMenu):
+    """QMenu whose NATIVE rows draw their text horizontally centered.
+
+    Why a painter rather than QSS or a QProxyStyle: Qt's stylesheet engine has no
+    ``text-align`` for ``QMenu::item``, and once any ``QMenu::item`` rule matches,
+    ``QStyleSheetStyle`` paints ``CE_MenuItem`` (background, hover, arrow AND
+    glyphs) entirely itself - a ``QProxyStyle.drawControl(CE_MenuItem)`` override
+    never fires for a styled menu. Reimplementing the whole item painting in a
+    style was rejected as disproportionate.
+
+    So the work is split: the shared stylesheet still paints the frame, item box,
+    hover and separators, but its item text is ``color: transparent``, and this
+    class paints the glyphs afterwards, centered in the item's content rect (the
+    same 15px/6px box the QSS padding defines).
+
+    Rows that open a submenu also get their indicator from this painter. Handing
+    the arrow back to the style primitives via bare ``QMenu::right-arrow`` /
+    ``::left-arrow`` rules proved undrawable in the wild (some platform styles
+    render no visible primitive for them, and any primitive they do draw picks
+    its own color, not the palette's), so the arrow is painted here: a small
+    triangle centered in the row's TRAILING padding gutter, in the text colors.
+    Because it lives entirely inside that 15px gutter, the caption can center in
+    the FULL content rect like every other row.
+
+    Behavior is untouched by construction: no mouse handling, no hover state, no
+    custom rows - hover-to-open, hover background, keyboard navigation, RTL
+    mirroring and submenu opening/closing are all still Qt's own.
+    """
+
+    def paintEvent(self, event):
+        super().paintEvent(event)  # QSS paints frame, boxes, hover, separators
+        painter = QPainter(self)
+        painter.setFont(self.font())  # the QSS-applied menu font
+        palette = APP_CONFIG.get_current_palette()
+        rtl = self.layoutDirection() == Qt.LayoutDirection.RightToLeft
+        align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+        metrics = QFontMetrics(painter.font())
+        for action in self.actions():
+            text = action.text()
+            if not text:
+                continue  # separator, or a QWidgetAction row painting itself
+            color = QColor(palette["TEXT_COLOR"] if action.isEnabled()
+                           else palette["GREY_COLOR"])
+            # The content rect: exactly what the QSS item padding defines.
+            geo = self.actionGeometry(action)
+            zone = geo.adjusted(
+                MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,
+                -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
+            if action.menu() is not None:
+                self._paint_submenu_arrow(painter, geo, rtl, color)
+                if metrics.horizontalAdvance(text) > zone.width():
+                    # Overflow safety net for unnaturally narrow menus: the
+                    # caption cannot fit beside the arrow, so fall back to the
+                    # arrow-aware zone and clip to it - glyphs can never reach
+                    # the gutter, but stay as visible as the space allows.
+                    if rtl:
+                        zone.setLeft(zone.left() + SUBMENU_ARROW_SIZE)
+                    else:
+                        zone.setRight(zone.right() - SUBMENU_ARROW_SIZE)
+                    painter.save()
+                    painter.setClipRect(zone)
+                    painter.setPen(color)
+                    painter.drawText(zone, align, text)
+                    painter.restore()
+                    continue
+            painter.setPen(color)
+            painter.drawText(zone, align, text)
+
+    def _paint_submenu_arrow(self, painter: QPainter, row: QRect, rtl: bool,
+                             color: QColor):
+        """The submenu indicator: a small triangle centered in the row's trailing
+        padding gutter (left edge under RTL, right edge under LTR), vertically
+        centered in the row and painted in the row's own text color."""
+        half = SUBMENU_ARROW_SIZE / 3.0  # an 8x8 triangle in the 12px arrow box
+        row_f = QRectF(row)
+        center_y = row_f.center().y()
+        gutter_center_x = (row_f.left() + MENU_ITEM_PADDING_H / 2.0 if rtl
+                           else row_f.right() - MENU_ITEM_PADDING_H / 2.0)
+        path = QPainterPath()
+        if rtl:  # points left, toward the trailing edge the popup opens from
+            path.moveTo(gutter_center_x - half, center_y)
+            path.lineTo(gutter_center_x + half, center_y - half)
+            path.lineTo(gutter_center_x + half, center_y + half)
+        else:
+            path.moveTo(gutter_center_x + half, center_y)
+            path.lineTo(gutter_center_x - half, center_y - half)
+            path.lineTo(gutter_center_x - half, center_y + half)
+        path.closeSubpath()
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawPath(path)
+        painter.restore()
