@@ -27,18 +27,21 @@ All entry parsing is fault-isolated: one malformed entry is skipped with a
 logged warning and never takes down the whole event set. Save failures are
 reported to the caller and logged; the in-memory state stays valid.
 
-There is at most one event per calendar date: saving an event for a date
-replaces whichever event previously matched that date (see
-``keys_matching_date``).
+ There is at most one event per calendar date: saving an event for a date
+ replaces whichever event previously matched that date (see
+ ``keys_matching_date``). Imports honour the same invariant: ``build_import_plan``
+ reconciles imported entries against the store by *visible date* rather than by
+ key string, so importing can never silently stack two events on one day.
 
-The last load is tracked as trusted/untrusted: an unreadable store or one
-with malformed entries is never bulldozed with an empty save (see
-``save_user_events``).
+ The last load is tracked as trusted/untrusted: an unreadable store or one
+ with malformed entries is never bulldozed with an empty save (see
+ ``save_user_events``). The flag clears again on the first successful save, so
+ the protection never outlives the state that triggered it.
 """
 import json
 import logging
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import jdatetime
 
@@ -97,8 +100,32 @@ def parse_event_key(key: str) -> Optional[Tuple[Optional[int], Optional[int], in
     return year, month, day
 
 
+def recurrence_of_key(key: str) -> str:
+    """Recurrence mode implied by a store key (the key model's single owner).
+
+    ``YYYY-MM-DD`` is one-time, ``0000-MM-DD`` yearly, ``0000-00-DD`` monthly;
+    unparseable keys read as one-time so callers fail closed.
+    """
+    parsed = parse_event_key(key)
+    if parsed is None:
+        return RECURRENCE_NONE
+    year, month, _day = parsed
+    if year is None and month is None:
+        return RECURRENCE_MONTHLY
+    if year is None:
+        return RECURRENCE_YEARLY
+    return RECURRENCE_NONE
+
+
 def key_matches_date(key: str, jdate: jdatetime.date) -> bool:
-    """True when the event stored under ``key`` occurs on Jalali date ``jdate``."""
+    """True when the event stored under ``key`` occurs on Jalali date ``jdate``.
+
+    Recurring keys clamp the same way ``next_occurrence_jdate`` does: an anchor
+    day that cannot exist in the target month (monthly day 31 in a 30-day
+    month, yearly 30 Esfand in a non-leap year) matches the month's last day
+    instead. One-time keys stay exact — they were built from a real date and
+    can never be impossible.
+    """
     parsed = parse_event_key(key)
     if parsed is None:
         return False
@@ -107,7 +134,13 @@ def key_matches_date(key: str, jdate: jdatetime.date) -> bool:
         return False
     if month is not None and month != jdate.month:
         return False
-    return day == jdate.day
+    if day == jdate.day:
+        return True
+    # Only wildcard-dimension keys may slide to the month's last day; a key
+    # with both year and month present is always a real date.
+    if year is not None and month is not None:
+        return False
+    return jdate.day == _days_in_jalali_month_safe(jdate.year, jdate.month) and day > jdate.day
 
 
 def keys_matching_date(events: Dict[str, dict], jdate: jdatetime.date) -> List[str]:
@@ -265,19 +298,102 @@ def normalize_event_entry(value) -> Optional[dict]:
     return None
 
 
+def normalize_event_key(key) -> Optional[str]:
+    """Coerce a stored/imported key into the canonical ``YYYY-MM-DD`` form.
+
+    Accepts the canonical one-time/yearly/monthly shapes, normalizes the legacy
+    slash-separated format (``1403/07/07`` -> ``1403-07-07``), pads each
+    dimension and validates the date parts: month 00-12 (0 = wildcard), day
+    1-31, year 0 (wildcard) or 1-9999. A fully-specified key must form a real
+    Jalali date. Returns None for anything else — an invalid key would
+    otherwise become an event that exists in the store but is invisible to the
+    calendar.
+    """
+    text = str(key).strip().replace("/", "-")
+    parts = text.split("-")
+    if len(parts) != 3:
+        return None
+    try:
+        year, month, day = (int(p) for p in parts)
+    except (ValueError, TypeError):
+        return None
+    if not 1 <= day <= 31:
+        return None
+    if month != 0 and not 1 <= month <= 12:
+        return None
+    if year != 0 and not 1 <= year <= 9999:
+        return None
+    if year != 0 and month != 0:
+        try:
+            jdatetime.date(year, month, day)
+        except ValueError:
+            return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _key_for_recurrence(parsed: Tuple[Optional[int], Optional[int], int],
+                        recurrence: str) -> Optional[str]:
+    """Rebuild a store key from parsed (year, month, day) for a recurrence.
+
+    The recurrence decides which dimensions become wildcards; dimensions the
+    parsed key did not carry (already wildcard) stay None. Returns None when the
+    recurrence cannot be encoded — a one-time event needs a full date, so a
+    wildcard key can never become one.
+    """
+    year, month, day = parsed
+    if recurrence == RECURRENCE_YEARLY:
+        if month is None:
+            return None
+        return f"{_YEARLY_YEAR_SENTINEL}-{month:02d}-{day:02d}"
+    if recurrence == RECURRENCE_MONTHLY:
+        if day is None:
+            return None
+        return f"{_YEARLY_YEAR_SENTINEL}-{_MONTHLY_MONTH_SENTINEL}-{day:02d}"
+    if recurrence == RECURRENCE_NONE:
+        if year is None or month is None:
+            return None
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    return None
+
+
 def normalize_events_mapping(raw) -> Tuple[Dict[str, dict], int]:
-    """Normalize a raw events mapping, skipping malformed entries. Returns (events, skipped)."""
+    """Normalize a raw events mapping, skipping malformed entries. Returns (events, skipped).
+
+    Every surviving entry has a canonical, parseable key: unparseable keys (and
+    legacy slash formats after normalization) go through ``normalize_event_key``,
+    so an event can never exist in the store without the calendar being able to
+    see it. When a key and its entry disagree about the recurrence the pair is
+    reconciled symmetrically from the entry's declared recurrence: a specific key
+    on a recurring entry is re-keyed to the recurrence's wildcard shape (the
+    legacy v1 case), and a recurring key on a one-time entry gets the entry
+    re-flagged when there is no full date to re-key with. Either way the key
+    (what matching uses) and the entry (what expiry uses) encode the same mode.
+    """
     if not isinstance(raw, dict):
         return {}, 1 if raw is not None else 0
     events: Dict[str, dict] = {}
     skipped = 0
     for key, value in raw.items():
         entry = normalize_event_entry(value)
-        if entry is None:
+        canonical_key = normalize_event_key(key) if entry is not None else None
+        if entry is None or canonical_key is None:
             skipped += 1
             logger.warning(f"Skipping malformed user event entry {key!r}.")
             continue
-        events[str(key)] = entry
+        key_recurrence = recurrence_of_key(canonical_key)
+        if key_recurrence != entry["recurrence"]:
+            parsed = parse_event_key(canonical_key)
+            rekeyed = _key_for_recurrence(parsed, entry["recurrence"]) if parsed else None
+            if rekeyed is not None:
+                canonical_key = rekeyed
+            else:
+                # The entry's recurrence cannot be encoded as a key (wildcard
+                # key, one-time entry): make the entry agree with the key
+                # instead, so expiry never silently diverges from matching.
+                entry["recurrence"] = key_recurrence
+                if key_recurrence != RECURRENCE_NONE:
+                    entry["remove_after_finish"] = False
+        events[canonical_key] = entry
     return events, skipped
 
 
@@ -293,17 +409,28 @@ def _parse_store_payload(raw) -> Tuple[Dict[str, dict], int]:
 # --- File I/O ----------------------------------------------------------------
 
 def _write_events(path, events: Dict[str, dict]) -> bool:
-    """Atomically write events as versioned JSON; returns success."""
+    """Atomically write events as versioned JSON; returns success.
+
+    The ``.tmp`` side file is removed in a ``finally`` so an interrupted write
+    (disk full, AV lock) never leaves debris next to the store.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
     try:
-        tmp = path.with_suffix(path.suffix + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"version": EVENTS_STORE_VERSION, "events": events},
                       f, ensure_ascii=False, indent=2)
         os.replace(tmp, path)
         return True
-    except OSError as e:
+    except (OSError, TypeError) as e:
+        # TypeError: a non-JSON-serializable value snuck into the store.
         logger.error(f"Failed to write events file {path}: {e}")
         return False
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def load_user_events() -> Dict[str, dict]:
@@ -331,6 +458,11 @@ def load_user_events() -> Dict[str, dict]:
     return events
 
 
+def last_load_trusted() -> bool:
+    """Whether the most recent load can be overwritten safely (introspection hook)."""
+    return _LAST_LOAD_TRUSTED
+
+
 def save_user_events(events: Dict[str, dict]) -> bool:
     """Persist user events atomically in the versioned format; returns success.
 
@@ -347,6 +479,10 @@ def save_user_events(events: Dict[str, dict]) -> bool:
         return False
     ok = _write_events(APP_CONFIG.USER_EVENTS_FILE_PATH, events)
     if ok:
+        # The on-disk store now mirrors what we were handed, so whatever made
+        # the last load untrusted is healed: without this, one corrupt load
+        # would block every future empty save forever.
+        _LAST_LOAD_TRUSTED = True
         logger.info(f"Saved {len(events)} user events (store v{EVENTS_STORE_VERSION}).")
     return ok
 
@@ -377,6 +513,127 @@ def import_events_from_file(path) -> Optional[Tuple[Dict[str, dict], int]]:
         logger.error(f"Events file {path} has unexpected root type ({type(raw).__name__}).")
         return None
     return _parse_store_payload(raw)
+
+
+# --- Import reconciliation (EVT-5) -------------------------------------------
+#
+# A store holds at most one event per *visible* calendar date, but different
+# store keys can land on the same date: a one-time ``1405-08-01`` and a yearly
+# ``0000-08-01`` are distinct keys that both fire on 1405/08/01 (and
+# ``events_for_date`` then silently picks a winner while the event manager lists
+# both). Import used to be a flat ``dict.update``, which deduplicated exact keys
+# only. Everything below reconciles an import the same way the interactive add
+# path does: by visible date, not by key string.
+
+# Years sampled for recurring-vs-recurring collision checks: one leap and one
+# non-leap Jalali year. Recurring keys carry no year of their own, so every date
+# they can ever match is (month, effective day); month lengths are fixed except
+# Esfand, which the pair of sample years covers exactly.
+_RECURRING_SAMPLE_YEARS = (1403, 1404)
+
+
+def _recurring_key_matches_one_time_date(recurring_key: str,
+                                         one_time_key: str) -> bool:
+    """True when ``recurring_key`` fires on the one-time key's own date."""
+    parsed = parse_event_key(one_time_key)
+    if parsed is None or parsed[0] is None or parsed[1] is None:
+        return False
+    year, month, day = parsed
+    try:
+        date = jdatetime.date(year, month, day)
+    except ValueError:
+        return False
+    return key_matches_date(recurring_key, date)
+
+
+def _recurring_keys_share_date(key_a: str, key_b: str) -> bool:
+    """True when two recurring keys fire on at least one common date."""
+    for year in _RECURRING_SAMPLE_YEARS:
+        for month in range(1, 13):
+            for day in range(1, 32):
+                try:
+                    date = jdatetime.date(year, month, day)
+                except ValueError:
+                    continue
+                if key_matches_date(key_a, date) and key_matches_date(key_b, date):
+                    return True
+    return False
+
+
+def keys_share_visible_date(key_a: str, key_b: str) -> bool:
+    """True when the two store keys land on at least one common Jalali date.
+
+    Identical keys trivially share every occurrence. One-time keys only ever
+    match their own exact date, so a one-time/recurring pair collides exactly
+    when the recurring key matches that date (clamping included: yearly
+    ``0000-12-30`` collides with one-time Esfand 29 of a non-leap year). Two
+    different one-time keys never collide — they are different real dates.
+    """
+    if key_a == key_b:
+        return True
+    rec_a, rec_b = recurrence_of_key(key_a), recurrence_of_key(key_b)
+    if rec_a == RECURRENCE_NONE and rec_b == RECURRENCE_NONE:
+        return False
+    if rec_a == RECURRENCE_NONE:
+        return _recurring_key_matches_one_time_date(key_b, key_a)
+    if rec_b == RECURRENCE_NONE:
+        return _recurring_key_matches_one_time_date(key_a, key_b)
+    return _recurring_keys_share_date(key_a, key_b)
+
+
+def dedupe_events_by_visible_date(events: Dict[str, dict]) -> Tuple[Dict[str, dict], int]:
+    """Fold an events mapping so no two entries share a visible date.
+
+    Later entries replace earlier ones landing on the same date — the same
+    "last write wins" rule ``dict.update`` applies to exact keys, extended to
+    same-date cross-representation collisions. Returns (deduped, replaced).
+    """
+    result: Dict[str, dict] = {}
+    replaced = 0
+    for key, entry in events.items():
+        shadowed = [k for k in result if keys_share_visible_date(k, key)]
+        for old_key in shadowed:
+            del result[old_key]
+            replaced += 1
+        result[key] = entry
+    return result, replaced
+
+
+class ImportPlan(NamedTuple):
+    """What applying an import will do to the store, computed BEFORE any
+    mutation so the UI can confirm it (EVT-5).
+
+    ``applied``            entries that will enter the store (already folded so
+                           no two of them share a visible date; later entries
+                           won internal collisions)
+    ``replaced_existing``  existing entries that will be removed because an
+                           imported event takes over their date (exact-key
+                           overwrites and same-date collisions alike)
+    ``internal_replaced``  import-internal same-date duplicates folded into
+                           ``applied`` (later entry won)
+    """
+    applied: Dict[str, dict]
+    replaced_existing: Dict[str, dict]
+    internal_replaced: int
+
+
+def build_import_plan(existing: Dict[str, dict],
+                      imported: Dict[str, dict]) -> ImportPlan:
+    """Reconcile an import against the current store without mutating either.
+
+    Every entry in ``replaced_existing`` is an event the user currently has that
+    would no longer show (or exist) after the import — the exact count the
+    confirm dialog promises to replace.
+    """
+    applied, internal_replaced = dedupe_events_by_visible_date(imported)
+    replaced_existing: Dict[str, dict] = {}
+    for new_key in applied:
+        for existing_key, entry in existing.items():
+            if keys_share_visible_date(existing_key, new_key):
+                replaced_existing[existing_key] = entry
+    return ImportPlan(applied=applied,
+                      replaced_existing=replaced_existing,
+                      internal_replaced=internal_replaced)
 
 
 def clean_expired_keys(events: Dict[str, dict],
