@@ -19,6 +19,8 @@ class Config:
     # --- App Info ---
     APP_NAME = "ShamsiTray"
     COMPANY_NAME = "ShamsiTray"
+    # Must match build/SetupScript.iss and build/details.txt; run
+    # `python build/check_versions.py` before tagging a release.
     APP_VERSION = "1.3.1"
 
     # --- Paths (dynamically calculated) ---
@@ -52,7 +54,8 @@ class Config:
     AUTO_START_SETTING_KEY = "General/OpenAtLogin"
     CURRENT_THEME_CHOICE_SETTING_KEY = "Appearance/ThemeChoice"
     TUTORIAL_SHOWN_SETTING_KEY = "Tutorial/HasShown"
-    USER_EVENTS_SETTING_KEY = "UserData/Events"
+    # The legacy "UserData/Events" registry key is only read during the one-time
+    # migration; it lives in utils.settings_migration now.
     UPDATE_CHECK_ENABLED_SETTING_KEY = "Updates/CheckEnabled"
     LAST_UPDATE_CHECK_SETTING_KEY = "Updates/LastCheckMs"
     IGNORED_UPDATE_VERSION_SETTING_KEY = "Updates/IgnoredVersion"
@@ -65,7 +68,9 @@ class Config:
     # --- Font Families ---
     FONT_FAMILY = "Vazirmatn"
     GREGORIAN_FONT_FAMILY = "Inter"
-    FONT_AWESOME_FAMILY = "Font Awesome 6 Pro Solid"
+    # Font Awesome Free (SIL OFL 1.1) — the Pro font must never ship in this
+    # MIT-licensed repo. Qt reports the bundled OTF's typographic family.
+    FONT_AWESOME_FAMILY = "Font Awesome 7 Free"
 
     # --- Theme Management ---
     class Theme:
@@ -132,6 +137,12 @@ class Config:
     CALENDAR_BORDER_RADIUS_PX = 25
     DRAGGABLE_AREA_HEIGHT = 40
 
+    # --- Supported calendar range ---
+    # Single source for every surface: go-to-date, the event editor and the
+    # month navigation arrows all clamp to this window.
+    SUPPORTED_MIN_YEAR = 1200
+    SUPPORTED_MAX_YEAR = 1600
+
     # --- Date & Time Data ---
     PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹']
     _ENGLISH_DIGITS_MAP = {ord(p): str(e) for e, p in enumerate(PERSIAN_DIGITS)}
@@ -148,15 +159,24 @@ class Config:
     PERSIAN_WEEKDAY_NAMES = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه"]
 
     # --- FontAwesome Icon Characters ---
+    # Every glyph below is covered by the bundled FA7 Free Solid cmap; the
+    # coverage is asserted by tests/test_config.py.
     class FAS:
         FA_SQUARE_REGULAR = '\uf096'
         FA_SQUARE_CHECK_SOLID = '\uf14a'
-        FA_SUN_SOLID = '\ue28f'
+        FA_SUN_SOLID = '\uf185'  # f185 replaces the Pro-only e28f codepoint
         FA_MOON_SOLID = '\uf186'
         FA_XMARK = '\uf00d'
         FA_MINUS = '\uf068'
         FA_TRASH = '\uf1f8'
         FA_ARROWS_ROTATE = '\uf2f1'
+        # Action-specific dialog glyphs, so no surface repeats one generic mark.
+        FA_DOWNLOAD = '\uf019'
+        FA_UPLOAD = '\uf093'
+        FA_CIRCLE_EXCLAMATION = '\uf06a'
+        FA_CIRCLE_INFO = '\uf05a'
+        FA_WIFI = '\uf1eb'
+        FA_SAVE = '\uf0c7'
 
 # Create a single, globally accessible instance of the configuration.
 APP_CONFIG = Config()
