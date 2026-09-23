@@ -11,11 +11,66 @@ from typing import Optional
 import jdatetime
 from PyQt6.QtCore import QTimer, pyqtSignal, Qt
 from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QCursor
-from PyQt6.QtWidgets import QLabel, QMenu, QWidget, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
-from .menu_widgets import MenuActionWidget
+from utils.date_utils import format_gregorian_numeric, format_jalali_numeric
+from .menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_H,
+                           MENU_ITEM_PADDING_V, MenuActionWidget)
 from .tooltip import CustomTooltip
+
+# Clipboard payloads of the «کپی تاریخ» submenu entries, built from the
+# right-clicked day's own Jalali date (the Gregorian half derives from it).
+_COPY_MODES = ("jalali", "gregorian", "both")
+
+_COPY_ACTION_TEXTS = ("تاریخ شمسی", "تاریخ میلادی", "هر دو")
+
+
+def _copy_text_for_mode(mode: str, jdate: jdatetime.date) -> str:
+    """Clipboard text for one «کپی تاریخ» entry.
+
+    «تاریخ شمسی» copies the Jalali date only, «تاریخ میلادی» the Gregorian one,
+    and «هر دو» both on separate lines (ready to paste into a message).
+    Formatting comes from the shared date_utils helpers - the same numeric
+    convention the tray tooltip uses - not a format invented here.
+    """
+    if mode == "jalali":
+        return format_jalali_numeric(jdate)
+    if mode == "gregorian":
+        return format_gregorian_numeric(jdate)
+    return f"{format_jalali_numeric(jdate)}\n{format_gregorian_numeric(jdate)}"
+
+
+def _menu_stylesheet(palette: dict) -> str:
+    """The shared day-cell menu stylesheet (parent menu AND submenus, so a
+    submenu never falls back to the stock Qt popup look).
+
+    The item rules mirror MenuActionWidget's own row look so the native
+    «کپی تاریخ» rows and the custom add/remove-event rows read as one menu: the
+    same Vazirmatn 14px bold text, the same 15px/6px inner box (the widget's
+    layout margins) - hence the same 34px row height - and the same rounded
+    MENU_HOVER_COLOR hover (HoverWidget paints exactly this RGBA).
+
+    The item text itself is drawn ``transparent`` here: QSS cannot center
+    QMenu::item text (no text-align support) and Qt's stylesheet engine paints
+    CE_MenuItem entirely itself, so CenteredTextMenu paints the glyphs instead.
+    The padding numbers come from the shared menu_widgets constants the painter
+    uses, so QSS box and painted text cannot drift.
+
+    There are deliberately NO arrow subcontrol rules: handing the arrow back to
+    the style primitives proved invisible under some Windows styles/themes (the
+    primitive is drawn in a color the custom background swallows), so
+    CenteredTextMenu paints the indicator itself.
+    """
+    hover = palette["MENU_HOVER_COLOR"]
+    hover_css = f"rgba({hover[0]}, {hover[1]}, {hover[2]}, {hover[3]})"
+    return (
+        f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; }}"
+        f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_H}px; color: transparent; }}"
+        f"QMenu::item:disabled {{ color: transparent; }}"
+        f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}"
+        f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}")
+
 
 class ClickableLabel(QLabel):
     """A QLabel that emits signals for clicks and context menu actions."""
@@ -95,13 +150,13 @@ class ClickableLabel(QLabel):
         self._context_menu_open = True
         CustomTooltip.instance().hide()
 
-        menu = QMenu(self)
         palette = APP_CONFIG.get_current_palette()
-        menu.setStyleSheet(
-            f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QMenu::item:disabled {{ color: {palette['GREY_COLOR']}; }}"
-            f"QMenu::item:selected {{ background-color: {palette['HOVER_BG']}; }}"
-            f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}")
+        menu = CenteredTextMenu(self)
+        menu.setStyleSheet(_menu_stylesheet(palette))
+        # Persian app: the day menu presents RTL, and the copy submenu inherits
+        # the direction below (Qt mirrors the popup side, the submenu arrow and
+        # keyboard navigation from it).
+        menu.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
         add_event_widget = MenuActionWidget(add_action_text, menu)
@@ -118,6 +173,10 @@ class ClickableLabel(QLabel):
         remove_action.setEnabled(self.has_user_event)
         remove_event_widget.setEnabled(self.has_user_event)
 
+        menu.addSeparator()
+
+        self._build_copy_date_menu(menu)
+
         add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
         remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
 
@@ -132,6 +191,60 @@ class ClickableLabel(QLabel):
         normalize_hover = getattr(self.window(), "normalize_day_hover", None)
         if callable(normalize_hover):
             normalize_hover()
+
+    def _build_copy_date_menu(self, parent_menu: QMenu) -> QMenu:
+        """Add the «کپی تاریخ» submenu to the day menu as a PLAIN Qt submenu.
+
+        ``addMenu`` gives Qt full ownership of the row: hover-to-open, open/close,
+        keyboard navigation, the submenu arrow, RTL mirroring and screen-edge
+        placement are all native - no custom row widget and no click fallback (a
+        hand-rolled arrow row proved unreliable at exactly these). The popup still
+        gets the shared menu stylesheet, so it keeps the rounded palette-colored
+        look of its parent, and its direction is pinned to the parent's
+        (top-level popup windows do not reliably inherit it on every platform).
+
+        The three entries are separated by hairline separators so they read as
+        distinct options. The popup is a ``CenteredTextMenu`` so its rows' text is
+        centered like the custom add/remove rows; it is built first and handed to
+        ``addMenu`` because a class swap is impossible after ``addMenu(title)``
+        constructed the popup internally.
+        """
+        copy_menu = CenteredTextMenu(parent_menu)
+        copy_menu.setTitle("کپی تاریخ")
+        parent_menu.addMenu(copy_menu)
+        copy_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
+        copy_menu.setLayoutDirection(parent_menu.layoutDirection())
+
+        for index, (mode, text) in enumerate(zip(_COPY_MODES, _COPY_ACTION_TEXTS)):
+            if index:
+                copy_menu.addSeparator()
+            action = copy_menu.addAction(text)
+            action.triggered.connect(
+                lambda checked=False, mode=mode: self._copy_date_and_close(copy_menu, mode))
+        return copy_menu
+
+    def _copy_date_and_close(self, copy_menu: QMenu, mode: str):
+        """Copy the right-clicked day's date(s) and close the menus.
+
+        The payload always comes from ``self.jalali_date`` - the day the user
+        actually right-clicked - never from today's date.
+        """
+        jdate = self.jalali_date
+        if not jdate:
+            copy_menu.close()
+            return
+        QApplication.clipboard().setText(_copy_text_for_mode(mode, jdate))
+        # Flash the instant the clipboard holds the payload - no timer, no waiting
+        # on menu teardown. The feedback is a non-activating ToolTip window, so
+        # showing it while the popup dismisses cannot steal focus or swallow the
+        # closing menu's grab.
+        self._flash_copied_feedback()
+        copy_menu.close()
+
+    def _flash_copied_feedback(self):
+        """Brief «کپی شد» confirmation, matching the converter's copy feedback."""
+        CustomTooltip.instance().show_tooltip("کپی شد", QCursor.pos())
+        QTimer.singleShot(600, CustomTooltip.instance().hide)
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
