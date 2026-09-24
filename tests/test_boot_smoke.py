@@ -53,9 +53,12 @@ def test_holiday_store_seeded_from_bundle(user_data):
 
 
 def tray_boot(user_data):
+    """Boot a tray against an in-memory autostart registry, never the real one."""
     from core.app_controller import SystemTrayIcon
+    from tests.fake_registry import FakeStartupRegistry
     from utils.json_settings import JsonSettings
-    return SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH))
+    return SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH),
+                          startup_registry=FakeStartupRegistry())
 
 
 def test_boot_with_expired_pending_event_does_not_crash(user_data, monkeypatch):

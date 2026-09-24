@@ -63,7 +63,23 @@ def user_data(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def tray(qtbot, user_data):
+def fake_startup_registry():
+    """An in-memory stand-in for the HKCU autostart Run key.
+
+    Booting a tray runs the real ``_validate_and_apply_startup_setting()`` path,
+    which on Windows writes to the per-user Run key. Every booted tray therefore
+    performs its autostart work against this fake instead of the developer's
+    registry: the opt-out first run, the stale-entry heal and the
+    persist-only-on-success rule all stay under test, while HKCU is never
+    touched. See tests/fake_registry.py for the inspection hooks.
+    """
+    from tests.fake_registry import FakeStartupRegistry
+
+    return FakeStartupRegistry()
+
+
+@pytest.fixture
+def tray(qtbot, user_data, fake_startup_registry):
     """A booted SystemTrayIcon against the temp user-data dir.
 
     QSystemTrayIcon is not a QWidget, so it cannot go through
@@ -72,5 +88,6 @@ def tray(qtbot, user_data):
     from utils.json_settings import JsonSettings
     from core.app_controller import SystemTrayIcon
 
-    icon = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH))
+    icon = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH),
+                          startup_registry=fake_startup_registry)
     yield icon
