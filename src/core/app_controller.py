@@ -58,6 +58,13 @@ logger = setup_logging(__name__)
 AUTO_CHECK_RETRY_DELAY_MS = 10 * 60 * 1000
 AUTO_CHECK_MAX_RETRIES = 3
 
+# Windows broadcasts WM_TIMECHANGE to every top-level window, and the time
+# service can emit a burst of them while re-syncing. Each message used to cost a
+# full refresh (expiry cleanup + calendar rebuild + tray repaint + midnight
+# reschedule), so messages are now coalesced and one refresh runs once the burst
+# has gone quiet for this long.
+TIME_CHANGE_COALESCE_MS = 300
+
 # Windows silently truncates tray tooltips at ~128 characters. Build the tooltip
 # by priority (weekday, date, holidays, then the event text) and trim the
 # lowest-priority content ourselves instead of losing the tail mid-line.
@@ -197,7 +204,13 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.minute_timer = QTimer(self)
         self.minute_timer.timeout.connect(lambda: self.update_tray_icon(force=False))
         self.minute_timer.start(60 * 1000)
-        self.event_filter = TimeChangeEventFilter(self._handle_system_time_change)
+        # Coalesces bursts of WM_TIMECHANGE: _on_system_time_change (re)arms this
+        # single-shot timer, and the real work runs once the burst goes quiet.
+        self._time_change_messages = 0
+        self._time_change_timer = QTimer(self)
+        self._time_change_timer.setSingleShot(True)
+        self._time_change_timer.timeout.connect(self._handle_system_time_change)
+        self.event_filter = TimeChangeEventFilter(self._on_system_time_change)
         QCoreApplication.instance().installNativeEventFilter(self.event_filter)
         self.schedule_next_midnight_check()
 
@@ -221,9 +234,31 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._midnight_timer.start(millis_until_midnight + buffer_ms)
         logger.debug(f"Next midnight check scheduled in {millis_until_midnight + buffer_ms} ms.")
 
+    def _on_system_time_change(self):
+        """A WM_TIMECHANGE arrived: (re)arm the coalescing timer.
+
+        Windows broadcasts this message to every top-level window and the time
+        service can emit a burst while re-syncing, so the refresh is debounced
+        instead of run once per message. Restarting the single-shot timer on each
+        message means a burst of ANY length costs exactly one refresh, and that
+        refresh runs after the burst has gone quiet - so it reads the settled
+        clock value rather than an intermediate one, and a genuine one-off change
+        is never lost (it just lands a fraction of a second later).
+        """
+        self._time_change_messages += 1
+        self._time_change_timer.start(TIME_CHANGE_COALESCE_MS)
+
     def _handle_system_time_change(self):
-        # System time changes (manual adjustment, DST) can invalidate the current date and scheduled midnight timers, so we force a full refresh and reschedule.
-        logger.info("System time change detected. Forcing tray icon update and rescheduling midnight check.")
+        """The coalesced refresh for a system-clock change (manual, DST, sync).
+
+        Reached once per burst via the coalescing timer, and directly by tests.
+        System time changes can invalidate the current date and the scheduled
+        midnight timer, so this forces a full refresh and reschedules.
+        """
+        coalesced = self._time_change_messages
+        self._time_change_messages = 0
+        logger.info(f"System time change detected ({coalesced} message(s) coalesced); "
+                    f"refreshing tray icon and midnight schedule.")
         self._clean_expired_events()
         if self.calendar_widget:
             self.calendar_widget.go_to_today()

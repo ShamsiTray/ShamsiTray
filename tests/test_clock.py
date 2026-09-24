@@ -83,3 +83,66 @@ def test_time_change_filter_is_inactive_off_windows(qtbot):
     result = event_filter.nativeEventFilter("cocoa_msg_event", None)
     assert result in ((False, 0), False)
     assert seen == []
+
+
+# --- WM_TIMECHANGE coalescing -------------------------------------------------
+#
+# Windows broadcasts WM_TIMECHANGE to every top-level window and the time service
+# can emit a burst of them while re-syncing. Each message used to cost a full
+# refresh (expiry cleanup + calendar rebuild + tray repaint + midnight
+# reschedule); a burst now costs exactly one. The coalescing window is patched
+# down to 10 ms so these tests stay fast and deterministic.
+
+
+def _fast_coalesce(monkeypatch):
+    import core.app_controller as controller
+
+    monkeypatch.setattr(controller, "TIME_CHANGE_COALESCE_MS", 10)
+
+
+def test_time_change_burst_coalesces_into_one_refresh(tray, monkeypatch, qtbot):
+    """A burst of native messages must cost exactly ONE application refresh."""
+    _fast_coalesce(monkeypatch)
+    calls = []
+    monkeypatch.setattr(tray, "update_tray_icon", lambda force=False: calls.append(force))
+
+    for _ in range(50):
+        tray._on_system_time_change()
+
+    assert calls == []                        # nothing ran per message
+    assert tray._time_change_messages == 50   # every message was counted
+
+    qtbot.waitUntil(lambda: calls == [True], timeout=2000)
+    assert calls == [True]                    # exactly one coalesced refresh
+    assert tray._time_change_messages == 0    # counter reset by the refresh
+
+
+def test_time_change_burst_does_not_touch_the_midnight_timer(tray, monkeypatch):
+    """Arming the coalescer must do no refresh work at all (no per-message churn)."""
+    _fast_coalesce(monkeypatch)
+    calls = []
+    monkeypatch.setattr(tray, "update_tray_icon", lambda force=False: calls.append(force))
+    before = tray._midnight_timer
+
+    for _ in range(25):
+        tray._on_system_time_change()
+
+    assert calls == []
+    assert tray._midnight_timer is before  # untouched until the burst settles
+
+
+def test_single_time_change_is_not_lost_to_the_debounce(tray, monkeypatch, qtbot):
+    """A genuine one-off change still refreshes (just after the quiet window)."""
+    _fast_coalesce(monkeypatch)
+    calls = []
+    monkeypatch.setattr(tray, "update_tray_icon", lambda force=False: calls.append(force))
+
+    tray._on_system_time_change()
+
+    qtbot.waitUntil(lambda: calls == [True], timeout=2000)
+    assert tray._midnight_timer.isActive()  # rollover still scheduled
+
+
+def test_time_change_filter_feeds_the_coalescer(tray):
+    """The installed filter must feed the coalescer, never the work directly."""
+    assert tray.event_filter.on_time_change_callback == tray._on_system_time_change
