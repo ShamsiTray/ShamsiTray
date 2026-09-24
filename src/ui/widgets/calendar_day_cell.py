@@ -57,6 +57,11 @@ def _menu_stylesheet(palette: dict) -> str:
     The padding numbers come from the shared menu_widgets constants the painter
     uses, so QSS box and painted text cannot drift.
 
+    Separator rows only provide spacing (11px, the same as the tray menu's
+    dividers) and draw nothing themselves: CenteredTextMenu paints each line on
+    the device-pixel grid, so the day menu's dividers come out the same thickness
+    as the tray menu's instead of being drawn by QSS at a fractional position.
+
     There are deliberately NO arrow subcontrol rules: handing the arrow back to
     the style primitives proved invisible under some Windows styles/themes (the
     primitive is drawn in a color the custom background swallows), so
@@ -69,7 +74,7 @@ def _menu_stylesheet(palette: dict) -> str:
         f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_H}px; color: transparent; }}"
         f"QMenu::item:disabled {{ color: transparent; }}"
         f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}"
-        f"QMenu::separator {{ height: 1px; background-color: {palette['MENU_BORDER_COLOR']}; margin: 5px 0px; }}")
+        f"QMenu::separator {{ height: 11px; background-color: transparent; }}")
 
 
 class ClickableLabel(QLabel):

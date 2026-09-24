@@ -26,6 +26,43 @@ MENU_ITEM_PADDING_V = 6
 SUBMENU_ARROW_SIZE = 12
 
 
+def paint_device_snapped_hairline(painter: QPainter, rect: QRect, color: QColor,
+                                  dpr: float, horizontal: bool = True) -> None:
+    """Draw one divider line the way a native 1px separator renders on a
+    well-aligned position: ``ceil(dpr)`` full device rows (or columns), snapped
+    to the device-pixel grid.
+
+    Qt hands child paint offsets over as integer *logical* points, which are then
+    scaled by the (possibly fractional) device pixel ratio with each clip edge
+    rounded independently. At Windows scale factors like 125% / 150% that lands a
+    1px line on a fractional device row, so its ink is split across one or two
+    physical rows in a ratio that depends on its position - which is why some
+    dividers looked thinner than others.
+
+    Painting from the menu's own paintEvent avoids that: a top-level window's
+    device origin is always an integer number of physical pixels, so every line
+    can be placed deterministically and they all come out identical (one crisp
+    row at 100%, two solid rows at 125% / 150%, ...).
+
+    Shared by ``TrayMenu`` and ``CenteredTextMenu`` so the tray menu and the
+    calendar's day menu (and its submenu) render their dividers the same way.
+    """
+    rows = max(1, math.ceil(dpr - 1e-6))
+
+    if horizontal:
+        x0 = round(rect.left() * dpr) / dpr
+        x1 = round((rect.left() + rect.width()) * dpr) / dpr
+        center_y = rect.top() + rect.height() / 2.0
+        top = round(center_y * dpr - rows / 2.0)
+        painter.fillRect(QRectF(x0, top / dpr, x1 - x0, rows / dpr), color)
+    else:
+        y0 = round(rect.top() * dpr) / dpr
+        y1 = round((rect.top() + rect.height()) * dpr) / dpr
+        center_x = rect.left() + rect.width() / 2.0
+        left = round(center_x * dpr - rows / 2.0)
+        painter.fillRect(QRectF(left / dpr, y0, rows / dpr, y1 - y0), color)
+
+
 class HoverWidget(QWidget):
     """Base widget for menu items that handles hover effects."""
     triggered = pyqtSignal()
@@ -130,24 +167,16 @@ class ThemeToggleActionWidget(MenuActionWidget):
 class TrayMenu(QMenu):
     """QMenu that paints its own divider lines on the device-pixel grid.
 
-    Native QMenu::separator lines (and any 1px child widget) sit at fractional
-    device positions: Qt passes child paint offsets as integer *logical*
-    points which are then scaled by the (fractional) device pixel ratio, and
-    each clip edge is rounded independently. With Qt's PassThrough DPI policy
-    on Windows scale factors like 125% / 150%, that makes dividers at
-    different heights get their one logical pixel of ink split across one or
-    two physical rows in different ratios, so some look thinner than others.
+    Native QMenu::separator lines sit at fractional device positions, so at
+    Windows scale factors like 125% / 150% a divider's one logical pixel of ink
+    is split across one or two physical rows in a ratio that depends on where it
+    sits - which is why some dividers used to look thinner than others. Painting
+    every line from this menu's own paintEvent avoids that; see
+    ``paint_device_snapped_hairline`` for the mechanism, which CenteredTextMenu
+    shares so the calendar's day menu renders its dividers identically.
 
-    Painting every line from this menu's own paintEvent avoids the problem:
-    a top-level window's device origin is always an integer number of physical
-    pixels, so each line can be placed deterministically. Every divider is
-    drawn exactly the way a native separator renders on a well-aligned
-    position at the current scale factor: ``ceil(dpr)`` full-coverage device
-    rows at 100% scale, two solid rows at 125% / 150%, and so on - and now
-    every divider gets that same look, identically, at any scale.
-
-    Divider spacing comes from native separator actions (kept invisible via
-    the QMenu::separator stylesheet rule), painted by this menu.
+    Divider spacing comes from native separator actions (kept invisible via the
+    QMenu::separator stylesheet rule), painted by this menu.
     """
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -171,26 +200,9 @@ class TrayMenu(QMenu):
                 self._paint_hairline(painter, rect, True, color)
 
     def _paint_hairline(self, painter: QPainter, rect: QRect, horizontal: bool, color: QColor):
-        """Draw one divider line the way a native 1px separator renders on a
-        well-aligned position: ``ceil(dpr)`` full device rows (or columns),
-        snapped to the device-pixel grid. Deterministic, so every divider in
-        the menu renders with the same thickness at every position and scale
-        (one crisp pixel at 100%, two solid rows at 125% / 150%, ...)."""
-        dpr = self.devicePixelRatioF() or 1.0
-        rows = max(1, math.ceil(dpr - 1e-6))
-
-        if horizontal:
-            x0 = round(rect.left() * dpr) / dpr
-            x1 = round((rect.left() + rect.width()) * dpr) / dpr
-            center_y = rect.top() + rect.height() / 2.0
-            top = round(center_y * dpr - rows / 2.0)
-            painter.fillRect(QRectF(x0, top / dpr, x1 - x0, rows / dpr), color)
-        else:
-            y0 = round(rect.top() * dpr) / dpr
-            y1 = round((rect.top() + rect.height()) * dpr) / dpr
-            center_x = rect.left() + rect.width() / 2.0
-            left = round(center_x * dpr - rows / 2.0)
-            painter.fillRect(QRectF(left / dpr, y0, rows / dpr, y1 - y0), color)
+        """Draw one divider line on the device-pixel grid (see the module helper)."""
+        paint_device_snapped_hairline(painter, rect, color,
+                                      self.devicePixelRatioF() or 1.0, horizontal)
 
 
 class CenteredTextMenu(QMenu):
@@ -203,10 +215,12 @@ class CenteredTextMenu(QMenu):
     never fires for a styled menu. Reimplementing the whole item painting in a
     style was rejected as disproportionate.
 
-    So the work is split: the shared stylesheet still paints the frame, item box,
-    hover and separators, but its item text is ``color: transparent``, and this
-    class paints the glyphs afterwards, centered in the item's content rect (the
-    same 15px/6px box the QSS padding defines).
+    So the work is split: the shared stylesheet still paints the frame, item box
+    and hover, but its item text is ``color: transparent``, and this class paints
+    the glyphs afterwards, centered in the item's content rect (the same 15px/6px
+    box the QSS padding defines). Separator lines are painted here too, on the
+    device-pixel grid via ``paint_device_snapped_hairline``, so the day menu's
+    dividers match the tray menu's instead of being drawn by QSS.
 
     Rows that open a submenu also get their indicator from this painter. Handing
     the arrow back to the style primitives via bare ``QMenu::right-arrow`` /
@@ -231,9 +245,23 @@ class CenteredTextMenu(QMenu):
         align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
         metrics = QFontMetrics(painter.font())
         for action in self.actions():
+            if action.isSeparator():
+                # Painted here rather than by QSS so the line lands on the
+                # device-pixel grid: the stylesheet keeps the separator row's
+                # height for spacing but draws nothing, exactly like TrayMenu.
+                paint_device_snapped_hairline(
+                    painter, self.actionGeometry(action),
+                    QColor(palette["MENU_BORDER_COLOR"]),
+                    self.devicePixelRatioF() or 1.0)
+                continue
             text = action.text()
             if not text:
-                continue  # separator, or a QWidgetAction row painting itself
+                # A QWidgetAction row paints itself. Its geometry is deliberately
+                # NOT queried: actionGeometry() consults the row's widget, and a
+                # row whose widget is already gone must never be touched (a
+                # repaint of a leaked menu would otherwise dereference freed
+                # memory). Only separators and text rows are measured here.
+                continue
             color = QColor(palette["TEXT_COLOR"] if action.isEnabled()
                            else palette["GREY_COLOR"])
             # The content rect: exactly what the QSS item padding defines.
@@ -243,6 +271,7 @@ class CenteredTextMenu(QMenu):
                 -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
             if action.menu() is not None:
                 self._paint_submenu_arrow(painter, geo, rtl, color)
+                zone.adjust(4, 0, 4, 0)
                 if metrics.horizontalAdvance(text) > zone.width():
                     # Overflow safety net for unnaturally narrow menus: the
                     # caption cannot fit beside the arrow, so fall back to the

@@ -632,6 +632,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._add_startup_action(menu)
         menu.add_divider()
         self._add_menu_action(menu, "مدیریت رویدادها", lambda: self._close_menu_then(self._open_event_manager))
+        menu.add_divider()
         self._add_menu_action(menu, "مشاهده تعطیلات", lambda: self._close_menu_then(self._open_holiday_viewer))
         menu.add_divider()
         self._add_menu_action(menu, "بررسی بروزرسانی", lambda: self._close_menu_then(lambda: self._check_for_updates(manual=True)))
