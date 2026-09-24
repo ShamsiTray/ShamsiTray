@@ -40,29 +40,31 @@ def test_boot_detects_dark_theme_off_windows(tray, monkeypatch):
     assert tray._get_windows_theme() == APP_CONFIG.Theme.DARK
 
 
-def test_saved_theme_preference_wins(user_data, monkeypatch, qtbot):
+def test_saved_theme_preference_wins(user_data, monkeypatch, qtbot, fake_startup_registry):
     from utils.json_settings import JsonSettings
 
     settings = JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH)
     settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.LIGHT)
-    tray = SystemTrayIcon(settings=settings)
+    tray = SystemTrayIcon(settings=settings, startup_registry=fake_startup_registry)
     assert tray.current_theme == APP_CONFIG.Theme.LIGHT
     APP_CONFIG.set_theme(APP_CONFIG.Theme.DARK)  # restore global palette
 
 
-def test_debug_data_version_override(user_data, monkeypatch, qtbot):
+def test_debug_data_version_override(user_data, monkeypatch, qtbot, fake_startup_registry):
     from utils.json_settings import JsonSettings
 
     monkeypatch.setenv(DEBUG_DATA_VERSION_ENV, "777")
-    tray = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH))
+    tray = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH),
+                          startup_registry=fake_startup_registry)
     assert tray.update_checker._current_data_version == 777
 
 
-def test_debug_data_version_invalid_value_is_ignored(user_data, monkeypatch, qtbot):
+def test_debug_data_version_invalid_value_is_ignored(user_data, monkeypatch, qtbot, fake_startup_registry):
     from utils.json_settings import JsonSettings
 
     monkeypatch.setenv(DEBUG_DATA_VERSION_ENV, "not-a-number")
-    tray = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH))
+    tray = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH),
+                          startup_registry=fake_startup_registry)
     assert tray.update_checker._current_data_version != "not-a-number"
     assert isinstance(tray.update_checker._current_data_version, int)
 
@@ -495,189 +497,233 @@ def test_toggle_theme_flips_and_persists(tray):
     assert tray.current_theme == original
 
 
-def test_toggle_open_at_boot_persists_setting(tray, monkeypatch):
-    registry_calls = []
-    monkeypatch.setattr(tray, "_set_startup_registry",
-                        lambda enable: registry_calls.append(enable) or True)
-    tray._toggle_open_at_boot(True)
-    assert tray.is_open_at_login is True
-    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is True
-    assert registry_calls == [True]
-    tray._toggle_open_at_boot(False)
-
-
-def test_toggle_open_at_boot_failure_keeps_setting(tray, monkeypatch):
-    """WIN-2: a failed registry write must not flip the application setting."""
-    monkeypatch.setattr(tray, "_set_startup_registry", lambda enable: False)
-    # Explicit precondition: booting the tray persists the first-run autostart
-    # default whenever the temp settings file starts empty, so the stored value
-    # is not guaranteed to be False by the time the test runs. This test is
-    # about what the TOGGLE writes, not about what the boot left behind.
+def test_toggle_open_at_boot_persists_setting(tray, fake_startup_registry, monkeypatch):
+    """Enabling writes the Run entry and only then persists the preference."""
+    _patch_windows(monkeypatch)
     tray.settings.setValue(APP_CONFIG.AUTO_START_SETTING_KEY, False)
     tray.is_open_at_login = False
+    fake_startup_registry.reset()  # the boot's first-run write is not under test
+
     tray._toggle_open_at_boot(True)
+
+    assert tray.is_open_at_login is True
+    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is True
+    assert fake_startup_registry.writes == [controller_module._startup_executable_value()]
+    assert fake_startup_registry.entry_exists is True
+
+
+def test_toggle_open_at_boot_failure_keeps_setting(tray, fake_startup_registry, monkeypatch):
+    """WIN-2: a failed registry write must not flip the application setting."""
+    _patch_windows(monkeypatch)
+    # Explicit preconditions: booting the tray persists the first-run autostart
+    # default whenever the temp settings file starts empty, so neither the stored
+    # preference nor the Run entry is guaranteed to be empty by the time the test
+    # runs. This test is about what the TOGGLE writes, not what the boot left.
+    tray.settings.setValue(APP_CONFIG.AUTO_START_SETTING_KEY, False)
+    tray.is_open_at_login = False
+    fake_startup_registry.value = None
+    fake_startup_registry.reset()
+    fake_startup_registry.fail_writes = True
+
+    tray._toggle_open_at_boot(True)
+
     assert tray.is_open_at_login is False
     assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is False
+    assert fake_startup_registry.entry_exists is False
 
 
-def test_startup_registry_skipped_off_windows(tray):
-    # On Linux: logs a warning, does not raise.
-    tray._set_startup_registry(True)
-    tray._set_startup_registry(False)
+def test_toggle_open_at_boot_delete_failure_keeps_setting_on(tray, fake_startup_registry, monkeypatch):
+    """A failed delete must leave the preference ON, so the checkbox never claims
+    a startup state that Windows does not actually have."""
+    _patch_windows(monkeypatch)
+    fake_startup_registry.value = controller_module._startup_executable_value()
+    fake_startup_registry.reset()
+    tray.settings.setValue(APP_CONFIG.AUTO_START_SETTING_KEY, True)
+    tray.is_open_at_login = True
+    fake_startup_registry.fail_deletes = True
+
+    tray._toggle_open_at_boot(False)
+
+    assert tray.is_open_at_login is True
+    assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is True
+    assert fake_startup_registry.entry_exists is True
 
 
-def test_validate_startup_setting_early_return_off_windows(tray):
-    # is_open_at_login False on Linux default → early return either way.
+def test_startup_registry_skipped_off_windows(tray, fake_startup_registry, monkeypatch):
+    """The platform guard must short-circuit before any registry access.
+
+    sys.platform is forced rather than assumed, so this exercises the real guard
+    on every OS - including the Windows dev boxes where it used to fall through
+    to the live registry.
+    """
+    fake_startup_registry.reset()  # ignore the boot's own first-run write
+    monkeypatch.setattr(controller_module.sys, "platform", "linux")
+
+    assert tray._set_startup_registry(True) is False
+    assert tray._set_startup_registry(False) is False
+
+    assert fake_startup_registry.writes == []
+    assert fake_startup_registry.deletes == 0
+    assert fake_startup_registry.reads == 0
+
+
+def test_validate_startup_setting_early_return_off_windows(tray, fake_startup_registry, monkeypatch):
+    """Off Windows the whole validation is skipped, with no registry access."""
+    fake_startup_registry.reset()
+    monkeypatch.setattr(controller_module.sys, "platform", "linux")
+
     tray._validate_and_apply_startup_setting()  # must not raise
+
+    assert fake_startup_registry.reads == 0
 
 
 # --- autostart opt-out default (fresh install = ON) --------------------------------------
 
-def _boot_tray(user_data, settings_overrides=None):
-    """Boot a tray with a fresh (or pre-seeded) settings store."""
+def _boot_tray(user_data, settings_overrides=None, registry=None):
+    """Boot a tray with a fresh (or pre-seeded) settings store.
+
+    Always boots against an in-memory autostart registry: the boot runs the real
+    ``_validate_and_apply_startup_setting()`` path, which would otherwise write to
+    the developer's real HKCU Run key whenever the platform guard is faked.
+    """
+    from tests.fake_registry import FakeStartupRegistry
     from utils.json_settings import JsonSettings
 
     settings = JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH)
     for key, value in (settings_overrides or {}).items():
         settings.setValue(key, value)
-    return SystemTrayIcon(settings=settings)
+    return SystemTrayIcon(
+        settings=settings,
+        startup_registry=registry if registry is not None else FakeStartupRegistry())
 
 
 def _patch_windows(monkeypatch):
-    """Fake the win32 guard for registry-path tests (winreg access is patched
-    away at the method level, so the real module is never touched)."""
+    """Fake the win32 platform guard so the Windows autostart path runs on any OS.
+
+    The registry behind it is the in-memory fake, so faking the platform can
+    never reach the developer's real hive.
+    """
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
 
 
-def test_fresh_install_defaults_autostart_on(user_data, qtbot, monkeypatch):
+def _executable_value():
+    return controller_module._startup_executable_value()
+
+
+def test_fresh_install_defaults_autostart_on(user_data, qtbot, monkeypatch, fake_startup_registry):
     """Test A — brand-new install: no saved preference → Run entry written
     first, preference persisted ON, checkbox state ON."""
     _patch_windows(monkeypatch)
-    writes = []
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: writes.append(enable) or True)
-    tray = _boot_tray(user_data)
+
+    tray = _boot_tray(user_data, registry=fake_startup_registry)
+
     assert tray._autostart_pref_exists is False
-    assert writes == [True]
+    assert fake_startup_registry.writes == [_executable_value()]
+    assert fake_startup_registry.entry_exists is True
     assert tray.is_open_at_login is True
     assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool) is True
 
 
-def test_fresh_install_registry_failure_leaves_preference_unset(user_data, qtbot, monkeypatch):
+def test_fresh_install_registry_failure_leaves_preference_unset(user_data, qtbot, monkeypatch, fake_startup_registry):
     """Test D — a failed registry write must not produce a false success:
     the preference stays unset (next launch retries) and the in-memory state
     is honestly OFF so the checkbox can never claim a startup Windows won't do."""
     _patch_windows(monkeypatch)
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry", lambda self, enable: False)
-    tray = _boot_tray(user_data)
+    fake_startup_registry.fail_writes = True
+
+    tray = _boot_tray(user_data, registry=fake_startup_registry)
+
     assert tray.is_open_at_login is False
     assert not tray.settings.contains(APP_CONFIG.AUTO_START_SETTING_KEY)
+    assert fake_startup_registry.entry_exists is False
 
 
-def test_existing_disabled_preference_stays_off(user_data, qtbot, monkeypatch):
-    """Test E — an explicit OFF must survive the new default untouched."""
+def test_existing_disabled_preference_stays_off(user_data, qtbot, monkeypatch, fake_startup_registry):
+    """Test E — an explicit OFF must survive the opt-out default untouched."""
     _patch_windows(monkeypatch)
-    writes = []
-    monkeypatch.setattr(SystemTrayIcon, "_startup_entry_exists", lambda self: False)
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: writes.append(enable) or True)
-    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: False})
+
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: False},
+                      registry=fake_startup_registry)
+
     assert tray._autostart_pref_exists is True
     assert tray.is_open_at_login is False
-    assert writes == []  # no entry, no write: nothing touches the registry
+    # No Run entry, so nothing to heal and nothing to write.
+    assert fake_startup_registry.writes == []
+    assert fake_startup_registry.deletes == 0
 
 
-def test_existing_disabled_preference_heals_stale_run_entry(user_data, qtbot, monkeypatch):
+def test_existing_disabled_preference_heals_stale_run_entry(user_data, qtbot, monkeypatch, fake_startup_registry):
     """Test E (self-heal) — a leftover Run entry despite an OFF preference is
     removed; the OFF preference is never re-enabled."""
     _patch_windows(monkeypatch)
-    calls = []
-    monkeypatch.setattr(SystemTrayIcon, "_startup_entry_exists", lambda self: True)
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: calls.append(enable) or True)
-    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: False})
+    fake_startup_registry.value = _executable_value()  # stale entry
+
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: False},
+                      registry=fake_startup_registry)
+
     assert tray.is_open_at_login is False
-    assert calls == [False]  # only a delete — never a re-enable
+    assert fake_startup_registry.deletes == 1
+    assert fake_startup_registry.entry_exists is False
+    assert fake_startup_registry.writes == []  # only a delete - never a re-enable
     assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, True, type=bool) is False
 
 
-def test_existing_enabled_preference_reapplies_missing_entry(user_data, qtbot, monkeypatch):
+def test_existing_enabled_preference_reapplies_missing_entry(user_data, qtbot, monkeypatch, fake_startup_registry):
     """Existing ON with the Run entry gone (e.g. wiped externally) is repaired."""
-    from types import SimpleNamespace
-
     _patch_windows(monkeypatch)
+    fake_startup_registry.value = None  # entry missing
 
-    class _MissingKey:
-        def __enter__(self):
-            return self
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True},
+                      registry=fake_startup_registry)
 
-        def __exit__(self, *exc):
-            return False
-
-    fake_winreg = SimpleNamespace(
-        HKEY_CURRENT_USER="HKCU", KEY_READ=1, KEY_ALL_ACCESS=2, REG_SZ="REG_SZ",
-        OpenKey=lambda *a, **k: _MissingKey(),
-        QueryValueEx=lambda key, name: (_ for _ in ()).throw(FileNotFoundError(name)),
-        SetValueEx=lambda *a, **k: None, DeleteValue=lambda *a, **k: None,
-        CloseKey=lambda key: None,
-    )
-    monkeypatch.setattr(controller_module, "winreg", fake_winreg, raising=False)
-    calls = []
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: calls.append(enable) or True)
-    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True})
     assert tray.is_open_at_login is True
-    assert calls == [True]
+    assert fake_startup_registry.writes == [_executable_value()]
 
 
-def test_existing_enabled_preference_with_correct_entry_is_left_alone(user_data, qtbot, monkeypatch):
+def test_existing_enabled_preference_with_correct_entry_is_left_alone(user_data, qtbot, monkeypatch, fake_startup_registry):
     """Existing ON with the Run entry already correct: no registry writes."""
-    from types import SimpleNamespace
-
     _patch_windows(monkeypatch)
+    fake_startup_registry.value = _executable_value()
 
-    class _CorrectKey:
-        def __enter__(self):
-            return self
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True},
+                      registry=fake_startup_registry)
 
-        def __exit__(self, *exc):
-            return False
-
-    fake_winreg = SimpleNamespace(
-        HKEY_CURRENT_USER="HKCU", KEY_READ=1, KEY_ALL_ACCESS=2, REG_SZ="REG_SZ",
-        OpenKey=lambda *a, **k: _CorrectKey(),
-        QueryValueEx=lambda key, name: (controller_module._startup_executable_value(), "REG_SZ"),
-        SetValueEx=lambda *a, **k: None, DeleteValue=lambda *a, **k: None,
-        CloseKey=lambda key: None,
-    )
-    monkeypatch.setattr(controller_module, "winreg", fake_winreg, raising=False)
-    calls = []
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: calls.append(enable) or True)
-    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True})
     assert tray.is_open_at_login is True
-    assert calls == []
+    assert fake_startup_registry.writes == []
+    assert fake_startup_registry.deletes == 0
 
 
-def test_toggle_then_restart_keeps_disabled_state(user_data, qtbot, monkeypatch):
+def test_existing_enabled_preference_with_drifted_entry_is_repaired(user_data, qtbot, monkeypatch, fake_startup_registry):
+    """Existing ON whose Run value points somewhere else is re-applied."""
+    _patch_windows(monkeypatch)
+    fake_startup_registry.value = '"C:\\Elsewhere\\Other.exe"'
+
+    tray = _boot_tray(user_data, {APP_CONFIG.AUTO_START_SETTING_KEY: True},
+                      registry=fake_startup_registry)
+
+    assert tray.is_open_at_login is True
+    assert fake_startup_registry.writes == [_executable_value()]
+    assert fake_startup_registry.read() == _executable_value()
+
+
+def test_toggle_then_restart_keeps_disabled_state(user_data, qtbot, monkeypatch, fake_startup_registry):
     """Test B/C — disable via the toggle, then reboot: the preference must
     persist and the boot path must keep it OFF (never re-default it)."""
     _patch_windows(monkeypatch)
-    registry = {"entry": False}
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: registry.__setitem__("entry", enable) or True)
-    tray = _boot_tray(user_data)
+    fake_startup_registry.value = _executable_value()
+
+    tray = _boot_tray(user_data, registry=fake_startup_registry)
+    assert tray.is_open_at_login is True  # first run defaulted it ON
+
     tray._toggle_open_at_boot(False)
-    assert registry["entry"] is False
+    assert fake_startup_registry.entry_exists is False
     assert tray.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, True, type=bool) is False
 
-    monkeypatch.setattr(SystemTrayIcon, "_startup_entry_exists", lambda self: False)
-    writes = []
-    monkeypatch.setattr(SystemTrayIcon, "_set_startup_registry",
-                        lambda self, enable: writes.append(enable) or True)
-    rebooted = _boot_tray(user_data)
+    writes_before_reboot = list(fake_startup_registry.writes)
+    rebooted = _boot_tray(user_data, registry=fake_startup_registry)
+
     assert rebooted.is_open_at_login is False
-    assert writes == []
+    assert fake_startup_registry.writes == writes_before_reboot  # no re-default write
 
 
 # --- startup executable value ----------------------------------------------------------

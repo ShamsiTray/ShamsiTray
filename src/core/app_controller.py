@@ -43,6 +43,7 @@ from utils.holiday_io import read_version, resolve_holidays_store
 from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
+from utils.startup_registry import RUN_KEY_PATH, StartupRegistry
 from utils.ui_helpers import create_tray_pixmap, global_scrollbar_stylesheet
 
 if TYPE_CHECKING:
@@ -76,8 +77,6 @@ WINDOWS_TOOLTIP_MAX_CHARS = 127
 # JsonSettings.contains() instead of a value() default.
 AUTOSTART_FIRST_RUN_DEFAULT = True
 
-_RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-
 
 def _startup_executable_value() -> str:
     """The quoted executable path the autostart Run entry should hold.
@@ -100,9 +99,14 @@ DEBUG_DATA_VERSION_ENV = "SHAMSITRAY_DEBUG_DATA_VERSION"
 class SystemTrayIcon(QSystemTrayIcon):
     """The main application controller, managing the tray icon, windows, and settings."""
 
-    def __init__(self, settings: Optional[JsonSettings] = None):
+    def __init__(self, settings: Optional[JsonSettings] = None,
+                 startup_registry: Optional[StartupRegistry] = None):
         super().__init__()
         self.settings = settings if settings is not None else JsonSettings()
+        # Every autostart registry operation goes through this seam, so the
+        # policy below can be driven against an in-memory backend in tests
+        # without touching the real HKCU hive.
+        self.startup_registry = startup_registry if startup_registry is not None else StartupRegistry()
         self.holidays_cache = resolve_holidays_store()
         # The event store is owned by the EventService: every mutation and every
         # save goes through it, so the calendar, the tray and the disk can never
@@ -733,30 +737,22 @@ class SystemTrayIcon(QSystemTrayIcon):
         if not sys.platform.startswith('win'):
             logger.warning("Auto-start is only supported on Windows.")
             return False
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH, 0, winreg.KEY_ALL_ACCESS) as key:
-                if enable:
-                    executable_path = _startup_executable_value()
-                    # Path must be quoted to support spaces when the app is frozen or installed in Program Files
-                    winreg.SetValueEx(key, APP_CONFIG.APP_NAME, 0, winreg.REG_SZ, executable_path)
-                    logger.info(f"Set startup registry key to: {executable_path}")
-                else:
-                    try:
-                        winreg.DeleteValue(key, APP_CONFIG.APP_NAME)
-                        logger.info("Removed startup registry key.")
-                    except FileNotFoundError:
-                        # The value is already gone: the desired state holds.
-                        logger.warning("Could not remove startup key (it may not exist).")
+        if enable:
+            # The path must be quoted to support spaces when the app is frozen
+            # or installed in Program Files.
+            executable_path = _startup_executable_value()
+            if not self.startup_registry.write(executable_path):
+                logger.error(f"Could not write the startup registry key ({RUN_KEY_PATH}).")
+                return False
+            logger.info(f"Set startup registry key to: {executable_path}")
             return True
-        except FileNotFoundError:
-            if not enable:
-                logger.warning("Could not remove startup key (it may not exist).")
-                return True
-            logger.error(f"Could not find registry key path: {_RUN_KEY_PATH}")
+        if not self.startup_registry.delete():
+            logger.warning("Could not remove startup key (it may not exist).")
             return False
-        except Exception as e:
-            logger.error(f"Error modifying Windows registry: {e}")
-            return False
+        # delete() also reports success for an already-absent value, so the log
+        # says both: a stale entry left by a failed delete is still healable.
+        logger.info("Startup registry key removed (or already absent).")
+        return True
 
     def _startup_entry_exists(self) -> bool:
         """True when the HKCU Run key currently holds a ShamsiTray value.
@@ -767,15 +763,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         """
         if not sys.platform.startswith('win'):
             return False
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH, 0, winreg.KEY_READ) as key:
-                winreg.QueryValueEx(key, APP_CONFIG.APP_NAME)
-                return True
-        except FileNotFoundError:
-            return False
-        except OSError as e:
-            logger.warning(f"Could not read startup registry key: {e}")
-            return False
+        return self.startup_registry.read() is not None
 
     def _toggle_open_at_boot(self, checked: bool):
         # The application setting and the menu checkbox may only claim the new
@@ -828,23 +816,16 @@ class SystemTrayIcon(QSystemTrayIcon):
             return
         logger.info("Validating startup registry key...")
         expected_value = _startup_executable_value()
-        needs_update = True
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH, 0, winreg.KEY_READ)
-            current_value, _ = winreg.QueryValueEx(key, APP_CONFIG.APP_NAME)
-            if current_value == expected_value:
-                logger.info("Startup registry key is correct.")
-                needs_update = False
-            else:
-                logger.warning(f"Startup registry key is incorrect. Found: '{current_value}', Expected: '{expected_value}'")
-            winreg.CloseKey(key)
-        except FileNotFoundError:
+        current_value = self.startup_registry.read()
+        if current_value == expected_value:
+            logger.info("Startup registry key is correct.")
+            return
+        if current_value is None:
             logger.warning("Startup registry key not found.")
-        except Exception as e:
-            logger.error(f"Error reading startup registry key: {e}")
-        if needs_update:
-            logger.info("Re-applying startup registry key.")
-            self._set_startup_registry(True)
+        else:
+            logger.warning(f"Startup registry key is incorrect. Found: '{current_value}', Expected: '{expected_value}'")
+        logger.info("Re-applying startup registry key.")
+        self._set_startup_registry(True)
 
     def _show_or_raise(self, window_attr: str, factory):
         """Shared window-opener: create+show the window stored on ``window_attr``,
