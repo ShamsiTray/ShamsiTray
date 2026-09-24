@@ -32,7 +32,12 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
                 msg = ctypes.cast(int(message), ctypes.POINTER(ctypes.wintypes.MSG)).contents
                 WM_TIMECHANGE = 0x001E
                 if msg.message == WM_TIMECHANGE:
-                    logger.info("⏰ System time changed (WM_TIMECHANGE detected).")
+                    # DEBUG, not INFO: Windows broadcasts this message to every
+                    # top-level window and the time service can emit a burst of
+                    # them while re-syncing, so a per-message INFO line floods the
+                    # log. The callback coalesces the burst and the controller logs
+                    # the single resulting refresh at INFO instead.
+                    logger.debug("WM_TIMECHANGE received.")
                     if callable(self.on_time_change_callback):
                         self.on_time_change_callback()
             except Exception as e:
