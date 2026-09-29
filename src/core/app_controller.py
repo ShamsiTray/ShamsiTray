@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl
-from PyQt6.QtGui import QDesktopServices, QIcon
+from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
 from PyQt6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
@@ -699,8 +699,24 @@ class SystemTrayIcon(QSystemTrayIcon):
             # never just close the editor and leave the calendar up.
             if self.calendar_widget.isVisible():
                 self.calendar_widget.hide()
+            elif self._tray_click_dismissed_the_popup():
+                # The press half of this very click already dismissed the
+                # unpinned popup; its release completes the toggle instead of
+                # reopening what the same click just closed.
+                pass
             else:
                 self.show_calendar()
+
+    def _tray_click_dismissed_the_popup(self) -> bool:
+        """True when this tray click's own press dismissed the unpinned popup.
+
+        Only counted while the cursor is over the tray icon, so dismissing the
+        popup by clicking elsewhere and then clicking the icon still opens it.
+        """
+        if not self.calendar_widget.consume_outside_click_dismissal():
+            return False
+        tray_geometry = self.geometry()
+        return not tray_geometry.isValid() or tray_geometry.contains(QCursor.pos())
 
     def show_calendar(self):
         # Stay on the month the user was browsing; the calendar snaps back to today

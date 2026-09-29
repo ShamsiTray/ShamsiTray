@@ -4,7 +4,8 @@ import datetime
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt
+from PyQt6.QtGui import QCursor
 from PyQt6.QtTest import QTest
 
 import core.app_controller as controller_module
@@ -907,6 +908,40 @@ def test_tray_click_hides_visible_calendar(tray, monkeypatch):
 
     tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
     assert not tray.calendar_widget.isVisible()
+
+
+def test_tray_click_completes_a_just_dismissed_popup(tray, monkeypatch):
+    """Unpinned: the press half of a tray click already dismissed the popup, so
+    the release must finish the toggle instead of reopening it."""
+    from PyQt6.QtWidgets import QSystemTrayIcon
+
+    cal = tray.calendar_widget
+    shown = []
+    monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))
+    monkeypatch.setattr(cal, "consume_outside_click_dismissal", lambda: True)
+    monkeypatch.setattr(tray, "geometry",
+                        lambda: QRect(QCursor.pos() - QPoint(4, 4), QSize(8, 8)))
+
+    tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    assert shown == []
+
+    # One-shot marker: the following click opens the calendar again.
+    monkeypatch.setattr(cal, "consume_outside_click_dismissal", lambda: False)
+    tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    assert shown == [1]
+
+
+def test_dismissal_far_from_the_tray_icon_still_opens(tray, monkeypatch):
+    from PyQt6.QtWidgets import QSystemTrayIcon
+
+    shown = []
+    monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))
+    monkeypatch.setattr(tray.calendar_widget, "consume_outside_click_dismissal", lambda: True)
+    monkeypatch.setattr(tray, "geometry",
+                        lambda: QRect(QCursor.pos() + QPoint(400, 400), QSize(8, 8)))
+
+    tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    assert shown == [1]
 
 
 def test_other_activation_reasons_ignored(tray, monkeypatch):

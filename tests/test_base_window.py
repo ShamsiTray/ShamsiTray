@@ -1,7 +1,10 @@
 """Tests for ui.windows.base_window: the shared frameless window base."""
-from PyQt6.QtCore import QPoint, QSize, Qt
-from PyQt6.QtWidgets import QApplication
+import time
 
+from PyQt6.QtCore import QEvent, QPoint, QSize, Qt
+from PyQt6.QtWidgets import QApplication, QWidget
+
+import ui.windows.base_window as base_window_module
 from config import APP_CONFIG
 from ui.windows.base_window import BaseFramelessWindow
 
@@ -130,3 +133,109 @@ def test_screen_clamp_semantics_documented():
     screen = QApplication.primaryScreen().availableGeometry()
     # For a 395px-tall calendar the bottom clamp leaves the top 50 visible.
     assert screen.bottom() - 50 > screen.top()
+
+
+# --- popup dismissal ----------------------------------------------------------------------
+
+class _Popup(BaseFramelessWindow):
+    """A window configured like the calendar popup."""
+    CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED = True
+
+
+def _visible_window(qtbot, *, pinned=True, window=None):
+    window = window if window is not None else _Popup()
+    qtbot.addWidget(window)
+    if not pinned:
+        # Before the first show, so the unpinning itself does not dismiss it.
+        window.set_always_on_top(False)
+    window.show()
+    qtbot.waitExposed(window)
+    return window
+
+
+def _lose_activation(window, monkeypatch, active=None):
+    """Deliver the activation change Qt sends when focus moves off the window."""
+    class _App:
+        @staticmethod
+        def activeWindow():
+            return active
+
+    monkeypatch.setattr(base_window_module, "QApplication", _App)
+    monkeypatch.setattr(window, "isActiveWindow", lambda: False)
+    window.changeEvent(QEvent(QEvent.Type.ActivationChange))
+
+
+def test_unpinned_popup_closes_when_it_loses_activation(qtbot, monkeypatch):
+    window = _visible_window(qtbot, pinned=False)
+    _lose_activation(window, monkeypatch)
+    assert not window.isVisible()
+
+
+def test_pinned_popup_stays_open_when_it_loses_activation(qtbot, monkeypatch):
+    window = _visible_window(qtbot)
+    _lose_activation(window, monkeypatch)
+    assert window.isVisible()
+
+
+def test_ordinary_window_stays_open_when_it_loses_activation(qtbot, monkeypatch):
+    """Tool windows are forms, not flyouts: focus loss must not close them."""
+    window = _visible_window(qtbot, pinned=False, window=BaseFramelessWindow())
+    _lose_activation(window, monkeypatch)
+    assert window.isVisible()
+
+
+def test_popup_stays_open_when_its_own_dialog_takes_focus(qtbot, monkeypatch):
+    """A confirm dialog this popup opened is not an outside click."""
+    window = _visible_window(qtbot, pinned=False)
+    dialog = QWidget(window)
+    _lose_activation(window, monkeypatch, active=dialog)
+    assert window.isVisible()
+
+
+def test_outside_dismissal_marker_is_consumed_once(qtbot, monkeypatch):
+    window = _visible_window(qtbot, pinned=False)
+    _lose_activation(window, monkeypatch)
+
+    assert window.consume_outside_click_dismissal() is True
+    assert window.consume_outside_click_dismissal() is False   # cleared on read
+
+
+def test_stale_outside_dismissal_marker_expires(qtbot):
+    window = _visible_window(qtbot, pinned=False)
+    window._outside_dismissed_at = time.monotonic() - 5
+    assert window.consume_outside_click_dismissal() is False
+
+
+def test_unpinning_a_popup_that_lost_activation_dismisses_it(qtbot, monkeypatch):
+    """The tray menu that flips the setting is itself an outside click, so an
+    unpinned popup must not be left on screen where no later click can close it."""
+    window = _visible_window(qtbot)
+    monkeypatch.setattr(window, "isActiveWindow", lambda: False)
+
+    window.set_always_on_top(False)
+
+    assert not window.isVisible()
+    assert not window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+
+
+def test_unpinning_an_active_popup_keeps_it_up_and_activated(qtbot, monkeypatch):
+    window = _visible_window(qtbot)
+    activated = []
+    monkeypatch.setattr(window, "isActiveWindow", lambda: True)
+    monkeypatch.setattr(window, "activateWindow", lambda: activated.append(1))
+
+    window.set_always_on_top(False)
+
+    assert window.isVisible()
+    # setWindowFlags drops activation, and an inactive popup is the state no
+    # click can dismiss, so the window is activated again.
+    assert activated == [1]
+
+
+def test_unpinning_an_ordinary_window_never_dismisses_it(qtbot, monkeypatch):
+    window = _visible_window(qtbot, window=BaseFramelessWindow())
+    monkeypatch.setattr(window, "isActiveWindow", lambda: False)
+
+    window.set_always_on_top(False)
+
+    assert window.isVisible()

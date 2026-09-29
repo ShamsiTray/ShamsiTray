@@ -427,6 +427,14 @@ def test_normalize_day_hover_clears_stale_flag(calendar):
     calendar.hide()
 
 
+# --- popup semantics -----------------------------------------------------------------
+
+
+def test_calendar_opts_into_popup_dismissal():
+    """Tray-triggered flyout, not a form: unpinned, an outside click closes it."""
+    assert PersianCalendarWidget.CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED is True
+
+
 # --- dataclass -----------------------------------------------------------------------
 
 
