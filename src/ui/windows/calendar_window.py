@@ -40,6 +40,9 @@ class DayStyle:
 class PersianCalendarWidget(BaseFramelessWindow):
     """Main calendar widget displaying a month of Persian (Jalali) dates."""
     ROWS, COLS = 6, 7
+    # Opened from the tray, this is a flyout rather than a form: with
+    # always-on-top switched off, a click outside it dismisses it.
+    CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED = True
     event_added = pyqtSignal(object, str, str, bool)  # jdate, text, recurrence, remove_after_finish
     event_removed = pyqtSignal(object)
 
