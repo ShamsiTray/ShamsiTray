@@ -86,6 +86,10 @@ def days_in_jalali_month(year: int, month: int) -> int:
 
 def days_in_gregorian_month(year: int, month: int) -> int:
     """Return the number of days in a Gregorian month (1-12)."""
+    # Guarded like the Jalali and month-name helpers: month 0 otherwise fell
+    # through to 1 January of the previous year and reported 31 days.
+    if not 1 <= month <= 12:
+        raise ValueError("Month out of range (must be 1-12)")
     if month == 12:
         return 31
     return (datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)).day
