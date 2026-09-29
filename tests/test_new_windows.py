@@ -139,6 +139,30 @@ def test_manager_edit_recurring_ignores_auto_delete(manager):
     assert manager.controller.user_events["0000-05-05"]["remove_after_finish"] is False
 
 
+def test_manager_unchanged_save_keeps_a_clamped_anchor(manager):
+    """A day-31 monthly event opens on the 30th of a short month; saving the
+    edit keeps that anchor instead of moving the event to the shown day."""
+    manager.user_events["0000-00-31"] = {"text": "پایان ماه", "recurrence": RECURRENCE_MONTHLY,
+                                         "remove_after_finish": False}
+    manager._on_edit_requested("0000-00-31")
+
+    manager._on_edit_saved("پایان ماه ویرایش‌شده", RECURRENCE_MONTHLY, False)
+
+    assert list(manager.user_events) == ["0000-00-31"]
+    assert manager.user_events["0000-00-31"]["text"] == "پایان ماه ویرایش‌شده"
+
+
+def test_manager_moving_the_date_reanchors_the_event(manager):
+    manager.user_events["0000-00-31"] = {"text": "پایان ماه", "recurrence": RECURRENCE_MONTHLY,
+                                         "remove_after_finish": False}
+    manager._on_edit_requested("0000-00-31")
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 3, 15)
+
+    manager._on_edit_saved("پایان ماه", RECURRENCE_MONTHLY, False)
+
+    assert list(manager.user_events) == ["0000-00-15"]
+
+
 def test_event_date_labels():
     assert "هر سال" in _event_date_label("0000-05-05")
     assert "هر ماه" in _event_date_label("0000-00-05")

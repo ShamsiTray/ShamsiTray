@@ -40,6 +40,7 @@ from utils.event_io import (
     keys_matching_date,
     load_user_events,
     make_event_key,
+    recurrence_of_key,
     save_user_events,
 )
 
@@ -105,6 +106,12 @@ class EventService:
         One event per date: whatever previously matched this date (one-time,
         yearly or monthly) is replaced. Recurring events ignore the auto-delete
         flag because they repeat forever.
+
+        Replacing an event that is already in the store keeps its stored key
+        while the recurrence is unchanged. ``jdate`` can be a clamped
+        occurrence — a day-31 monthly event is shown on the 30th, 30 Esfand on
+        the 29th of a non-leap year — and re-deriving the key from it would walk
+        the event's anchor one step further away on every save.
         """
         if not jdate:
             return False
@@ -112,11 +119,13 @@ class EventService:
             logger.warning("Ignoring attempt to add a user event with empty text.")
             return False
         snapshot = dict(self.events)
-        for key in keys_matching_date(self.events, jdate):
+        matching = keys_matching_date(self.events, jdate)
+        anchor = next((key for key in matching if recurrence_of_key(key) == recurrence), None)
+        for key in matching:
             del self.events[key]
         if recurrence != RECURRENCE_NONE:
             remove_after_finish = False
-        self.events[make_event_key(jdate, recurrence)] = {
+        self.events[anchor or make_event_key(jdate, recurrence)] = {
             "text": text,
             "recurrence": recurrence,
             "remove_after_finish": remove_after_finish,
