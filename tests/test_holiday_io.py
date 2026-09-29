@@ -37,6 +37,28 @@ def test_parse_holidays_non_dict_root():
     assert holiday_io.parse_holidays('x') == ({}, 1)
 
 
+def test_parse_holidays_skips_dates_that_do_not_exist():
+    """07-31 and 30 Esfand of a non-leap year pass a range check but are not
+    real dates: they used to be stored as holidays that never occur."""
+    data, skipped = holiday_io.parse_holidays(
+        {'1404': {'07-31': 'no such day', '12-30': 'non-leap year', '01-01': 'ok'}})
+    assert data == {1404: {(1, 1): ['ok']}}
+    assert skipped == 2
+
+
+def test_parse_holidays_keeps_esfand_30_of_a_leap_year():
+    data, skipped = holiday_io.parse_holidays({'1403': {'12-30': 'leap year'}})
+    assert skipped == 0
+    assert data[1403][(12, 30)] == ['leap year']
+
+
+def test_bundled_holidays_are_all_real_dates():
+    """The shipped file passes the same validation a downloaded one must."""
+    raw = json.loads(APP_CONFIG.HOLIDAYS_FILE_PATH.read_text(encoding='utf-8'))['holidays']
+    _data, skipped = holiday_io.parse_holidays(raw)
+    assert skipped == 0
+
+
 def test_load_holidays_file_corrupt_returns_empty(paths, caplog):
     store, _ = paths
     store.write_text('{bad', encoding='utf-8')

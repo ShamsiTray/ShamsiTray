@@ -14,6 +14,8 @@ import os
 import shutil
 from typing import Dict, List, Optional, Tuple
 
+import jdatetime
+
 from config import APP_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,9 @@ def parse_holidays(raw) -> Tuple[Dict[int, Dict[Tuple[int, int], List[str]]], in
                 month, day = int(parts[0]), int(parts[1])
                 if not (1 <= month <= 12 and 1 <= day <= 31):
                     raise ValueError(f"month/day out of range in {month_day_str!r}")
+                # The ranges alone accept days that never exist (07-31, or 12-30
+                # of a non-leap year); building the date is the real check.
+                jdatetime.date(year_int, month, day)
                 if isinstance(desc, str):
                     descriptions = [desc]
                 elif isinstance(desc, list) and all(isinstance(d, str) for d in desc):
