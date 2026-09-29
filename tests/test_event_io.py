@@ -154,6 +154,17 @@ def test_normalize_rejects_empty_text():
     assert event_io.normalize_event_entry("ok") is not None
 
 
+@pytest.mark.parametrize("value", ["", "   ", "\n\t"])
+def test_normalize_rejects_a_blank_legacy_string(value):
+    """The oldest store form is a bare string; a blank one is not an event and
+    used to load as an unnamed event with an empty title."""
+    assert event_io.normalize_event_entry(value) is None
+
+
+def test_normalize_trims_a_legacy_string():
+    assert event_io.normalize_event_entry("  یادداشت  ")["text"] == "یادداشت"
+
+
 def test_normalize_coerces_unknown_recurrence_to_none():
     entry = event_io.normalize_event_entry({"text": "x", "recurrence": "weekly"})
     assert entry["recurrence"] == "none"

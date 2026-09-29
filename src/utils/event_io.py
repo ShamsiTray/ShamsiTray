@@ -276,11 +276,16 @@ def normalize_event_entry(value) -> Optional[dict]:
     - v2 dict: text/recurrence/remove_after_finish (unknown recurrence falls
       back to the legacy ``yearly`` flag, then to ``"none"``)
 
-    The ``remove_after_finish`` invariant is enforced here: recurring events
-    can never auto-delete, so the flag is forced off for them.
+    Both text shapes are trimmed, and a blank text is not an event in either of
+    them — the calendar otherwise shows an unnamed event that nothing can
+    display. The ``remove_after_finish`` invariant is enforced here too:
+    recurring events can never auto-delete, so the flag is forced off for them.
     """
     if isinstance(value, str):
-        return {"text": value, "recurrence": RECURRENCE_NONE, "remove_after_finish": False}
+        text = value.strip()
+        if not text:
+            return None
+        return {"text": text, "recurrence": RECURRENCE_NONE, "remove_after_finish": False}
     if isinstance(value, dict):
         text = value.get("text")
         if not isinstance(text, str) or not text.strip():
@@ -304,10 +309,13 @@ def normalize_event_key(key) -> Optional[str]:
     Accepts the canonical one-time/yearly/monthly shapes, normalizes the legacy
     slash-separated format (``1403/07/07`` -> ``1403-07-07``), pads each
     dimension and validates the date parts: month 00-12 (0 = wildcard), day
-    1-31, year 0 (wildcard) or 1-9999. A fully-specified key must form a real
-    Jalali date. Returns None for anything else — an invalid key would
-    otherwise become an event that exists in the store but is invisible to the
-    calendar.
+    1-31, year 0 (wildcard) or 1-9999. A wildcard month needs a wildcard year
+    to mean anything — the only recurring shapes are ``0000-MM-DD`` (yearly)
+    and ``0000-00-DD`` (monthly) — while ``1403-00-31`` reached jdatetime as
+    ``date(1403, None, 31)`` and raised inside ``next_occurrence_jdate``. A
+    fully-specified key must form a real Jalali date. Returns None for anything
+    else — an invalid key would otherwise become an event that exists in the
+    store but is invisible to the calendar.
     """
     text = str(key).strip().replace("/", "-")
     parts = text.split("-")
@@ -322,6 +330,8 @@ def normalize_event_key(key) -> Optional[str]:
     if month != 0 and not 1 <= month <= 12:
         return None
     if year != 0 and not 1 <= year <= 9999:
+        return None
+    if year != 0 and month == 0:
         return None
     if year != 0 and month != 0:
         try:
