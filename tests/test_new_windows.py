@@ -67,6 +67,35 @@ def test_manager_count_label_reflects_active_filter(manager):
     assert manager.count_label.text() == to_persian_digits(2) + " رویداد"
 
 
+def test_manager_header_stays_put_when_a_filter_empties_the_list(manager):
+    """Hiding the list used to hand its slot to the title row, so the header and
+    the filter row slid down whenever a search matched nothing."""
+    manager.user_events["1405-01-01"] = {"text": "نخست", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    manager.refresh_list()
+    QApplication.processEvents()
+    before = (manager.title_label.geometry().y(), manager.search_input.geometry().y())
+
+    manager.search_input.setText("zzzz-nothing-matches")
+    QApplication.processEvents()
+
+    assert manager.empty_label.isVisible()
+    after = (manager.title_label.geometry().y(), manager.search_input.geometry().y())
+    assert after == before
+
+
+def test_manager_swaps_between_the_list_and_the_empty_label(manager):
+    manager.user_events["1405-01-01"] = {"text": "نخست", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    manager.refresh_list()
+    assert not manager.empty_label.isVisible()
+    assert manager.content_stack.currentWidget() is manager.scroll_area
+
+    manager.search_input.setText("zzzz-nothing-matches")
+    assert manager.empty_label.isVisible()
+    assert manager.content_stack.currentWidget() is manager.empty_label
+
+
 def test_manager_search_filters_by_text(manager):
     import datetime
     today = jdatetime.date.today()
