@@ -1,5 +1,5 @@
 """Tests for ui.windows.base_window: the shared frameless window base."""
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, QSize, Qt
 from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG
@@ -73,6 +73,53 @@ def test_mouse_events_delegate_to_drag_mixin(qtbot):
     assert window._drag_position is not None
     window.mouseReleaseEvent(release(window))
     assert window._drag_position is None
+
+
+# --- always-on-top flag -----------------------------------------------------------------
+
+def test_set_always_on_top_clears_and_restores_the_flag(qtbot):
+    window = BaseFramelessWindow()
+    qtbot.addWidget(window)
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint  # Tool window default
+
+    window.set_always_on_top(False)
+    assert not window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    window.set_always_on_top(True)
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+
+
+def test_set_always_on_top_keeps_a_visible_window_where_it_was(qtbot):
+    """Changing window flags hides a native window, so it must be re-shown in place."""
+    window = BaseFramelessWindow()
+    qtbot.addWidget(window)
+    window.setGeometry(140, 110, 200, 150)
+    window.show()
+    qtbot.waitExposed(window)
+
+    window.set_always_on_top(False)
+
+    assert window.isVisible()
+    assert window.geometry().topLeft() == QPoint(140, 110)
+    assert window.size() == QSize(200, 150)
+
+
+def test_set_always_on_top_before_first_show_does_not_show_it(qtbot):
+    """Applying the preference during startup must not pop the window up."""
+    window = BaseFramelessWindow()
+    qtbot.addWidget(window)
+    window.set_always_on_top(False)
+    assert not window.isVisible()
+
+
+def test_taskbar_window_is_not_pinned_by_default(qtbot):
+    class TaskbarWindow(BaseFramelessWindow):
+        TASKBAR_ICON = True
+
+    window = TaskbarWindow()
+    qtbot.addWidget(window)
+    assert window._always_on_top is False
+    window.set_always_on_top(True)
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
 
 
 def test_screen_clamp_semantics_documented():
