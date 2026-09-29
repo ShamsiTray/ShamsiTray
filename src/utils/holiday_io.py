@@ -65,7 +65,9 @@ def load_holidays_file(path) -> Dict[int, Dict[Tuple[int, int], List[str]]]:
     try:
         with open(path, 'r', encoding='utf-8') as f:
             parsed = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, ValueError) as e:
+        # ValueError covers JSONDecodeError and UnicodeDecodeError: an unreadable
+        # encoding is handled like bad JSON, so the bundled file can take over.
         logger.error(f"Failed to load holidays file {path}: {e}")
         return {}
     raw = parsed.get('holidays', {}) if isinstance(parsed, dict) else None
@@ -83,7 +85,8 @@ def read_version(path) -> int:
         with open(path, 'r', encoding='utf-8') as f:
             parsed = json.load(f)
         return int(parsed.get('version', 0)) if isinstance(parsed, dict) else 0
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+    except (OSError, TypeError, ValueError):
+        # json.JSONDecodeError is a ValueError, so it needs no separate entry.
         return 0
 
 
