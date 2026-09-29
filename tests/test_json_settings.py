@@ -38,6 +38,17 @@ def test_corrupt_file_starts_empty_and_warns(tmp_path, caplog):
     assert any("unreadable" in r.message for r in caplog.records)
 
 
+def test_invalid_utf8_file_starts_empty_and_warns(tmp_path, caplog):
+    """A file that is not valid UTF-8 is unreadable in exactly the way bad JSON
+    is; it used to raise out of the constructor and take startup with it."""
+    p = tmp_path / "settings.json"
+    p.write_bytes(b"\xff\xfe{")
+    with caplog.at_level(logging.ERROR):
+        s = JsonSettings(p)
+    assert s.value("anything", "dflt") == "dflt"
+    assert any("unreadable" in r.message for r in caplog.records)
+
+
 def test_non_dict_root_starts_empty(tmp_path):
     p = tmp_path / "settings.json"
     p.write_text("[1, 2]", encoding="utf-8")

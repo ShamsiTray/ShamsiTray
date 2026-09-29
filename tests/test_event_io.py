@@ -64,6 +64,15 @@ def test_load_corrupt_file_returns_empty(store_path, caplog):
     assert any("unreadable" in r.message for r in caplog.records)
 
 
+def test_load_invalid_utf8_returns_empty(store_path, caplog):
+    """An unreadable encoding is treated like any other unreadable store, so the
+    app starts with an empty set instead of failing to launch."""
+    store_path.write_bytes(b"\xff\xfe{")
+    with caplog.at_level(logging.ERROR):
+        assert event_io.load_user_events() == {}
+    assert event_io.last_load_trusted() is False
+
+
 def test_load_skips_malformed_entries_and_migrates_strings(store_path):
     store_path.write_text(json.dumps({
         "1403-01-01": {"text": "ok"},

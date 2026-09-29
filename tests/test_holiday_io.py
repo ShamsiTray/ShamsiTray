@@ -45,6 +45,14 @@ def test_load_holidays_file_corrupt_returns_empty(paths, caplog):
     assert any('Failed to load holidays file' in r.message for r in caplog.records)
 
 
+def test_load_holidays_file_invalid_utf8_returns_empty(paths, caplog):
+    store, _ = paths
+    store.write_bytes(b"\xff\xfe{")
+    with caplog.at_level(logging.ERROR):
+        assert holiday_io.load_holidays_file(store) == {}
+    assert holiday_io.read_version(store) == 0
+
+
 def test_read_version_variants(paths):
     store, _ = paths
     store.write_text(json.dumps({'version': 3}), encoding='utf-8')

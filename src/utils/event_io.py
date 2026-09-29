@@ -457,7 +457,10 @@ def load_user_events() -> Dict[str, dict]:
     except FileNotFoundError:
         _LAST_LOAD_TRUSTED = True
         return {}
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, ValueError) as e:
+        # ValueError covers JSONDecodeError and UnicodeDecodeError: a store that
+        # is not valid UTF-8 is unreadable in the same way, and used to raise
+        # out of startup instead of falling back to an empty set.
         logger.error(f"Events file unreadable, starting with an empty event set: {e}")
         _LAST_LOAD_TRUSTED = False
         return {}
