@@ -239,10 +239,8 @@ class ClickableLabel(QLabel):
             copy_menu.close()
             return
         QApplication.clipboard().setText(_copy_text_for_mode(mode, jdate))
-        # Flash the instant the clipboard holds the payload - no timer, no waiting
-        # on menu teardown. The feedback is a non-activating ToolTip window, so
-        # showing it while the popup dismisses cannot steal focus or swallow the
-        # closing menu's grab.
+        # The feedback is a non-activating ToolTip window, so showing it while the
+        # popup dismisses cannot steal focus or swallow the closing menu's grab.
         self._flash_copied_feedback()
         copy_menu.close()
 

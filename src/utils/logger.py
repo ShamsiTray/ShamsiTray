@@ -112,10 +112,9 @@ def install_qt_message_handler() -> None:
             QtMsgType.QtFatalMsg: logging.CRITICAL,
         }.get(msg_type, logging.WARNING)
         try:
-            # PyQt6 hands the category over as a str already, so the old
-            # .decode() raised AttributeError on every message and its except
-            # branch funnelled everything into "general". Qt names uncategorized
-            # messages "default", which this app logs as qt.general.
+            # PyQt6 hands the category over as a str already (a .decode() here
+            # raises). Qt names uncategorized messages "default", which this app
+            # logs as qt.general.
             category = context.category if context.category and context.category != "default" else "general"
         except Exception:
             category = "general"

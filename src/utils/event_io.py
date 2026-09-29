@@ -204,7 +204,6 @@ def next_occurrence_jdate(key: str, today: Optional[jdatetime.date] = None) -> O
         except ValueError:
             return None
 
-    # monthly: day ``day`` of the current month if not passed yet, else next month
     year_i, month_i = today.year, today.month
     if day < today.day:
         month_i += 1
@@ -410,9 +409,7 @@ def normalize_events_mapping(raw) -> Tuple[Dict[str, dict], int]:
 def _parse_store_payload(raw) -> Tuple[Dict[str, dict], int]:
     """Split a loaded JSON payload into (events, skipped) for both store versions."""
     if isinstance(raw, dict) and isinstance(raw.get("events"), dict):
-        # v2 versioned envelope.
         return normalize_events_mapping(raw.get("events"))
-    # v1 / legacy bare mapping.
     return normalize_events_mapping(raw)
 
 
@@ -459,8 +456,8 @@ def load_user_events() -> Dict[str, dict]:
         return {}
     except (OSError, ValueError) as e:
         # ValueError covers JSONDecodeError and UnicodeDecodeError: a store that
-        # is not valid UTF-8 is unreadable in the same way, and used to raise
-        # out of startup instead of falling back to an empty set.
+        # is not valid UTF-8 is unreadable in the same way, so both fall back to
+        # an empty set instead of raising out of startup.
         logger.error(f"Events file unreadable, starting with an empty event set: {e}")
         _LAST_LOAD_TRUSTED = False
         return {}
@@ -534,9 +531,9 @@ def import_events_from_file(path) -> Optional[Tuple[Dict[str, dict], int]]:
 # store keys can land on the same date: a one-time ``1405-08-01`` and a yearly
 # ``0000-08-01`` are distinct keys that both fire on 1405/08/01 (and
 # ``events_for_date`` then silently picks a winner while the event manager lists
-# both). Import used to be a flat ``dict.update``, which deduplicated exact keys
-# only. Everything below reconciles an import the same way the interactive add
-# path does: by visible date, not by key string.
+# both). A flat ``dict.update`` would deduplicate exact keys only, so everything
+# below reconciles an import the same way the interactive add path does: by
+# visible date, not by key string.
 
 # Years sampled for recurring-vs-recurring collision checks: one leap and one
 # non-leap Jalali year. Recurring keys carry no year of their own, so every date

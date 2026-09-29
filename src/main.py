@@ -42,8 +42,6 @@ def main():
     try:
         verify_assets()
     except FileNotFoundError as e:
-        # Themed dialogs everywhere: the stock QMessageBox ignored the app
-        # palette and its system styling clashed with every other surface.
         ConfirmDialog.notify(None, "خطای فایل‌های برنامه", str(e),
                              danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         sys.exit(1)
@@ -79,9 +77,9 @@ def main():
                              danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         sys.exit(1)
 
-    # Single-instance guard, acquired BEFORE any user-state work: the installer's
-    # auto-run plus a manual launch used to produce two tray icons racing on the
-    # same settings and events files. The lock must also cover the one-time
+    # Single-instance guard, acquired BEFORE any user-state work: without it, the
+    # installer's auto-run plus a manual launch produce two tray icons racing on
+    # the same settings and events files. The lock must also cover the one-time
     # registry->JSON migration, which is exactly the kind of stateful step two
     # near-simultaneous launches could both run before either acquired a later
     # lock. The lock lives in the user-data dir and auto-heals when a crashed
@@ -90,9 +88,6 @@ def main():
     lock = QLockFile(str(APP_CONFIG.USER_DATA_DIR / "app.lock"))
     if not lock.tryLock(0):
         logger.warning("Another ShamsiTray instance is already running; exiting.")
-        # The single-instance notice is the app's most-seen dialog and used to be
-        # the last unstyled message box in the app: it now matches the themed
-        # ConfirmDialog surfaces (rounded card, palette, Vazirmatn).
         ConfirmDialog.notify(None, "اجرای برنامه",
                              "یک نسخه دیگر از برنامه در حال اجرا است.",
                              glyph=APP_CONFIG.FAS.FA_CIRCLE_INFO)

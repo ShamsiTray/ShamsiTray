@@ -67,8 +67,8 @@ AUTO_DELETE_BADGE = "حذف خودکار"
 AUTO_DELETE_TOOLTIP = "این رویداد پس از گذشت تاریخ به‌صورت خودکار حذف می‌شود"
 
 
-# Recurrence-from-key now lives in event_io.recurrence_of_key: the key model
-# belongs to the module that owns make_event_key/parse_event_key.
+# recurrence_of_key() in event_io owns this: the key model stays in one module,
+# next to make_event_key/parse_event_key.
 
 
 def _event_date_label(key: str) -> str:
@@ -224,20 +224,15 @@ class EventManagerWindow(BaseFramelessWindow):
         # past-events checkbox, so the long caption got elided to a stub.
         self.search_input.setPlaceholderText("جستجو…")
         self.search_input.setClearButtonEnabled(True)
-        # An empty RTL line edit would put the caret on its visual left edge;
-        # explicit right alignment keeps the caret on the right (where typing
-        # starts) before anything is typed, like the calendar's event editor.
-        # AlignAbsolute matters: this window is RTL, and bare AlignRight is
-        # read as "trailing" there - which lands on the visual LEFT, exactly
-        # the misplaced «جستجو…» the user saw. The absolute flag pins the
-        # placeholder (and the text/caret) to the physical right edge.
+        # An empty RTL line edit puts the caret on its visual left edge, so the
+        # caret is pinned right, where typing starts. AlignAbsolute matters: in an
+        # RTL window bare AlignRight reads as "trailing" and lands on the visual
+        # LEFT, taking the placeholder with it.
         self.search_input.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignAbsolute)
         self.search_input.textChanged.connect(self.refresh_list)
         filter_row.addWidget(self.search_input, 1)
 
-        # Plain combos; the dropdown renders without dead space thanks to the
-        # vertical component in center_combo_items' item alignment.
         self.month_combo = QComboBox()
         self.month_combo.addItem("همه ماه‌ها", _MONTH_ANY)
         for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
@@ -280,22 +275,19 @@ class EventManagerWindow(BaseFramelessWindow):
         self.empty_label = QLabel("رویدادی یافت نشد.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # The list and the «nothing found» label share one layout slot instead of
-        # being two siblings toggled independently. A hidden sibling collapses to
-        # zero height, and since no other item in main_layout asks for the
-        # stretch, Qt handed the freed space to the title row: the header and the
-        # filter row slid downwards every time a search or filter emptied the
-        # list. A QStackedWidget reports one constant size for its slot whichever
-        # page is current, so the header above it never moves.
+        # One slot for the list and the «nothing found» label. Two siblings
+        # toggled independently collapsed the hidden one to zero height, and with
+        # nothing else asking for the stretch Qt handed the freed space to the
+        # title row - the header moved whenever a filter emptied the list. A
+        # QStackedWidget reports a constant size whichever page is current.
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.scroll_area)
         self.content_stack.addWidget(self.empty_label)
         main_layout.addWidget(self.content_stack, 1)
 
         footer_row = QHBoxLayout()
-        # Deliberately text-only buttons: two rounds of icons here (inline FA
-        # glyphs, then pre-rendered QIcons) both looked bad on the user's
-        # Windows machine, and the labels alone say everything.
+        # Deliberately text-only buttons: icon attempts here looked bad on
+        # Windows, and the labels say everything.
         self.export_button = QPushButton("خروجی گرفتن")
         self.import_button = QPushButton("وارد کردن")
         self.import_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -307,7 +299,6 @@ class EventManagerWindow(BaseFramelessWindow):
         footer_row.addStretch()
         main_layout.addLayout(footer_row)
 
-        # Inline editor overlay (the same widget the calendar popup uses).
         self.event_input_widget = EventInputWidget(self)
         self.event_input_widget.saved.connect(self._on_edit_saved)
         self.event_input_widget.canceled.connect(self._hide_event_input_widget)
@@ -452,7 +443,6 @@ class EventManagerWindow(BaseFramelessWindow):
         height = 340 if not self.event_input_widget.date_row.isHidden() else 300
         x = (self.width() - width) // 2
         y = (self.height() - height) // 2
-        # Modal: the scrim below blocks every click on the manager and dims it.
         self.overlay_blocker.setGeometry(self.rect())
         self.overlay_blocker.show()
         self.overlay_blocker.raise_()
@@ -503,7 +493,6 @@ class EventManagerWindow(BaseFramelessWindow):
 
         collisions = []
         if editing_key is None:
-            # Add flow: the anchor comes from the date selector row.
             if picked_date is None:
                 return
             new_key = make_event_key(picked_date, recurrence)
@@ -543,10 +532,9 @@ class EventManagerWindow(BaseFramelessWindow):
         if editing_key is not None and new_key != editing_key:
             replace_keys.append(editing_key)
         entry = {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
-        # Through the service: one transactional save. The manager no longer
-        # writes the store dict directly, so a failed save rolls the store back
-        # here too (previously the manager kept the mutated state that never
-        # reached the disk).
+        # Through the service: one transactional save, so a failed save rolls the
+        # store back here too. Writing the store dict directly would keep the
+        # mutated state that never reached the disk.
         if self.event_store.upsert(new_key, entry, replace_keys=replace_keys):
             action = "added" if editing_key is None else "updated"
             logger.info(f"Event {new_key!r} {action} via the event manager.")

@@ -52,7 +52,6 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         # open (tray flow), where WindowModal would guard nothing.
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        # Alt-Tab / preview title names the action, not the app.
         self.setWindowTitle("دانلود بروزرسانی")
         if APP_CONFIG.ICON_PATH.exists():
             self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
@@ -125,8 +124,7 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
             self.status_label.setText(
                 f"{to_persian_digits(percent)}٪ — {_mb_str(received)} از {_mb_str(total)} مگابایت")
         else:
-            # Size unknown (no Content-Length): back to the busy indicator and
-            # show only what has arrived so far.
+            # No Content-Length: setRange(0, 0) is Qt's busy indicator.
             if self.progress.maximum() != 0:
                 self.progress.setRange(0, 0)
             self.status_label.setText(f"{_mb_str(max(received, 0))} مگابایت دریافت شد")

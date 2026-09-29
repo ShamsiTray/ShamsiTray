@@ -74,8 +74,7 @@ class HoverWidget(QWidget):
         self.setStyleSheet("background-color: transparent; border-radius: 6px;")
 
     def paintEvent(self, event):
-        # Draw a rounded hover background only when the widget is enabled.
-        # Disabled items must not show hover feedback to match native menu behavior.
+        # Disabled items show no hover feedback, like native menus.
         if self._is_hovered and self.isEnabled():
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -137,7 +136,6 @@ class ThemeToggleActionWidget(MenuActionWidget):
         super().__init__("", parent)
         self.current_theme_getter = current_theme_getter
         layout = self.layout()
-        # Replace MenuActionWidget's default layout content with icon + label because this action requires dynamic text and an icon.
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
@@ -264,7 +262,6 @@ class CenteredTextMenu(QMenu):
                 continue
             color = QColor(palette["TEXT_COLOR"] if action.isEnabled()
                            else palette["GREY_COLOR"])
-            # The content rect: exactly what the QSS item padding defines.
             geo = self.actionGeometry(action)
             zone = geo.adjusted(
                 MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,

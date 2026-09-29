@@ -79,8 +79,8 @@ class JsonSettings:
             return
         except (OSError, ValueError) as e:
             # ValueError covers JSONDecodeError and UnicodeDecodeError alike: a
-            # file that is not valid UTF-8 is no more readable than bad JSON, and
-            # it used to raise straight out of __init__ and take startup with it.
+            # file that is not valid UTF-8 is no more readable than bad JSON, so
+            # both start from an empty store instead of raising out of __init__.
             logger.error(f"Settings file unreadable, starting with an empty store: {e}")
             return
         if isinstance(data, dict):

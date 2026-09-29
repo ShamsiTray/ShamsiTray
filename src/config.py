@@ -57,8 +57,8 @@ class Config:
     # The legacy "UserData/Events" registry key is only read during the one-time
     # migration; it lives in utils.settings_migration now.
     # Whether the calendar popup is kept above other windows. Read with a True
-    # default: the popup was permanently pinned before this became a preference,
-    # so an install that predates the toggle keeps the behaviour it had.
+    # default: a missing key means the preference was never set, and the popup
+    # stays pinned until the user says otherwise.
     ALWAYS_ON_TOP_SETTING_KEY = "Calendar/AlwaysOnTop"
     UPDATE_CHECK_ENABLED_SETTING_KEY = "Updates/CheckEnabled"
     LAST_UPDATE_CHECK_SETTING_KEY = "Updates/LastCheckMs"
@@ -174,7 +174,6 @@ class Config:
         FA_MINUS = '\uf068'
         FA_TRASH = '\uf1f8'
         FA_ARROWS_ROTATE = '\uf2f1'
-        # Action-specific dialog glyphs, so no surface repeats one generic mark.
         FA_DOWNLOAD = '\uf019'
         FA_UPLOAD = '\uf093'
         FA_CIRCLE_EXCLAMATION = '\uf06a'
@@ -182,5 +181,4 @@ class Config:
         FA_WIFI = '\uf1eb'
         FA_SAVE = '\uf0c7'
 
-# Create a single, globally accessible instance of the configuration.
 APP_CONFIG = Config()

@@ -43,8 +43,8 @@ class CustomCheckbox(QWidget):
         # of using the native QCheckBox disabled handling.
         if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
             # setChecked emits `toggled` exactly once on an actual change;
-            # emitting here as well used to fire every connected handler
-            # twice per click (e.g. the manager rebuilt its list twice).
+            # emitting here as well would fire every connected handler twice per
+            # click (e.g. the manager rebuilding its list twice).
             self.setChecked(not self._is_checked)
         super().mousePressEvent(event)
 
@@ -63,7 +63,6 @@ class CustomCheckbox(QWidget):
         palette = APP_CONFIG.get_current_palette()
         icon = APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID if self._is_checked else APP_CONFIG.FAS.FA_SQUARE_REGULAR
         if not self.isEnabled():
-            # Greyed-out state so "disabled" is actually visible on screen.
             icon_color = palette['GREY_COLOR']
             text_color = palette['GREY_COLOR']
             icon = APP_CONFIG.FAS.FA_SQUARE_REGULAR

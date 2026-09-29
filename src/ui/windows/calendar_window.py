@@ -221,8 +221,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
                     cell.update()
 
     def _get_nav_button_style(self, bg_color: str, is_today_button: bool = False) -> str:
-        # Shared builder in ui_helpers: the header buttons keep the calendar's own
-        # look, but the style text lives with every other shared stylesheet so a
+        # Shared builder: the style text lives with the other stylesheets so a
         # theme tweak cannot drift.
         return nav_button_stylesheet(APP_CONFIG.get_current_palette(), bg_color,
                                      is_today_button=is_today_button)
@@ -328,7 +327,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if is_user_event:
             html_event_text = escape(user_event_text).replace('\n', '<br>')
             tooltip_parts.append(f'<span style="color:{palette["ACCENT_COLOR"]};">{html_event_text}</span>')
-        # Tooltips are rendered as rich text to allow color-coded holiday and event info
         if tooltip_parts:
             style.tooltip = f"<qt>{'<br>'.join(tooltip_parts)}</qt>"
 
@@ -520,8 +518,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.overlay_blocker.show()
         self.overlay_blocker.raise_()
         width = self.width() - 40
-        # The original panel was 230px; the added تکرار row costs ~15px more,
-        # so 245px keeps the text box at its original size.
+        # 245px = the panel height the text box is sized for (230px) plus the
+        # ~15px تکرار row.
         height = 245
         x = (self.width() - width) // 2
         y = (self.height() - height) // 2 + 15

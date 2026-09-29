@@ -247,9 +247,9 @@ def replace_store(payload: bytes) -> bool:
         logger.error(f"Failed to write the holiday store: {e}")
         return False
     finally:
-        # A failed os.replace (disk full, AV lock) used to strand the .tmp side
-        # file next to the store forever; the real store was untouched, but the
-        # debris accumulated on every failed update attempt.
+        # A failed os.replace (disk full, AV lock) would strand the .tmp side file
+        # next to the store; the real store is untouched, but the debris would
+        # accumulate on every failed update attempt.
         if tmp is not None and tmp.exists():
             try:
                 tmp.unlink()

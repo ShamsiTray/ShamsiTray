@@ -78,13 +78,12 @@ class TutorialWindow(BaseFramelessWindow):
         self.message_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
         self.message_label.setStyleSheet(f"color: {palette['TEXT_COLOR']};")
         self.close_button.setFixedHeight(50)
-        # Same accent look as before; font size preserved via the shared style.
         self.close_button.setStyleSheet(accent_button_stylesheet(palette, font_size=16))
 
     def hideEvent(self, event):
-        # The movie cleanup used to live only in the close-button path, so
-        # closing via Alt+F4 (or any other path that skips the button) leaked a
-        # running QMovie. Tearing down in hideEvent covers them all.
+        # Tearing the movie down in hideEvent covers every close path: cleaning
+        # up only in the close-button handler leaks a running QMovie when the
+        # window is closed with Alt+F4 or any other route that skips the button.
         if getattr(self, "movie", None) is not None:
             self.movie.stop()
             self.movie.deleteLater()

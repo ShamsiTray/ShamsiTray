@@ -178,7 +178,6 @@ def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
     screen = QApplication.primaryScreen()
     dpi = screen.logicalDotsPerInch() if screen else 96
 
-    # Scale icon size and font size based on system DPI
     icon_size, font_size = (36, 20) if dpi >= 110 else (38, 26)
 
     pixmap = QPixmap(icon_size, icon_size)

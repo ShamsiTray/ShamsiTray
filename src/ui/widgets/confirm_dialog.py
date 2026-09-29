@@ -74,7 +74,6 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         if APP_CONFIG.ICON_PATH.exists():
             self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
         self._danger = danger
-        # (text, kind) list driving the button row; defaults to confirm/cancel.
         self._actions = actions if actions else [
             (confirm_text, "danger" if danger else "accent"),
             (cancel_text, "ghost"),
@@ -108,8 +107,8 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.message_label)
 
-        # Optional preview inside its own rounded box, so the event text never
-        # blurs into the question line. Kept verbatim - no decorative quotes.
+        # Optional preview in its own rounded box, so the event text never blurs
+        # into the question line.
         self.detail_label = QLabel(detail)
         self.detail_label.setWordWrap(True)
         self.detail_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -132,7 +131,7 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         main_layout.addLayout(button_row)
         # Width floor from the caller, raised to whatever the button row needs:
         # equal stretch shrinks every button to the same width, so one long
-        # caption («بعداً یادآوری کن") used to clip all three buttons.
+        # caption («بعداً یادآوری کن") would clip all three buttons.
         self.setFixedWidth(max(width, self._minimum_width_for_buttons()))
         self.choice: Optional[str] = None  # set to the clicked button's text
         # Default two-button flow keeps its named accessors (tests/callers).
@@ -200,7 +199,7 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
 
         def handler():
             self.choice = button.text()
-            # Cancel-flavoured buttons keep the old reject semantics (Esc,
+            # Cancel-flavoured buttons keep QDialog's reject semantics (Esc,
             # result codes, callers that only look at the dialog result);
             # leading actions accept.
             if kind == "ghost":

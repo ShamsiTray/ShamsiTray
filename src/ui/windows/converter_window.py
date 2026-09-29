@@ -130,10 +130,8 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
         self.conversion_type_combo = QComboBox()
         self.day_combo = QComboBox()
-        # The Jalali items («۰۶ - شهریور») mix digits with Persian text, which
-        # is bidi-ambiguous: their visual order depends on the base direction
-        # of whatever paints them. DigitsFirstCombo pins the closed label and
-        # the popup rows to the digits-first order on every platform.
+        # «۰۶ - شهریور» mixes digits with Persian text, which is bidi-ambiguous:
+        # DigitsFirstCombo pins the digits-first order on every platform.
         self.month_combo = DigitsFirstCombo()
 
         self._set_combo_items(self.conversion_type_combo, ["شمسی به میلادی", "میلادی به شمسی"])

@@ -80,8 +80,6 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.next_year_btn = QPushButton("❮")
         self.next_year_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_year_btn.clicked.connect(self._go_to_next_year)
-        # Plain combo; the dropdown renders without dead space thanks to the
-        # vertical component in center_combo_items' item alignment.
         self.year_combo = QComboBox()
         self.year_combo.currentIndexChanged.connect(self._fill_year)
         header_row.addWidget(self.title_label)

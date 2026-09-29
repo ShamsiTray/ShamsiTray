@@ -94,8 +94,7 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         date_label = QLabel("تاریخ:")
         date_label.setObjectName("DateRowLabel")
         date_layout.addWidget(date_label)
-        # A text input instead of a year dropdown: no artificial ±10-year cap,
-        # and typing 1407 is faster than scrolling a list.
+        # Text input rather than a dropdown: no artificial year cap.
         self.year_input = QLineEdit()
         self.year_input.setValidator(QRegularExpressionValidator(QRegularExpression("^[0-9۰-۹]{0,4}$")))
         self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -129,9 +128,6 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         recurrence_label_widget = QLabel("تکرار:")
         recurrence_label_widget.setObjectName("RecurrenceLabel")
         self.recurrence_combo = QComboBox()
-        # Plain combo with a measured minimum width (fit_combo_width below);
-        # the dropdown renders without dead space thanks to the vertical
-        # component in center_combo_items' item alignment.
         for label in _RECURRENCE_LABELS:
             self.recurrence_combo.addItem(label)
         center_combo_items(self.recurrence_combo)
@@ -274,8 +270,6 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         if recurrence_label_widget:
             recurrence_label_widget.setStyleSheet(
                 f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
-        # center_text keeps the closed label centered too; center_combo_items
-        # gives every dropdown row the centered alignment role.
         self.recurrence_combo.setStyleSheet(combo_stylesheet(palette, padding="4px 8px", center_text=True))
         self.recurrence_combo.setFixedHeight(34)
         self.recurrence_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)

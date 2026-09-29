@@ -54,16 +54,16 @@ if sys.platform == 'win32':
 
 logger = setup_logging(__name__)
 
-# A failed AUTO check no longer black-holes for 24h: it is retried on this
-# cadence, at most this many times per session (reset on any clean check).
+# A failed AUTO check is retried on this cadence, at most this many times per
+# session (reset on any clean check).
 AUTO_CHECK_RETRY_DELAY_MS = 10 * 60 * 1000
 AUTO_CHECK_MAX_RETRIES = 3
 
 # Windows broadcasts WM_TIMECHANGE to every top-level window, and the time
-# service can emit a burst of them while re-syncing. Each message used to cost a
-# full refresh (expiry cleanup + calendar rebuild + tray repaint + midnight
-# reschedule), so messages are now coalesced and one refresh runs once the burst
-# has gone quiet for this long.
+# service can emit a burst of them while re-syncing. Coalescing them makes a
+# burst of any length cost one refresh (expiry cleanup + calendar rebuild + tray
+# repaint + midnight reschedule), which runs once the burst has gone quiet for
+# this long.
 TIME_CHANGE_COALESCE_MS = 300
 
 # Windows silently truncates tray tooltips at ~128 characters. Build the tooltip
@@ -118,8 +118,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._events.on_save_error = self._notify_save_failed
         # Window references are created lazily; they must exist (as None) before
         # _clean_expired_events can run, because it refreshes the calendar when
-        # events expire. Previously this raised AttributeError on startup whenever
-        # an expired auto-delete event was pending.
+        # events expire.
         self.calendar_widget: Optional[PersianCalendarWidget] = None
         self.converter_window: Optional[DateConverterWindow] = None
         self.event_manager_window: Optional[EventManagerWindow] = None
@@ -173,19 +172,14 @@ class SystemTrayIcon(QSystemTrayIcon):
             return APP_CONFIG.Theme.DARK
 
     def _load_settings(self):
-        # Autostart is opt-out (AUTOSTART_FIRST_RUN_DEFAULT): a MISSING
-        # preference means the setting has never been initialized (fresh install)
-        # and defaults to enabled - it must NOT be read as "the user disabled
-        # it". contains() makes the missing-vs-False distinction; the preference
-        # is only persisted after the registry agrees.
+        # contains(), not a value() default: a missing preference is not an
+        # explicit "off" (see AUTOSTART_FIRST_RUN_DEFAULT).
         self._autostart_pref_exists = self.settings.contains(APP_CONFIG.AUTO_START_SETTING_KEY)
         if self._autostart_pref_exists:
             self.is_open_at_login = self.settings.value(APP_CONFIG.AUTO_START_SETTING_KEY, False, type=bool)
         else:
             self.is_open_at_login = AUTOSTART_FIRST_RUN_DEFAULT
 
-        # Like autostart, this preference existed only as fixed behaviour
-        # before it became a setting, so a missing value means "pinned".
         self.always_on_top = self.settings.value(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, True, type=bool)
         self.calendar_widget.set_always_on_top(self.always_on_top)
 
@@ -213,8 +207,6 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.minute_timer = QTimer(self)
         self.minute_timer.timeout.connect(lambda: self.update_tray_icon(force=False))
         self.minute_timer.start(60 * 1000)
-        # Coalesces bursts of WM_TIMECHANGE: _on_system_time_change (re)arms this
-        # single-shot timer, and the real work runs once the burst goes quiet.
         self._time_change_messages = 0
         self._time_change_timer = QTimer(self)
         self._time_change_timer.setSingleShot(True)
@@ -315,13 +307,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._check_for_updates(manual=False)
 
     def _check_for_updates(self, manual: bool):
-        # No "last checked" stamp here: writing it up front is how a failed
-        # check used to count as done and silence auto-checks for a day. The
-        # stamp moves to _on_check_concluded, where a real answer arrived.
-        #
-        # The manual flag moves behind check()'s return value: setting it
-        # unconditionally mis-flagged an in-flight AUTO round as manual when a
-        # manual check arrived while one was already running.
+        # No "last checked" stamp here: only _on_check_concluded writes it, after
+        # a round reached a real answer. The manual flag follows check()'s return
+        # value for the same reason - it must never mark an AUTO round as manual.
         started = self.update_checker.check()
         if started:
             self._manual_update_check = manual
@@ -347,12 +335,9 @@ class SystemTrayIcon(QSystemTrayIcon):
             if not should_notify(version, ignored):
                 logger.info(f"Skipping update notification for ignored version {version}.")
                 return
-        # Defer the popup out of the checker's signal path: _conclude() emits
-        # this signal and must still emit check_concluded afterwards. Running a
-        # modal dialog in between blocked the conclusion mid-flight, and a check
-        # started while the dialog was open reset the shared round state under
-        # it - the re-entrancy behind the phantom "check failed; retry in 10
-        # minutes" right after answering the popup.
+        # Defer the popup out of the checker's signal path: _conclude() must still
+        # emit check_concluded after this signal, and a modal dialog in between
+        # blocks that conclusion while a concurrent check resets the round state.
         if self._update_dialog_open or self._update_popup_pending:
             return
         self._update_popup_pending = True
@@ -393,29 +378,23 @@ class SystemTrayIcon(QSystemTrayIcon):
         downloads_dir = Path.home() / 'Downloads'
         destination = (downloads_dir if downloads_dir.exists() else APP_CONFIG.USER_DATA_DIR) / f"ShamsiTraySetup-{version}.exe"
         # Reuse an already-downloaded installer when its digest matches the
-        # release: the user may have run the update before, declined to install,
-        # and asked again later - re-downloading the same file was pure waste.
-        # Without a digest there is nothing to verify against, so the safe path
-        # is a fresh download.
+        # release. Without a digest there is nothing to verify against, so the
+        # safe path is a fresh download.
         if sha256 and destination.exists():
             existing_digest = file_sha256(destination)
             if existing_digest is not None and existing_digest.lower() == sha256.lower():
                 logger.info(f"Installer for {version} already downloaded and verified: {destination}")
                 self._on_installer_downloaded(str(destination))
                 return
-        # Themed progress card matching the rest of the update flow; the
-        # stock QProgressDialog ignored the palette entirely.
         dialog = DownloadUpdateDialog(version, QApplication.activeWindow())
         dialog.canceled.connect(self.update_checker.cancel_download)
         self._download_dialog = dialog
         dialog.show()
         logger.info(f"Downloading update {version} to {destination}")
         if not self.update_checker.download_installer(installer_url, destination, sha256):
-            # Defense in depth for the rejected-request case: the dialog we just
-            # opened has no download behind it and would freeze on screen, so
-            # close it immediately (the pre-check above makes this path
-            # unreachable today, but the dialog must never be left orphaned if
-            # the guard ever races).
+            # Defense in depth: the dialog opened here has no download behind it
+            # and would freeze on screen if the guard ever races, so it is never
+            # left orphaned.
             logger.warning("Installer download request rejected; a download is already in progress.")
             self._close_download_dialog()
 
@@ -434,8 +413,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _on_installer_downloaded(self, path: str):
         self._close_download_dialog()
-        # Themed ask matching the rest of the update flow; the installer is
-        # not run unless the user asks for it here.
+        # The installer is never run unless the user asks for it here.
         run_requested = ConfirmDialog.ask(
             QApplication.activeWindow(), "دانلود کامل شد", "نصب‌کننده اجرا شود؟",
             glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE, danger=False,
@@ -452,10 +430,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info("Update download canceled.")
             return
         logger.error(f"Update download failed: {reason}")
-        # No automatic redirect: a checksum failure especially deserves a moment
-        # of the user's attention ("this file failed verification") instead of a
-        # browser window quietly opening on the releases page. Dialogs are titled
-        # for the action they belong to, not the app name.
+        # No automatic redirect: a checksum failure deserves the user's attention
+        # instead of a browser window quietly opening on the releases page.
         ConfirmDialog.notify(
             QApplication.activeWindow(), "دانلود بروزرسانی",
             "دانلود بروزرسانی ناموفق بود.",
@@ -466,8 +442,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.info("Holiday data updated; refreshing calendar and tray icon.")
         self.holidays_cache = resolve_holidays_store()
         self.calendar_widget.set_holidays(self.holidays_cache)
-        # An open Holiday Viewer used to keep showing the old cache until it was
-        # closed and reopened.
+        # Refresh an open Holiday Viewer too, so it never keeps showing the
+        # previous holiday cache.
         if self.holiday_viewer_window is not None and self.holiday_viewer_window.isVisible():
             self.holiday_viewer_window.set_holidays(self.holidays_cache)
         self.update_tray_icon(force=True)
@@ -496,7 +472,6 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     @staticmethod
     def _build_global_stylesheet() -> str:
-        # Shared builder in ui_helpers: no per-controller QSS inline.
         return global_scrollbar_stylesheet(APP_CONFIG.get_current_palette())
 
     def _notify_save_failed(self):
@@ -553,15 +528,13 @@ class SystemTrayIcon(QSystemTrayIcon):
         if not force and new_date == last_date:
             return
         date_changed = new_date != last_date
-        # The tray tracks its own date: piggy-backing on the calendar widget's
-        # current_date was fragile, and the hasattr guard was always true after
-        # __init__ anyway.
+        # The tray tracks its own date rather than reading it back from the
+        # calendar widget, so the icon never depends on widget state.
         self._last_tray_date = new_date
 
         if date_changed and self.calendar_widget is not None:
-            # A sleep across midnight without a WM_TIMECHANGE left expired events
-            # uncleaned until the next manual refresh - the minute tick now
-            # notices the date change and runs the cleanup.
+            # The minute tick notices a date change too, so a sleep across
+            # midnight still cleans expired events (no WM_TIMECHANGE involved).
             self._clean_expired_events()
 
         # jdatetime renders itself as an empty string under an empty format
@@ -727,8 +700,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.update_styles()
 
         # Position on the monitor that actually hosts the tray icon (not blindly
-        # the primary), and guard the no-screen case (RDP disconnect) that used
-        # to dereference primaryScreen() unguarded.
+        # the primary), and guard the no-screen case (RDP disconnect).
         tray_geom = self.geometry()
         screen = QApplication.screenAt(tray_geom.center()) if tray_geom.isValid() else None
         if screen is None:
@@ -920,7 +892,6 @@ class SystemTrayIcon(QSystemTrayIcon):
                                  danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
             return False
         imported, skipped = result
-        # Pure planning: nothing is mutated until the user confirms.
         plan = self._events.plan_import(imported)
         if plan.replaced_existing:
             detail = self._import_collision_detail(plan)

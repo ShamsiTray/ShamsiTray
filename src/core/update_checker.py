@@ -170,9 +170,9 @@ class UpdateChecker(QObject):
 
         def on_finished():
             # One-shot by construction: a reply's finished() must be handled
-            # exactly once, then the reply is released. The old lambda stayed
-            # connected forever; combined with timeout aborts this produced
-            # re-entries that read an already-closed device ("device not open").
+            # exactly once, then the reply is released. A lambda left connected
+            # would re-enter after a timeout abort and read an already-closed
+            # device ("device not open").
             try:
                 reply.finished.disconnect(on_finished)
             except TypeError:
@@ -208,13 +208,9 @@ class UpdateChecker(QObject):
         # stamp "last checked" only for real answers and retry the rest.
         #
         # The verdict tracks the APP check only. The holiday refresh has its own
-        # signals and its own log line; letting a failed holiday download mark
-        # the whole round failed made the controller retry the APP update every
-        # 10 minutes - and since the live remote holidays file currently lacks a
-        # version field, every round was "failed", so answering the update popup
-        # with "remind later" was followed by a phantom retry that brought the
-        # popup straight back (and an offline round later surfaced the offline
-        # dialog out of nowhere).
+        # signals and log line, and a failed holiday download must not mark the
+        # whole round failed - that would retry the app update every 10 minutes
+        # and bring the popup back after "remind later".
         self.check_concluded.emit(self._app_failed)
 
     def _on_app_reply(self, reply: QNetworkReply):
@@ -237,8 +233,8 @@ class UpdateChecker(QObject):
             sha256 = digest_hex(str(asset.get('digest', '')))
             if not is_valid_sha256(sha256):
                 # A release without a verifiable digest is never offered: an
-                # empty digest used to become '' and skip the download's final
-                # sha256 comparison entirely, accepting the installer unverified.
+                # empty digest would compare equal and skip the download's final
+                # sha256 check, accepting the installer unverified.
                 logger.warning(f"Release {tag} installer has no valid sha256 digest; skipping the app update offer.")
                 return
             version = tag.lstrip('vV ')
@@ -274,9 +270,9 @@ class UpdateChecker(QObject):
             if reply.error() != QNetworkReply.NetworkError.NoError:
                 raise RuntimeError(self._error_text(reply))
             payload = bytes(reply.readAll()) if reply.isOpen() else b""
-            # Validate the payload fully BEFORE comparing versions: an
-            # invalid/unversioned remote used to read as version 0 and look
-            # exactly like "nothing newer", silently ending the check.
+            # Validate the payload fully BEFORE comparing versions: an invalid
+            # or unversioned remote reads as version 0 and looks exactly like
+            # "nothing newer", which would silently end the check.
             validated = holiday_io.validate_payload(payload)
             if validated is None:
                 self._holidays_failed = True
