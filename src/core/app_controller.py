@@ -564,7 +564,9 @@ class SystemTrayIcon(QSystemTrayIcon):
             # notices the date change and runs the cleanup.
             self._clean_expired_events()
 
-        logger.info(f"Updating tray icon for new date: {new_date}")
+        # jdatetime renders itself as an empty string under an empty format
+        # spec, so the date is stringified explicitly instead of logged blank.
+        logger.info(f"Updating tray icon for new date: {str(new_date)}")
         self.calendar_widget.current_date = new_date
         if self.calendar_widget.isVisible():
             self.calendar_widget.fill_calendar_grid()
