@@ -109,6 +109,14 @@ def test_gregorian_month_lengths():
     assert days_in_gregorian_month(2024, 12) == 31  # December uses the guarded path
 
 
+@pytest.mark.parametrize("bad", [0, 13, -1])
+def test_gregorian_month_out_of_range_raises(bad):
+    """Month 0 used to fall through to 1 January of the previous year and answer
+    31 — a confident answer to a question that has none."""
+    with pytest.raises(ValueError):
+        days_in_gregorian_month(2024, bad)
+
+
 # --- year-range validation messages ---
 
 def test_validate_year_range():
