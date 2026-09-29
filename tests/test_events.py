@@ -1,5 +1,6 @@
 """Event key-model tests: recurrence keys, date matching, next occurrence, expiry."""
 import jdatetime
+import pytest
 
 from utils import event_io
 from utils.date_utils import days_in_jalali_month
@@ -26,6 +27,37 @@ def test_parse_event_key_rejects_garbage():
     assert event_io.parse_event_key("1404-05-32") is None   # day 32
     assert event_io.parse_event_key("1404-05") is None      # missing part
     assert event_io.parse_event_key("") is None
+
+
+# --- key normalization ---
+
+@pytest.mark.parametrize("key,expected", [
+    ("1405-08-01", "1405-08-01"),          # one-time
+    ("0000-08-01", "0000-08-01"),          # yearly: wildcard year
+    ("0000-00-01", "0000-00-01"),          # monthly: wildcard year and month
+    ("1403/07/07", "1403-07-07"),          # legacy slash form
+])
+def test_normalize_event_key_accepts_the_key_shapes(key, expected):
+    assert event_io.normalize_event_key(key) == expected
+
+
+@pytest.mark.parametrize("key", ["1403-00-31", "1403/00/01", "1403-00-00"])
+def test_normalize_event_key_rejects_a_wildcard_month_with_a_real_year(key):
+    """``1403-00-31`` means nothing as a key — a wildcard month is only a
+    recurring shape on a wildcard year — and it used to reach jdatetime as
+    ``date(1403, None, 31)`` from ``next_occurrence_jdate``."""
+    assert event_io.normalize_event_key(key) is None
+
+
+@pytest.mark.parametrize("key", [
+    "1403-13-01",   # month 13
+    "1403-05-32",   # day 32
+    "1403-07-31",   # month 7 has 30 days
+    "1404-12-30",   # 30 Esfand in a non-leap year
+    "broken",
+])
+def test_normalize_event_key_rejects_impossible_dates(key):
+    assert event_io.normalize_event_key(key) is None
 
 
 # --- date matching ---
