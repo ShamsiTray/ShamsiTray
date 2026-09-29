@@ -45,7 +45,8 @@ from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
-                            make_event_key, next_occurrence_jdate, parse_event_key,
+                            keys_share_visible_date, make_event_key,
+                            next_occurrence_jdate, parse_event_key,
                             recurrence_of_key)
 from utils.logger import setup_logging
 from utils.ui_helpers import (accent_button_stylesheet, center_combo_items,
@@ -490,12 +491,17 @@ class EventManagerWindow(BaseFramelessWindow):
         if recurrence != RECURRENCE_NONE:
             remove_after_finish = False
 
+        collisions = []
         if editing_key is None:
             # Add flow: the anchor comes from the date selector row.
             if picked_date is None:
                 return
             new_key = make_event_key(picked_date, recurrence)
-            if new_key in self.user_events and not self._confirm_replace(new_key):
+            # The colliding event can carry a different key for the same day (a
+            # yearly 0000-08-01 and a one-time 1405-08-01), so the store is
+            # searched by visible date rather than by exact key.
+            collisions = self._colliding_keys(new_key)
+            if collisions and not self._confirm_replace(collisions[0]):
                 return
         else:
             if editing_key not in self.user_events:
@@ -516,13 +522,14 @@ class EventManagerWindow(BaseFramelessWindow):
                 new_key = editing_key
             else:
                 new_key = make_event_key(picked_date, recurrence)
-            # Moving onto a date that already holds an event replaces it; ask.
-            if new_key != editing_key and new_key in self.user_events \
-                    and not self._confirm_replace(new_key):
-                return
+            # Moving onto a date that already holds another event replaces it; ask.
+            if new_key != editing_key:
+                collisions = self._colliding_keys(new_key, exclude=editing_key)
+                if collisions and not self._confirm_replace(collisions[0]):
+                    return
 
         self._hide_event_input_widget()
-        replace_keys = []
+        replace_keys = list(collisions)
         if editing_key is not None and new_key != editing_key:
             replace_keys.append(editing_key)
         entry = {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
@@ -535,6 +542,11 @@ class EventManagerWindow(BaseFramelessWindow):
             logger.info(f"Event {new_key!r} {action} via the event manager.")
             self.events_changed.emit()
             self.refresh_list()
+
+    def _colliding_keys(self, new_key: str, exclude: Optional[str] = None) -> list:
+        """Stored keys other than ``exclude`` that show on a date ``new_key`` shows on."""
+        return [key for key in self.user_events
+                if key != exclude and keys_share_visible_date(new_key, key)]
 
     def _confirm_replace(self, key: str) -> bool:
         """Adding onto a date that already holds an event replaces it; ask first."""

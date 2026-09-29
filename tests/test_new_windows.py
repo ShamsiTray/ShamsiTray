@@ -139,6 +139,52 @@ def test_manager_edit_recurring_ignores_auto_delete(manager):
     assert manager.controller.user_events["0000-05-05"]["remove_after_finish"] is False
 
 
+def test_manager_asks_before_replacing_an_event_on_the_same_day(manager, monkeypatch):
+    """A yearly 0000-08-01 and a one-time 1405-08-01 are two keys for the same
+    day, so the new event must ask about the stored one instead of stacking."""
+    manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("یک‌بار", RECURRENCE_NONE, False)
+
+    assert asked == ["0000-08-01"]
+    assert list(manager.user_events) == ["1405-08-01"]
+
+
+def test_manager_declining_the_replace_keeps_the_stored_event(manager, monkeypatch):
+    manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
+                                         "remove_after_finish": False}
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: False)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("یک‌بار", RECURRENCE_NONE, False)
+
+    assert list(manager.user_events) == ["0000-08-01"]
+
+
+def test_manager_moving_onto_another_events_day_replaces_it(manager, monkeypatch):
+    """An edit that lands on another event's day (under either key shape) still
+    has to ask, and the replaced event is dropped from the store."""
+    manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
+                                         "remove_after_finish": False}
+    manager.user_events["1404-05-05"] = {"text": "یک‌بار", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._on_edit_requested("1404-05-05")
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("یک‌بار", RECURRENCE_NONE, False)
+
+    assert asked == ["0000-08-01"]
+    assert list(manager.user_events) == ["1405-08-01"]
+
+
 def test_manager_unchanged_save_keeps_a_clamped_anchor(manager):
     """A day-31 monthly event opens on the 30th of a short month; saving the
     edit keeps that anchor instead of moving the event to the shown day."""
