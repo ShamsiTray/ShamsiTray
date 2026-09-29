@@ -35,7 +35,8 @@ from typing import Dict, Optional
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton, QScrollArea, QVBoxLayout, QWidget)
+                             QPushButton, QScrollArea, QStackedWidget, QVBoxLayout,
+                             QWidget)
 
 from config import APP_CONFIG
 from ui.widgets.checkbox import CustomCheckbox
@@ -275,11 +276,21 @@ class EventManagerWindow(BaseFramelessWindow):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidget(self.list_container)
-        main_layout.addWidget(self.scroll_area, 1)
 
         self.empty_label = QLabel("رویدادی یافت نشد.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(self.empty_label)
+
+        # The list and the «nothing found» label share one layout slot instead of
+        # being two siblings toggled independently. A hidden sibling collapses to
+        # zero height, and since no other item in main_layout asks for the
+        # stretch, Qt handed the freed space to the title row: the header and the
+        # filter row slid downwards every time a search or filter emptied the
+        # list. A QStackedWidget reports one constant size for its slot whichever
+        # page is current, so the header above it never moves.
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(self.scroll_area)
+        self.content_stack.addWidget(self.empty_label)
+        main_layout.addWidget(self.content_stack, 1)
 
         footer_row = QHBoxLayout()
         # Deliberately text-only buttons: two rounds of icons here (inline FA
@@ -392,8 +403,7 @@ class EventManagerWindow(BaseFramelessWindow):
                 f"{to_persian_digits(shown)} از {to_persian_digits(total)} رویداد")
         else:
             self.count_label.setText(f"{to_persian_digits(total)} رویداد" if total else "")
-        self.empty_label.setVisible(shown == 0)
-        self.scroll_area.setVisible(shown > 0)
+        self.content_stack.setCurrentWidget(self.empty_label if shown == 0 else self.scroll_area)
         self._restyle_dynamic_children()
 
     # --- mutations ---
