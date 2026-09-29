@@ -393,6 +393,20 @@ def test_update_tray_icon_without_force_skips_same_day(tray):
     assert icon_calls == []
 
 
+def test_tray_date_is_logged_not_blank(tray, caplog):
+    """jdatetime renders itself as "" under an empty format spec, so the refresh
+    used to log «new date: » with nothing after it — once a minute, forever."""
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        tray.update_tray_icon(force=True)
+
+    messages = [r.getMessage() for r in caplog.records
+                if "Updating tray icon for new date" in r.getMessage()]
+    assert messages
+    assert all(m.rstrip().endswith(str(jdatetime.date.today())) for m in messages)
+
+
 def test_tray_tooltip_includes_user_event(tray):
     today = jdatetime.date.today()
     tray.add_user_event(today, "doctor appointment", "none", False)
