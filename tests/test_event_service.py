@@ -9,7 +9,7 @@ import pytest
 from config import APP_CONFIG
 from core.event_service import EventService
 from utils import event_io
-from utils.event_io import RECURRENCE_NONE, RECURRENCE_YEARLY
+from utils.event_io import RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEARLY
 
 
 @pytest.fixture
@@ -42,6 +42,37 @@ def test_service_loads_store_on_init(service, user_data):
                     "events": {"1405-01-01": _entry("kept")}}), encoding="utf-8")
     service.reload()
     assert service.events["1405-01-01"]["text"] == "kept"
+
+
+def test_resaving_a_monthly_event_keeps_its_anchor(service, monkeypatch):
+    """Day 31 exists in only half the months: re-saving the clamped 30th the
+    user was shown must not walk the anchor towards the start of the month."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["0000-00-31"] = _entry("پایان ماه", RECURRENCE_MONTHLY)
+
+    assert service.add(jdatetime.date(1404, 7, 30), "پایان ماه ویرایش", RECURRENCE_MONTHLY) is True
+
+    assert list(service.events) == ["0000-00-31"]
+    assert service.events["0000-00-31"]["text"] == "پایان ماه ویرایش"
+
+
+def test_resaving_a_yearly_event_keeps_its_anchor(service, monkeypatch):
+    """Same rule for 30 Esfand, which only exists in a leap year."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["0000-12-30"] = _entry("سی ام اسفند", RECURRENCE_YEARLY)
+
+    assert service.add(jdatetime.date(1404, 12, 29), "سی ام اسفند ویرایش", RECURRENCE_YEARLY) is True
+
+    assert list(service.events) == ["0000-12-30"]
+
+
+def test_switching_a_recurring_event_to_one_time_uses_the_shown_date(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["0000-12-30"] = _entry("سی ام اسفند", RECURRENCE_YEARLY)
+
+    assert service.add(jdatetime.date(1404, 12, 29), "یک‌بار", RECURRENCE_NONE) is True
+
+    assert list(service.events) == ["1404-12-29"]
 
 
 def test_add_replaces_every_event_matching_the_date(service, monkeypatch):

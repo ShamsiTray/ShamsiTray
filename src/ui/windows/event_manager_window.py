@@ -24,6 +24,9 @@ Editing rules:
   shown in the selector; one-time events keep their full date. Monthly
   events ignore month/year (they repeat every month), yearly ones ignore
   the year.
+- Saving without touching either the date or the recurrence leaves the
+  stored key alone, so an event opened on a clamped occurrence (a day-31
+  monthly event shown on the 30th) never drifts off its anchor.
 - New events added here pick their date from the editor's year/month/day
   selector.
 """
@@ -177,6 +180,9 @@ class EventManagerWindow(BaseFramelessWindow):
         super().__init__()
         self.controller = controller
         self._editing_key: Optional[str] = None
+        # Date/recurrence the editor opened with, so a save that changed neither
+        # can keep the stored key (and with it the recurring anchor).
+        self._edit_initial: Optional[tuple] = None
         self.setWindowTitle("مدیریت رویدادها")
         self.setFixedSize(self.WIDTH, self.HEIGHT)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -421,6 +427,7 @@ class EventManagerWindow(BaseFramelessWindow):
         if self.event_input_widget.isVisible():
             return
         self._editing_key = None
+        self._edit_initial = None
         self.event_input_widget.set_title("افزودن رویداد جدید")
         self.event_input_widget.set_data("", RECURRENCE_NONE, False)
         self.event_input_widget.set_date_selector_visible(True)
@@ -446,6 +453,7 @@ class EventManagerWindow(BaseFramelessWindow):
         if key not in self.user_events or self.event_input_widget.isVisible():
             return
         self._editing_key = key
+        self._edit_initial = None
         entry = self.user_events[key]
         recurrence = entry.get("recurrence", RECURRENCE_NONE)
         self.event_input_widget.set_title("ویرایش رویداد")
@@ -473,6 +481,7 @@ class EventManagerWindow(BaseFramelessWindow):
         else:
             initial = next_occurrence_jdate(key) or today
         self.event_input_widget.set_date_selector_visible(True, initial)
+        self._edit_initial = (initial, recurrence)
         self._show_event_input_overlay()
 
     def _on_edit_saved(self, text: str, recurrence: str, remove_after_finish: bool):
@@ -499,7 +508,14 @@ class EventManagerWindow(BaseFramelessWindow):
             # greyed-out fields in the editor.
             if picked_date is None:
                 picked_date = next_occurrence_jdate(editing_key) or jdatetime.date.today()
-            new_key = make_event_key(picked_date, recurrence)
+            if self._edit_initial == (picked_date, recurrence):
+                # Date and recurrence are both untouched. The selector may be
+                # showing a clamped occurrence (day 31 of a 30-day month, 30
+                # Esfand of a non-leap year), so re-deriving the key here would
+                # silently move the anchor the user never meant to move.
+                new_key = editing_key
+            else:
+                new_key = make_event_key(picked_date, recurrence)
             # Moving onto a date that already holds an event replaces it; ask.
             if new_key != editing_key and new_key in self.user_events \
                     and not self._confirm_replace(new_key):
@@ -529,6 +545,7 @@ class EventManagerWindow(BaseFramelessWindow):
 
     def _hide_event_input_widget(self):
         self._editing_key = None
+        self._edit_initial = None
         self.event_input_widget.hide()
         self.overlay_blocker.hide()
 
