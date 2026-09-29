@@ -39,6 +39,10 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Tracks the WindowStaysOnTopHint state this window was built with (Tool
+        # windows start pinned, taskbar windows do not) so callers can toggle it
+        # later without having to know which style they are looking at.
+        self._always_on_top = not self.TASKBAR_ICON
         if self.TASKBAR_ICON:
             self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
             if APP_CONFIG.ICON_PATH.exists():
@@ -46,6 +50,29 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
         else:
             self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def set_always_on_top(self, enabled: bool) -> None:
+        """Add or remove ``WindowStaysOnTopHint`` on this window.
+
+        Qt re-evaluates a native window's flags only when it is shown again, so
+        a window that is currently up is hidden and re-shown at the same
+        geometry; calling this before the first ``show()`` (for example straight
+        after construction) only updates the flags and never flickers.
+        """
+        self._always_on_top = enabled
+        flags = self.windowFlags()
+        if enabled:
+            updated = flags | Qt.WindowType.WindowStaysOnTopHint
+        else:
+            updated = flags & ~Qt.WindowType.WindowStaysOnTopHint
+        if updated == flags:
+            return
+        was_visible = self.isVisible()
+        geometry = self.geometry()
+        self.setWindowFlags(updated)
+        if was_visible:
+            self.setGeometry(geometry)
+            self.show()
 
     def paintEvent(self, event):
         if self.rect().isEmpty():

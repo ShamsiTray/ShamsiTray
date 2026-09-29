@@ -56,6 +56,10 @@ class Config:
     TUTORIAL_SHOWN_SETTING_KEY = "Tutorial/HasShown"
     # The legacy "UserData/Events" registry key is only read during the one-time
     # migration; it lives in utils.settings_migration now.
+    # Whether the calendar popup is kept above other windows. Read with a True
+    # default: the popup was permanently pinned before this became a preference,
+    # so an install that predates the toggle keeps the behaviour it had.
+    ALWAYS_ON_TOP_SETTING_KEY = "Calendar/AlwaysOnTop"
     UPDATE_CHECK_ENABLED_SETTING_KEY = "Updates/CheckEnabled"
     LAST_UPDATE_CHECK_SETTING_KEY = "Updates/LastCheckMs"
     IGNORED_UPDATE_VERSION_SETTING_KEY = "Updates/IgnoredVersion"

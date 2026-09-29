@@ -4,12 +4,15 @@ import datetime
 
 import jdatetime
 import pytest
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
 
 import core.app_controller as controller_module
 import core.event_service as event_service_module
 from config import APP_CONFIG
 from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_MS,
                                  DEBUG_DATA_VERSION_ENV, SystemTrayIcon)
+from ui.widgets.checkbox import IconCheckboxActionWidget
 
 
 # --- helpers ---------------------------------------------------------------------
@@ -830,6 +833,59 @@ def test_close_menu_then_closes_and_defers(tray, monkeypatch):
     assert marker == []          # deferred
     scheduled[0]()               # run the deferred callback
     assert marker == [1]
+
+
+# --- always-on-top toggle -------------------------------------------------------------------
+
+def test_calendar_is_pinned_by_default(tray):
+    assert tray.always_on_top is True
+    assert tray.calendar_widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+
+
+def test_toggle_always_on_top_applies_and_persists(tray):
+    tray._toggle_always_on_top(False)
+    assert tray.always_on_top is False
+    assert not tray.calendar_widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert tray.settings.value(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, None, type=bool) is False
+
+    tray._toggle_always_on_top(True)
+    assert tray.calendar_widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert tray.settings.value(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, None, type=bool) is True
+
+
+def test_saved_unpinned_preference_applies_on_boot(user_data, qtbot, fake_startup_registry):
+    from utils.json_settings import JsonSettings
+
+    settings = JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH)
+    settings.setValue(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, False)
+    tray = SystemTrayIcon(settings=settings, startup_registry=fake_startup_registry)
+
+    assert tray.always_on_top is False
+    assert not tray.calendar_widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+
+
+def _always_on_top_widget(tray):
+    menu = tray.contextMenu()
+    return next(w for w in menu.findChildren(IconCheckboxActionWidget)
+                if w.text_label.text() == "تقویم همیشه در بالا")
+
+
+def test_menu_row_shows_the_current_state(tray):
+    assert _always_on_top_widget(tray).isChecked() is True
+
+    tray._toggle_always_on_top(False)
+    tray._setup_context_menu()
+
+    assert _always_on_top_widget(tray).isChecked() is False
+
+
+def test_clicking_the_menu_row_unpins_the_calendar(tray):
+    widget = _always_on_top_widget(tray)
+    QTest.mouseClick(widget, Qt.MouseButton.LeftButton)
+
+    assert tray.always_on_top is False
+    assert tray.settings.value(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, None, type=bool) is False
+    assert not tray.calendar_widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
 
 
 # --- tray activation ------------------------------------------------------------------------

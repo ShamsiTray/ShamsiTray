@@ -184,6 +184,11 @@ class SystemTrayIcon(QSystemTrayIcon):
         else:
             self.is_open_at_login = AUTOSTART_FIRST_RUN_DEFAULT
 
+        # Like autostart, this preference existed only as fixed behaviour
+        # before it became a setting, so a missing value means "pinned".
+        self.always_on_top = self.settings.value(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, True, type=bool)
+        self.calendar_widget.set_always_on_top(self.always_on_top)
+
         saved_theme = self.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
         if saved_theme:
             self.current_theme = saved_theme
@@ -631,6 +636,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.add_divider()
         self._add_startup_action(menu)
         menu.add_divider()
+        self._add_always_on_top_action(menu)
+        menu.add_divider()
         self._add_menu_action(menu, "مدیریت رویدادها", lambda: self._close_menu_then(self._open_event_manager))
         menu.add_divider()
         self._add_menu_action(menu, "مشاهده تعطیلات", lambda: self._close_menu_then(self._open_holiday_viewer))
@@ -671,6 +678,19 @@ class SystemTrayIcon(QSystemTrayIcon):
         widget.toggled.connect(self._toggle_open_at_boot)
         action.setDefaultWidget(widget)
         menu.addAction(action)
+
+    def _add_always_on_top_action(self, menu):
+        action = QWidgetAction(self)
+        widget = IconCheckboxActionWidget("تقویم همیشه در بالا", self.always_on_top, parent=menu)
+        widget.toggled.connect(self._toggle_always_on_top)
+        action.setDefaultWidget(widget)
+        menu.addAction(action)
+
+    def _toggle_always_on_top(self, checked: bool):
+        self.always_on_top = checked
+        self.settings.setValue(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, checked)
+        self.calendar_widget.set_always_on_top(checked)
+        logger.info(f"Calendar always-on-top {'enabled' if checked else 'disabled'}.")
 
     def on_tray_icon_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
