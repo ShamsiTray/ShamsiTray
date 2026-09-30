@@ -21,7 +21,7 @@ class Config:
     COMPANY_NAME = "ShamsiTray"
     # Must match build/SetupScript.iss and build/details.txt; run
     # `python build/check_versions.py` before tagging a release.
-    APP_VERSION = "1.3.1"
+    APP_VERSION = "1.4.0"
 
     # --- Paths (dynamically calculated) ---
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
