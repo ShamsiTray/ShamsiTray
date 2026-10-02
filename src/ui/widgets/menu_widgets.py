@@ -14,6 +14,7 @@ from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPai
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QWidget
 
 from config import APP_CONFIG
+from utils.ui_helpers import nudge_popup_inside_work_area
 
 # The day-cell menu's item box, shared by the QSS rules in
 # calendar_day_cell._menu_stylesheet and by CenteredTextMenu's painter so the
@@ -186,6 +187,12 @@ class TrayMenu(QMenu):
         action = self.addSeparator()
         self._divider_actions.append(action)
         return action
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # The tray icon lives on the screen edge, so Qt places this menu flush
+        # against it; nudge it back inside now that it has a real geometry.
+        nudge_popup_inside_work_area(self)
 
     def paintEvent(self, event):
         super().paintEvent(event)
