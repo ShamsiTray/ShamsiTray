@@ -67,12 +67,19 @@
   },
   {
    "optionDest": "datas",
-   "value": [
-    "assets/fonts;assets/fonts/",
-    "assets/data/holidays.json;assets/data/",
-    "assets/images/icons/icon.ico;assets/images/icons/",
-    "assets/images/welcome.gif;assets/images/"
-   ]
+   "value": "assets/fonts;assets/fonts/"
+  },
+  {
+   "optionDest": "datas",
+   "value": "assets/data/holidays.json;assets/data/"
+  },
+  {
+   "optionDest": "datas",
+   "value": "assets/images/icons/icon.ico;assets/images/icons/"
+  },
+  {
+   "optionDest": "datas",
+   "value": "assets/images/welcome.gif;assets/images/"
   },
   {
    "optionDest": "pathex",

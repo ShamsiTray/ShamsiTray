@@ -11,21 +11,44 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 VersionInfoVersion={#MyAppVersion}
-VersionInfoCopyright="Copyright © 2026 - ShamsiTray"
+VersionInfoCopyright=Copyright (C) 2026 ShamsiTray
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} - Persian calendar for the system tray
+VersionInfoProductName={#MyAppName}
+UninstallDisplayName={#MyAppName}
+AppCopyright=Copyright (C) 2026 ShamsiTray
+AppPublisherURL=https://github.com/ShamsiTray/ShamsiTray
+AppSupportURL=https://github.com/ShamsiTray/ShamsiTray/issues
+AppUpdatesURL=https://github.com/ShamsiTray/ShamsiTray/releases/latest
 ; • install location and icons
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+; PyQt6 6.x and Python 3.12 need Windows 10 1809 or newer; without this the
+; installer happily offers itself on releases that cannot run the payload.
+MinVersion=10.0
 ; Paths are relative to this script (build/): PyInstaller output and the repo tree.
 OutputDir=..\output
 OutputBaseFilename=ShamsiTraySetup-{#MyAppVersion}
 SetupIconFile=..\assets\images\icons\icon.ico
 SolidCompression=yes
+Compression=lzma2/ultra64
 WizardStyle=modern
 WizardSizePercent=100
 DisableWelcomePage=no
+; The start-menu group is fixed in [Icons], so this page could only ever be
+; answered "create" - one more click for a tray app.
+DisableProgramGroupPage=yes
+; Upgrading over a running tray instance is the one path the tasklist check in
+; InitializeUninstall cannot see, because that runs on uninstall only.
+; Restart Manager finds ShamsiTray.exe on its own; RestartApplications=no stops
+; it relaunching the app behind the tray after the upgrade. No AppMutex: the
+; app's single-instance guard is a QLockFile (src/main.py), so a named mutex
+; would never match it.
+CloseApplications=yes
+RestartApplications=no
 PrivilegesRequiredOverridesAllowed=dialog
 AllowNoIcons=yes
 
@@ -38,8 +61,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
 
 [Files]
 ; PyInstaller one-folder output (contents_directory "." puts the payload beside the exe).
-Source: "..\dist\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\ShamsiTray\*";               DestDir: "{app}"; \
+Source: "..\output\ShamsiTray\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\output\ShamsiTray\*";               DestDir: "{app}"; \
         Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Seed the holiday store in %LOCALAPPDATA%\ShamsiTray (the app's USER_DATA_DIR).
@@ -63,8 +86,11 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 ; write the HKCU Run key: it would silently re-enable autostart on upgrades for
 ; users who had turned it off.
 
-[InstallDelete]
-Type: filesandordirs; Name: "{app}"
+; There is deliberately no [InstallDelete] on {app}: Name: {app} there resolves to
+; whatever directory the user browsed to on the destination page, so it deletes
+; that folder's entire contents - a profile or tools directory would be wiped
+; before the install even starts. It was also redundant: {app} is DelTree'd at
+; post-uninstall, and Flags: ignoreversion already replaces stale payload files.
 
 [Code]
 var
@@ -72,38 +98,55 @@ var
   UninstallUninstallButton: TNewButton;
   RemoveSettingsCheckbox: TNewCheckBox;
 
+function IsAppRunning(): Boolean;
+var
+  ErrorCode: Integer;
+begin
+  // The app creates no named mutex or window class we can rely on, so detect a
+  // running instance via tasklist. The pipe needs a shell, hence cmd.exe /C.
+  // find exits 0 only when it actually matched a row.
+  Result := Exec('cmd.exe', '/C tasklist /FI "IMAGENAME eq {#MyAppExeName}" /FO CSV | find /I "{#MyAppExeName}"', '',
+                 SW_HIDE, ewWaitUntilTerminated, ErrorCode) and (ErrorCode = 0);
+end;
+
 function InitializeUninstall(): Boolean;
 var
   ErrorCode: Integer;
-  AppRunning: Boolean;
 begin
   Result := True;
-  // The app creates no named mutex or window class we can rely on, so detect a
-  // running instance via tasklist. The pipe needs a shell, hence cmd.exe /C.
-  AppRunning := False;
-  if Exec('cmd.exe', '/C tasklist /FI "IMAGENAME eq {#MyAppExeName}" /FO CSV | find /I "{#MyAppExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode) then
-    AppRunning := (ErrorCode = 0);
-  
-  if AppRunning then
+  if not IsAppRunning() then
+    Exit;
+
+  if MsgBox('The application {#MyAppName} is currently running. ' +
+            'Do you want to close it and continue with the uninstallation?',
+            mbConfirmation, MB_YESNO) <> IDYES then
   begin
-    if MsgBox('The application {#MyAppName} is currently running. ' +
-              'Do you want to close it and continue with the uninstallation?', 
-              mbConfirmation, MB_YESNO) = IDYES then
-    begin
-      // Try to close gracefully first
-      if not Exec('taskkill', '/IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode) then
-      begin
-        // Force close if graceful close fails
-        Exec('taskkill', '/F /IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
-      end;
-      
-      // Wait a moment for the process to close
-      Sleep(2000);
-    end
-    else
-    begin
-      Result := False;
-    end;
+    Result := False;
+    Exit;
+  end;
+
+  // Graceful close first. taskkill without /F only posts WM_CLOSE, which this
+  // app deliberately absorbs (setQuitOnLastWindowClosed(False) in src/main.py:
+  // dismissing every window leaves the tray process running), so taskkill still
+  // exits 0 and its exit code cannot be trusted as proof the app died. Re-probe
+  // the process instead of branching on that code.
+  Exec('taskkill', '/IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+  Sleep(2000);
+
+  if IsAppRunning() then
+  begin
+    Exec('taskkill', '/F /IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+    Sleep(2000);
+  end;
+
+  // Uninstalling under a live process would leave the exe locked, so the file
+  // removal above and the DelTree in CurUninstallStepChanged would both fail
+  // and silently leave the install directory behind.
+  if IsAppRunning() then
+  begin
+    MsgBox('{#MyAppName} could not be closed. Close it from the tray, then run this uninstaller again.',
+           mbError, MB_OK);
+    Result := False;
   end;
 end;
 
@@ -195,12 +238,16 @@ end;
 // Function to check if user wants to remove settings
 function ShouldRemoveSettings(): Boolean;
 begin
-  Result := RemoveSettingsCheckbox.Checked;
+  // The checkbox only exists when not UninstallSilent, but this is reached from
+  // CurUninstallStepChanged(usPostUninstall) in silent mode too - where
+  // dereferencing it raised, skipping the DelTree below. The failure was SILENT:
+  // the exit code stayed 0, so unattended uninstalls reported success while
+  // leaving %LOCALAPPDATA%\ShamsiTray behind. Never trust the exit code to
+  // reveal this class of error.
+  Result := Assigned(RemoveSettingsCheckbox) and RemoveSettingsCheckbox.Checked;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  ErrorCode: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
@@ -216,13 +263,7 @@ begin
       // Current user data: JSON settings, events, holiday store, logs
       DelTree(ExpandConstant('{localappdata}\ShamsiTray'), True, True, True);
     end;
-    
-    // Additional cleanup - force kill any remaining processes
-    Exec('taskkill', '/F /IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
-    
-    // Wait a bit and then try to remove any remaining files
-    Sleep(1000);
-    
+
     // Force delete the installation directory if it still exists
     if DirExists(ExpandConstant('{app}')) then
     begin
