@@ -72,6 +72,17 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     def _year_style_kwargs(self, errored: bool) -> dict:
         return {"center_text": True}
 
+    def _update_convert_state(self, *_args):
+        """Grey the تبدیل button in and out with the input's submittability.
+
+        Driven by textChanged and the conversion-mode combo (plus one initial
+        call), it covers every case the out-of-range flip cannot see: the empty
+        state never changes the mixin's error state, so without this the button
+        would stay enabled after clearing the field. The shared accent style dims
+        disabled buttons.
+        """
+        self.convert_button.setEnabled(self._year_is_submittable())
+
     def showEvent(self, event):
         super().showEvent(event)
         QTimer.singleShot(100, self.year_input.setFocus)
@@ -262,7 +273,18 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.month_combo.currentIndexChanged.connect(self._clear_results)
         self.year_input.textChanged.connect(self._clear_results)
         self.convert_button.clicked.connect(self._convert_date)
-        self.year_input.returnPressed.connect(self._convert_date)
+        # Enter goes through the BUTTON, not straight to _convert_date: a disabled
+        # تبدیل then swallows the key on an empty or invalid year exactly like a
+        # click would. _convert_date keeps its own guard for other callers.
+        self.year_input.returnPressed.connect(self.convert_button.click)
+        # The bounds are mode-dependent (_year_bounds defers to the combo), so
+        # the button follows them automatically. Only the year text needs a
+        # signal today: a mode switch refills the field with today's date, which
+        # is inside both ranges, so it never needs a separate re-derivation.
+        self.year_input.textChanged.connect(self._update_convert_state)
+        # Derive it once up front too, so the window never opens with a stale
+        # button state.
+        self._update_convert_state()
         self.conversion_type_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.day_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.month_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)

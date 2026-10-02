@@ -160,3 +160,115 @@ def test_range_message_follows_the_calendar_mode(window):
     assert window.status_message.isVisible()
     assert str(DateConverterWindow.MAX_GREGORIAN_YEAR) in window.status_message.text()
     assert str(DateConverterWindow.MIN_GREGORIAN_YEAR) in window.status_message.text()
+
+
+# --- تبدیل button follows the input's actual submittability -------------------------
+
+
+@pytest.mark.parametrize("year_text, expected_enabled", [
+    ("", False),          # empty: nothing to convert
+    ("abc", False),       # the validator blocks letters, but the predicate must not assume it
+    ("0", False),         # below the Jalali floor
+    ("1601", False),      # above the Jalali ceiling
+    ("1", True),          # Jalali range start
+    ("1600", True),       # Jalali range end
+    ("1404", True),       # comfortably inside
+])
+def test_convert_button_enabled_only_for_submittable_jalali_year(window, year_text, expected_enabled):
+    """In «شمسی به میلادی» the تبدیل button tracks the Jalali bounds: empty /
+    non-numeric / out of range grey it out, a year inside 1–1600 enables it."""
+    window.conversion_type_combo.setCurrentIndex(0)
+    window.year_input.setText(to_persian_digits(year_text) if year_text.isdigit() else year_text)
+    assert window.convert_button.isEnabled() is expected_enabled
+
+
+def test_convert_button_uses_gregorian_bounds_in_the_other_mode(window):
+    """The bounds are mode-dependent, so the same text can be valid under one
+    calendar and not the other: 1601 is out of range for Jalali but perfectly
+    valid for Gregorian."""
+    window.conversion_type_combo.setCurrentIndex(1)  # «میلادی به شمسی»
+    window.year_input.setText("1601")
+    assert window.convert_button.isEnabled()
+
+    window.conversion_type_combo.setCurrentIndex(0)  # back to Jalali
+    window.year_input.setText("1601")                 # mode switch resets the year to today
+    assert not window.convert_button.isEnabled()
+
+
+def test_convert_button_state_recomputes_on_mode_switch(window):
+    """The mode switch must leave the button judged by the NEW bounds.
+
+    Switching modes refills the year field with today's date, which is inside
+    both ranges, so today the visible outcome is the same either way - this
+    pins the invariant (a valid year never leaves the button greyed out) rather
+    than a specific verdict.
+    """
+    window.conversion_type_combo.setCurrentIndex(0)
+    window.year_input.setText(to_persian_digits(1601))
+    assert not window.convert_button.isEnabled()
+
+    window.conversion_type_combo.setCurrentIndex(1)
+    assert window.convert_button.isEnabled()
+
+    window.conversion_type_combo.setCurrentIndex(0)
+    assert window.convert_button.isEnabled()
+
+
+def test_year_bounds_actually_differ_per_mode(window):
+    """The mode-dependence the button relies on: the two calendars have
+    different supported ranges, so a year can pass one and fail the other."""
+    window.conversion_type_combo.setCurrentIndex(0)  # Jalali input
+    assert window._year_bounds() == (DateConverterWindow.MIN_JALALI_YEAR,
+                                     DateConverterWindow.MAX_JALALI_YEAR)
+    window.conversion_type_combo.setCurrentIndex(1)  # Gregorian input
+    assert window._year_bounds() == (DateConverterWindow.MIN_GREGORIAN_YEAR,
+                                     DateConverterWindow.MAX_GREGORIAN_YEAR)
+
+
+def test_convert_button_starts_enabled_for_today(window):
+    """The window opens prefilled with today's year, which is always inside both
+    ranges, so the button must not come up greyed out."""
+    assert window.year_input.text()
+    assert window.convert_button.isEnabled()
+
+
+def test_convert_button_tracks_clearing_the_year(window):
+    """Valid → empty → valid greys and un-greys on every edit, including the
+    empty state the out-of-range flip never reports."""
+    window.year_input.setText(to_persian_digits(1404))
+    assert window.convert_button.isEnabled()
+    window.year_input.clear()
+    assert not window.convert_button.isEnabled()
+    window.year_input.setText(to_persian_digits(1404))
+    assert window.convert_button.isEnabled()
+
+
+def test_empty_year_is_not_reported_out_of_range(window):
+    """The mixin keeps its meaning (a COMPLETE year outside the bounds) — an
+    empty field greys the button via submittability, not via the error flag."""
+    window.year_input.clear()
+    assert window._year_is_out_of_range() is False
+
+
+def test_enter_does_not_convert_while_the_button_is_disabled(window):
+    """Enter is routed through the BUTTON so a disabled one swallows it; a
+    direct _convert_date must therefore never run for an unusable year."""
+    window.year_input.clear()
+    assert not window.convert_button.isEnabled()
+
+    window.convert_button.click()          # disabled: click() must not emit
+    window.year_input.returnPressed.emit()
+
+    assert not window.status_message.isVisible()
+    assert not window.output_widget.isVisible()
+
+
+def test_enter_converts_through_the_button_when_submittable(window):
+    """The routing must not swallow Enter for a valid year — it goes through the
+    button and still converts."""
+    window.year_input.setText(to_persian_digits(1404))
+    assert window.convert_button.isEnabled()
+
+    window.year_input.returnPressed.emit()
+
+    assert window.output_widget.isVisible()

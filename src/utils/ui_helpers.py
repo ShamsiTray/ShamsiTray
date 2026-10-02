@@ -124,6 +124,9 @@ class YearRangeValidationMixin:
       the shared line-edit stylesheet builders
     - optionally ``self._on_year_error_changed(errored)``: called when the state
       flips (the go-to-date window resizes its fixed-size card)
+
+    ``_year_is_submittable`` is the answer for a host that gates a confirm
+    button on the year (both the converter and go-to-date do).
     """
 
     _year_error: bool = False
@@ -139,6 +142,25 @@ class YearRangeValidationMixin:
             return False
         lo, hi = self._year_bounds()
         return not lo <= year <= hi
+
+    def _year_is_submittable(self) -> bool:
+        """True when the current input can actually be submitted.
+
+        Distinct from ``_year_is_out_of_range``: an EMPTY (or non-numeric) field
+        is not "out of range" - the red-border hint must not claim otherwise -
+        but it is definitely not submittable, so a host's confirm button takes
+        its enabled state from here. The mixin only owns the red border, which
+        is why this is a separate predicate rather than a negation of the other.
+        """
+        text = self.year_input.text().strip()
+        if not text:
+            return False
+        try:
+            year = int(from_persian_digits(text))
+        except (ValueError, TypeError):
+            return False
+        lo, hi = self._year_bounds()
+        return lo <= year <= hi
 
     def _update_year_error_state(self, *_args):
         """Keep the red 'invalid year' border in sync with the typed text."""
