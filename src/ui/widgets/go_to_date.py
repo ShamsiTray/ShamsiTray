@@ -161,24 +161,6 @@ class GoToDateWindow(YearRangeValidationMixin, QWidget):
         needed = self.layout().sizeHint().height()
         self.setFixedSize(200, max(self._initial_height, needed))
 
-    def _year_is_submittable(self) -> bool:
-        """True when the current input can actually be confirmed.
-
-        Distinct from ``_year_is_out_of_range`` (shared mixin): an EMPTY or
-        non-numeric field is not "out of range" (the red-border hint must not
-        claim otherwise), but it is definitely not submittable - so the تایید
-        button's enabling comes from this predicate instead: empty / non-numeric
-        / out of range all keep it greyed out.
-        """
-        text = self.year_input.text().strip()
-        if not text:
-            return False
-        try:
-            year = int(from_persian_digits(text))
-        except (ValueError, TypeError):
-            return False
-        return self.MIN_YEAR <= year <= self.MAX_YEAR
-
     def _update_confirm_state(self, *_args):
         """Grey the تایید button in and out with the input's submittability.
 
