@@ -96,19 +96,30 @@ class Config:
         "MENU_HOVER_COLOR": (60, 60, 60, 180), "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
     }
 
+    # The light accent sits deliberately deeper than a "bright blue" would be:
+    # #34bbff needs white-on-accent text in the buttons, the dropdown's selected
+    # row and the tray icon's event tint, and against those it fell short of the
+    # 4.5:1 WCAG AA floor for body text. #1a6fa8 clears it with room to spare
+    # while staying in the same hue family, so the theme keeps its identity.
     LIGHT_PALETTE = {
         "TEXT_COLOR": "#4b5563", "BACKGROUND_COLOR": "#f9fafb",
-        "INPUT_BG_COLOR": "#ffffff", "ACCENT_COLOR": "#34bbff",
+        "INPUT_BG_COLOR": "#ffffff", "ACCENT_COLOR": "#1a6fa8",
         "HOVER_BG": "#e5e7eb", "SCROLLBAR_HANDLE_COLOR": "#d1d5db",
         "SCROLLBAR_GROOVE_COLOR": "#f3f4f6", "HOLIDAY_COLOR": "#b91c1c",
         "GREY_COLOR": "#9ca3af", "WEEKDAY_NAMES_COLOR": "#616872",
         "CALENDAR_BACKGROUND_COLOR": "#ffffff", "CALENDAR_BORDER_COLOR": "#e5e7eb",
         "CALENDAR_TODAY_BG_COLOR": "rgba(156, 163, 175, 0.2)",
         "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(156, 163, 175, 0.35)",
-        "CALENDAR_SELECTED_BG_COLOR": "rgba(75, 174, 79, 0.1)",
-        "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(75, 174, 79, 0.2)",
+        # Tinted from the accent rather than left at the old green: these marks
+        # the SELECTED day next to an accent-blue today pill, so a second hue
+        # read as an unrelated state. Alpha is raised slightly to keep the day
+        # number legible now that the accent behind it is darker.
+        "CALENDAR_SELECTED_BG_COLOR": "rgba(26, 111, 168, 0.14)",
+        "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(26, 111, 168, 0.24)",
         "MENU_BACKGROUND_COLOR": "#ffffff", "MENU_BORDER_COLOR": "#e5e7eb",
-        "MENU_HOVER_COLOR": (60, 60, 60, 40), "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+        # 40 alpha was too faint to see at all against white; 60 keeps the row
+        # readable without competing with the menu's own border.
+        "MENU_HOVER_COLOR": (60, 60, 60, 60), "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
     }
 
     _theme_map = {Theme.DARK: DARK_PALETTE, Theme.LIGHT: LIGHT_PALETTE}

@@ -1,4 +1,6 @@
 """Tests for config: paths, settings keys, digit maps, themes and helpers."""
+import pytest
+
 from config import APP_CONFIG, Config
 
 
@@ -147,3 +149,112 @@ def test_font_awesome_free_covers_every_used_glyph(qtbot):
                  "FA_SAVE"):
         glyph = ord(getattr(APP_CONFIG.FAS, name))
         assert metrics.inFontUcs4(glyph), f"{name} (U+{glyph:04X}) missing from {APP_CONFIG.FONT_AWESOME_FAMILY}"
+
+
+# --- palette contrast -----------------------------------------------------------
+
+def _srgb_luminance(hex_color: str) -> float:
+    """WCAG relative luminance of an opaque #rrggbb color."""
+    c = hex_color.lstrip("#")
+    channels = []
+    for i in (0, 2, 4):
+        v = int(c[i:i + 2], 16) / 255.0
+        channels.append(v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+    r, g, b = channels
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast_ratio(fg: str, bg: str) -> float:
+    a, b = _srgb_luminance(fg), _srgb_luminance(bg)
+    lighter, darker = max(a, b), min(a, b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _parse_rgba(value: str):
+    """Split 'rgba(r, g, b, a)' or '#rrggbb' into (hex, alpha 0..1)."""
+    if value.startswith("#"):
+        return value.lower(), 1.0
+    inner = value[value.index("(") + 1:value.rindex(")")].replace(",", " ").split()
+    r, g, b, a = (float(x) for x in inner[:4])
+    return "#%02x%02x%02x" % (int(r), int(g), int(b)), a / 255.0
+
+
+def _flatten(fg_rgba: str, bg_hex: str) -> str:
+    """Composite a translucent fill over an opaque backdrop."""
+    fg_hex, alpha = _parse_rgba(fg_rgba)
+    br, bg_, bb = (int(bg_hex.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    fr, fg, fb = (int(fg_hex.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    def mix(f, b):
+        return int(round(f * alpha + b * (1 - alpha)))
+    return "#%02x%02x%02x" % (mix(fr, br), mix(fg, bg_), mix(fb, bb))
+
+
+# AA for normal-size body text. The accent is used behind white label text in
+# the accent buttons, the combo boxes' selected row and the dropdown list, so it
+# has to clear this as a BACKGROUND, not merely be a visible blue.
+WCAG_AA_NORMAL_TEXT = 4.5
+
+
+def test_light_accent_backs_white_text_at_wcag_aa():
+    """The light theme was retuned for this: its old accent could not carry
+    white label text at AA. Pinned so a future "brighten the accent" change
+    cannot quietly regress it."""
+    palette = APP_CONFIG.LIGHT_PALETTE
+    ratio = _contrast_ratio("#ffffff", palette["ACCENT_COLOR"])
+    assert ratio >= WCAG_AA_NORMAL_TEXT, (
+        f"light accent {palette['ACCENT_COLOR']} gives only {ratio:.2f}:1 "
+        f"against white text (AA needs {WCAG_AA_NORMAL_TEXT}:1)")
+
+
+@pytest.mark.xfail(reason="known gap: the dark accent predates the AA sweep and "
+                          "was left alone; retune it with the dark theme",
+                  strict=False)
+def test_dark_accent_backs_white_text_at_wcag_aa():
+    palette = APP_CONFIG.DARK_PALETTE
+    ratio = _contrast_ratio("#ffffff", palette["ACCENT_COLOR"])
+    assert ratio >= WCAG_AA_NORMAL_TEXT, (
+        f"dark accent {palette['ACCENT_COLOR']} gives only {ratio:.2f}:1 "
+        f"against white text")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_body_text_meets_wcag_aa(theme):
+    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    for surface in ("BACKGROUND_COLOR", "CALENDAR_BACKGROUND_COLOR",
+                    "MENU_BACKGROUND_COLOR", "INPUT_BG_COLOR"):
+        ratio = _contrast_ratio(palette["TEXT_COLOR"], palette[surface])
+        assert ratio >= WCAG_AA_NORMAL_TEXT, (
+            f"{theme} text on {surface} is only {ratio:.2f}:1")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_selected_day_number_survives_its_own_tint(theme):
+    """A selected day draws TEXT_COLOR over CALENDAR_SELECTED_BG_COLOR, which is
+    itself translucent over the calendar surface. The tint has to be flattened
+    onto that surface first - comparing the raw tint against the text would
+    measure a color that is never actually painted."""
+    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    surface = palette["CALENDAR_BACKGROUND_COLOR"]
+    for key in ("CALENDAR_SELECTED_BG_COLOR", "CALENDAR_SELECTED_HOVER_BG_COLOR"):
+        flattened = _flatten(palette[key], surface)
+        ratio = _contrast_ratio(palette["TEXT_COLOR"], flattened)
+        assert ratio >= WCAG_AA_NORMAL_TEXT, (
+            f"{theme} {key} flattens to {flattened}: only {ratio:.2f}:1 "
+            f"for the day number")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_menu_row_hover_is_actually_visible(theme):
+    """MENU_HOVER_COLOR is painted at its own alpha over the menu surface. A
+    hover the eye cannot resolve is the same as no hover at all, so assert the
+    composited change is perceptible rather than merely non-zero."""
+    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    base = palette["MENU_BACKGROUND_COLOR"]
+    _r, _g, _b, alpha = palette["MENU_HOVER_COLOR"]
+    flattened = _flatten(f"rgba({_r}, {_g}, {_b}, {alpha})", base)
+    before, after = _srgb_luminance(base), _srgb_luminance(flattened)
+    delta = abs(after - before)
+    assert alpha >= 50, f"{theme} menu hover alpha {alpha} is too faint to see"
+    assert delta > 0.01, (
+        f"{theme} menu hover composites to {flattened}, a luminance delta of "
+        f"only {delta:.4f} from {base}")
