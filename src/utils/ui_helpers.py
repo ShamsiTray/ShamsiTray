@@ -15,6 +15,76 @@ from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle, QStyleOptionComboB
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits
 
+# Gap kept between a popup menu and the edge of the work area, in logical
+# pixels. Qt already flips or shifts a popup that would not fit, so nothing ever
+# clips - this only stops the result from butting flat against the right or
+# bottom wall with no breathing room, which reads as "cut off" even when the
+# menu is fully visible.
+MENU_EDGE_MARGIN = 8
+
+
+def clamp_popup_to_work_area(popup, global_pos: QPoint, *, margin: int = MENU_EDGE_MARGIN) -> QPoint:
+    """Return a position for ``popup`` at ``global_pos`` that keeps a margin.
+
+    Qt keeps a popup on screen by flipping or shifting it, but a menu opened at
+    a cursor already near the bottom-right corner ends up flush against the work
+    area edge. This nudges the anchor back inside by ``margin`` logical pixels
+    instead, which is what the user reads as a deliberate placement.
+
+    The popup's own size is measured from ``sizeHint`` rather than ``width()``:
+    a never-shown menu has no geometry yet, but its hint is what Qt will use.
+    Falls back to the primary screen when the cursor is on none (RDP
+    disconnect), and returns ``global_pos`` untouched if the popup is larger
+    than the work area - clamping would then fight Qt's own centring.
+    """
+    screen = QApplication.screenAt(global_pos) or QApplication.primaryScreen()
+    if screen is None:
+        return global_pos
+    geo = screen.availableGeometry()
+
+    width = popup.sizeHint().width() or popup.width()
+    height = popup.sizeHint().height() or popup.height()
+    if width >= geo.width() or height >= geo.height():
+        return global_pos
+
+    x = min(global_pos.x(), geo.right() - margin - width + 1)
+    y = min(global_pos.y(), geo.bottom() - margin - height + 1)
+    # Only the far edges move; a popup near the top-left must not be pushed
+    # away from the cursor.
+    x = max(x, geo.left() + margin)
+    y = max(y, geo.top() + margin)
+    return QPoint(int(x), int(y))
+
+
+def nudge_popup_inside_work_area(popup, *, margin: int = MENU_EDGE_MARGIN) -> None:
+    """Pull an already-positioned popup back from the work-area edges.
+
+    For menus Qt shows itself rather than ones the app calls ``exec()`` on (the
+    tray menu, via ``setContextMenu``): there is no anchor to adjust, so the
+    only chance is to move the window once it has been placed. Call from
+    ``showEvent`` - moving a hidden popup would be undone by the show itself.
+    """
+    if not popup.isVisible():
+        return
+    screen = QApplication.screenAt(popup.frameGeometry().center()) or QApplication.primaryScreen()
+    if screen is None:
+        return
+    geo = screen.availableGeometry()
+    frame = popup.frameGeometry()
+
+    x, y = frame.x(), frame.y()
+    if frame.right() > geo.right() - margin:
+        x = geo.right() - margin - frame.width() + 1
+    if frame.bottom() > geo.bottom() - margin:
+        y = geo.bottom() - margin - frame.height() + 1
+    if frame.left() < geo.left() + margin:
+        x = geo.left() + margin
+    if frame.top() < geo.top() + margin:
+        y = geo.top() + margin
+
+    if (x, y) != (frame.x(), frame.y()):
+        popup.move(x, y)
+
 def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius: float) -> QPainterPath:
     """Paint the app's rounded-card background (antialiased fill + 1px border).
 

@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushB
 from config import APP_CONFIG
 from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from utils.event_io import RECURRENCE_NONE, events_for_date
-from utils.ui_helpers import nav_button_stylesheet
+from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.go_to_date import GoToDateWindow
@@ -449,7 +449,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         action = QWidgetAction(self)
         action.setDefaultWidget(go_to_action)
         menu.addAction(action)
-        menu.exec(self.mapToGlobal(pos))
+        menu.exec(clamp_popup_to_work_area(menu, self.mapToGlobal(pos)))
 
     def _open_go_to_date_window(self):
         if self.go_to_window is not None and not self.go_to_window.isVisible():

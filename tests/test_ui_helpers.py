@@ -8,12 +8,13 @@ from PyQt6.QtWidgets import QComboBox, QWidget
 
 from config import APP_CONFIG
 from tests.qt_mousing import press, release
-from utils.ui_helpers import (DigitsFirstCombo, FramelessDragMixin,
+from utils.ui_helpers import (MENU_EDGE_MARGIN, DigitsFirstCombo, FramelessDragMixin,
                               accent_button_stylesheet, center_combo_items,
-                              combo_stylesheet, create_tray_pixmap,
-                              danger_button_stylesheet, error_line_edit_stylesheet,
-                              fit_combo_width, ghost_button_stylesheet,
-                              line_edit_stylesheet, paint_rounded_card,
+                              clamp_popup_to_work_area, combo_stylesheet,
+                              create_tray_pixmap, danger_button_stylesheet,
+                              error_line_edit_stylesheet, fit_combo_width,
+                              ghost_button_stylesheet, line_edit_stylesheet,
+                              nudge_popup_inside_work_area, paint_rounded_card,
                               scrollbar_stylesheet,
                               window_title_button_stylesheets)
 
@@ -363,3 +364,129 @@ def test_nav_button_stylesheet_variants(palette):
     today = nav_button_stylesheet(palette, palette['ACCENT_COLOR'], is_today_button=True)
     assert palette['ACCENT_COLOR'] in today
     assert ":pressed" in today  # accent pill lightens/darkens
+
+# --- popup work-area clamping ---------------------------------------------------
+
+@pytest.fixture
+def work_area(monkeypatch):
+    """Pin every screen lookup to a known 1000x800 work area at the origin, so
+    the clamping maths is assertable regardless of the CI desktop's size."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtWidgets import QApplication
+
+    rect = QRect(0, 0, 1000, 800)
+
+    class FakeScreen:
+        def availableGeometry(self):
+            return rect
+
+    screen = FakeScreen()
+    monkeypatch.setattr(QApplication, "screenAt", staticmethod(lambda pos: screen))
+    monkeypatch.setattr(QApplication, "primaryScreen", staticmethod(lambda: screen))
+    return rect
+
+
+@pytest.fixture
+def menu(qtbot):
+    from PyQt6.QtWidgets import QMenu
+    popup = QMenu()
+    popup.addAction("a")
+    return popup
+
+
+def _hint(menu):
+    return menu.sizeHint().width(), menu.sizeHint().height()
+
+
+def test_clamp_leaves_a_mid_screen_popup_untouched(work_area, menu):
+    """The helper must be a no-op in the common case - a menu opened well
+    inside the work area keeps the cursor position Qt asked for."""
+    width, height = _hint(menu)
+    anchor = QPoint(400, 400)
+    assert clamp_popup_to_work_area(menu, anchor) == anchor
+    assert anchor.x() + width < 1000 and anchor.y() + height < 800
+
+
+def test_clamp_pulls_back_from_the_right_edge(work_area, menu):
+    """A menu anchored so it would hang off the right wall is moved left far
+    enough that a margin of breathing room survives - the whole point being
+    that a flush-against-the-edge menu reads as clipped even when it is not."""
+    width, height = _hint(menu)
+    result = clamp_popup_to_work_area(menu, QPoint(work_area.right() - width + 2, 400))
+    assert result.x() + width - 1 == work_area.right() - MENU_EDGE_MARGIN
+
+
+def test_clamp_pulls_back_from_the_bottom_edge(work_area, menu):
+    width, height = _hint(menu)
+    result = clamp_popup_to_work_area(menu, QPoint(400, work_area.bottom() - height + 2))
+    assert result.y() + height - 1 == work_area.bottom() - MENU_EDGE_MARGIN
+
+
+def test_clamp_keeps_the_top_left_anchor_against_the_edges(work_area, menu):
+    """Only the far edges are clamped: a menu at the very top-left of the
+    work area must NOT be shoved away from the cursor by the margin floor."""
+    result = clamp_popup_to_work_area(menu, QPoint(0, 0))
+    assert result == QPoint(MENU_EDGE_MARGIN, MENU_EDGE_MARGIN)
+
+
+def test_clamp_defers_to_qt_when_the_popup_is_larger_than_the_screen(work_area, qtbot):
+    """A popup bigger than the work area cannot be made to fit, so clamping
+    would fight Qt's own centring; the anchor is returned unchanged."""
+    from PyQt6.QtWidgets import QMenu
+    from PyQt6.QtCore import QSize
+    big = QMenu()
+    big.addAction("x")
+    big.setFixedSize(QSize(2000, 1200))
+    qtbot.addWidget(big)
+    anchor = QPoint(10, 10)
+    assert clamp_popup_to_work_area(big, anchor) == anchor
+
+
+def test_clamp_falls_back_to_the_primary_screen_when_the_cursor_is_off_screen(work_area, menu):
+    """After an RDP disconnect there may be no screen under the cursor; the
+    helper falls back to the primary screen rather than raising."""
+    from PyQt6.QtWidgets import QApplication
+    QApplication.screenAt = staticmethod(lambda pos: None)
+    assert isinstance(clamp_popup_to_work_area(menu, QPoint(99999, 99999)), QPoint)
+
+
+def test_nudge_leaves_an_interior_popup_alone(work_area, qtbot):
+    """nudge_popup_inside_work_area is the post-show counterpart of the clamp and
+    must not move a menu that is already comfortably inside."""
+    from PyQt6.QtWidgets import QMenu
+    popup = QMenu()
+    popup.addAction("a")
+    qtbot.addWidget(popup)
+    popup.setFixedSize(100, 60)
+    popup.show()
+    popup.move(300, 300)
+    before = popup.pos()
+    nudge_popup_inside_work_area(popup)
+    assert popup.pos() == before
+
+
+def test_nudge_pulls_a_flush_popup_off_the_edge(work_area, qtbot):
+    """A tray menu shown by Qt lands flush against the work-area edge; the
+    nudge must pull it back in by the margin without otherwise relocating it."""
+    from PyQt6.QtWidgets import QMenu
+    popup = QMenu()
+    popup.addAction("a")
+    qtbot.addWidget(popup)
+    popup.setFixedSize(100, 60)
+    popup.show()
+    popup.move(work_area.right() - 100 + 1, 300)  # flush right
+    nudge_popup_inside_work_area(popup)
+    assert popup.x() + 100 - 1 == work_area.right() - MENU_EDGE_MARGIN
+
+
+def test_nudge_is_a_no_op_while_hidden(work_area, qtbot):
+    """Called from showEvent, so a hidden popup must return immediately rather
+    than moving a window the show is about to place itself."""
+    from PyQt6.QtWidgets import QMenu
+    popup = QMenu()
+    popup.addAction("a")
+    qtbot.addWidget(popup)
+    popup.move(9999, 9999)
+    before = popup.pos()
+    nudge_popup_inside_work_area(popup)
+    assert popup.pos() == before

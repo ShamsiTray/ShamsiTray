@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from utils.date_utils import format_gregorian_numeric, format_jalali_numeric
+from utils.ui_helpers import clamp_popup_to_work_area
 from .menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_H,
                            MENU_ITEM_PADDING_V, MenuActionWidget)
 from .tooltip import CustomTooltip
@@ -185,7 +186,7 @@ class ClickableLabel(QLabel):
         add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
         remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
 
-        menu.exec(self.mapToGlobal(event.pos()))
+        menu.exec(clamp_popup_to_work_area(menu, self.mapToGlobal(event.pos())))
 
         self._context_menu_open = False
         self.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
