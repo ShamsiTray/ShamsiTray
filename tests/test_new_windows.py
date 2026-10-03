@@ -995,6 +995,39 @@ def test_confirm_dialog_notify_shows_single_button(qtbot, monkeypatch):
     assert len(dialogs[0].buttons) == 1
 
 
+def test_confirm_dialog_notify_forwards_detail_to_the_dialog(qtbot, monkeypatch):
+    """notify() is the only flow that had no detail line, so a notice could not
+    show a breakdown under its headline. The detail must reach the dialog rather
+    than be silently dropped on the way through choose()."""
+    seen = {}
+
+    def fake_choose(parent, title, message, **kwargs):
+        seen.update(kwargs)
+        seen["message"] = message
+
+    monkeypatch.setattr(ConfirmDialog, "choose", staticmethod(fake_choose))
+    ConfirmDialog.notify(None, "فاصله تا امروز", "۶۹ روز مانده",
+                         detail="۲ ماه و ۹ روز مانده")
+    assert seen["detail"] == "۲ ماه و ۹ روز مانده"
+    assert seen["message"] == "۶۹ روز مانده"
+
+
+def test_confirm_dialog_notify_without_detail_keeps_the_box_hidden(qtbot, monkeypatch):
+    """The default stays empty so the existing notices keep their current height."""
+    dialogs = []
+    real_init = ConfirmDialog.__init__
+
+    def capturing_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        dialogs.append(self)
+
+    monkeypatch.setattr(ConfirmDialog, "__init__", capturing_init)
+    monkeypatch.setattr(ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
+    ConfirmDialog.notify(None, "بروز است", "برنامه و فایل تعطیلات بروز است.")
+    assert not dialogs[0].detail_label.isVisible()
+    assert dialogs[0].detail_label.text() == ""
+
+
 # --- update checker uses the themed dialogs ---
 
 def test_update_popup_download_choice_starts_download(tray, monkeypatch):
@@ -1082,7 +1115,7 @@ def test_notify_danger_styles_ok_button_as_danger(qtbot, monkeypatch):
     style instead of the accent blue."""
     captured = {}
 
-    def fake_choose(parent, title, message, *, actions, danger, glyph, width):
+    def fake_choose(parent, title, message, *, actions, danger, glyph, width, **kwargs):
         captured['actions'] = actions
         captured['danger'] = danger
         return None

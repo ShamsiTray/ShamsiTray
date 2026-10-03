@@ -191,5 +191,6 @@ class Config:
         FA_CIRCLE_INFO = '\uf05a'
         FA_WIFI = '\uf1eb'
         FA_SAVE = '\uf0c7'
+        FA_CLOCK = '\uf017'
 
 APP_CONFIG = Config()

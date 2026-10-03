@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from tests.qt_mousing import press
-from ui.widgets.calendar_day_cell import ClickableLabel, _menu_stylesheet
+from ui.widgets.calendar_day_cell import (ClickableLabel, DISTANCE_ACTION_TEXT,
+                                          _menu_stylesheet)
 from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_H,
                                      MENU_ITEM_PADDING_V)
 from ui.widgets.tooltip import CustomTooltip
@@ -730,3 +731,72 @@ def test_copy_requires_a_jalali_date(qtbot, cell):
     cell._copy_date_and_close(menu, "jalali")
     assert clipboard.text() == before
     assert not menu.isVisible()  # the menu is still closed first
+
+
+# --- فاصله تا امروز ------------------------------------------------------------------
+
+
+def _distance_action(menu: QMenu):
+    """The «فاصله تا امروز» row, which is a custom-widget action like the event rows."""
+    return next(a for a in menu.actions()
+                if hasattr(a, "defaultWidget") and a.defaultWidget() is not None
+                and hasattr(a.defaultWidget(), "label")
+                and a.defaultWidget().label.text() == DISTANCE_ACTION_TEXT)
+
+
+def _distance_widget(menu: QMenu):
+    return _distance_action(menu).defaultWidget()
+
+
+def test_context_menu_offers_the_distance_action_in_its_own_group(qtbot, cell, open_menu):
+    """The row sits last, after a separator that follows the copy submenu, so it
+    reads as a separate kind of row rather than another copy format."""
+    cell.setText("۵")
+    menu = open_menu(cell)
+    rows = menu.actions()
+    assert isinstance(_distance_action(menu), QWidgetAction)
+    # A separator separates it from the «کپی تاریخ» submenu above it.
+    assert rows[-2].isSeparator()
+    assert rows[-1] is _distance_action(menu)
+    # And the copy submenu is still the last titled row before that separator.
+    assert _copy_title_action(menu) in rows[:-2]
+
+
+def test_distance_action_is_enabled_even_without_a_user_event(qtbot, cell, open_menu):
+    """Asking how far away a day is has nothing to do with whether it has an
+    event, so this row stays live on a plain day."""
+    cell.setText("۵")
+    cell.has_user_event = False
+    menu = open_menu(cell)
+    assert _distance_widget(menu).isEnabled() is True
+
+
+def test_distance_action_emits_the_right_clicked_day(qtbot, cell, open_menu):
+    cell.setText("۵")
+    received = []
+    cell.distance_requested.connect(lambda j: received.append(j))
+    menu = open_menu(cell)
+    _distance_widget(menu).triggered.emit()
+    qtbot.wait(100)  # the deferred singleShot
+    assert received == [cell.jalali_date]
+
+
+def test_distance_emission_is_delayed_until_menu_gone(cell, qtbot):
+    """The notice opens a modal dialog, which must not appear while the menu
+    still holds its mouse grab."""
+    received = []
+    cell.distance_requested.connect(lambda j: received.append(j))
+
+    class FakeMenu:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    menu = FakeMenu()
+    cell._trigger_distance_and_close_menu(menu, cell.jalali_date)
+    assert menu.closed
+    assert received == []
+    qtbot.wait(100)
+    assert received == [cell.jalali_date]

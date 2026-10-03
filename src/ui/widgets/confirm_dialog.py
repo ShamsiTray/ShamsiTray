@@ -289,10 +289,14 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         return dialog.choice
 
     @staticmethod
-    def notify(parent, title: str, message: str, *, danger: bool = False,
+    def notify(parent, title: str, message: str, *, detail: str = "",
+               danger: bool = False,
                glyph: Optional[str] = None, button_text: str = "باشه",
                width: int = 340) -> None:
         """Single-button themed notice (replaces the stock informational boxes).
+
+        Takes the same ``detail`` line as ``ask``/``choose`` so a notice can show
+        a breakdown under its headline.
 
         Failure notices (``danger=True``) style the OK button in the holiday red
         of the destructive actions instead of the accent blue, so an error dialog
@@ -300,4 +304,4 @@ class ConfirmDialog(FramelessDragMixin, QDialog):
         """
         ConfirmDialog.choose(parent, title, message,
                              actions=[(button_text, "danger" if danger else "accent")],
-                             danger=danger, glyph=glyph, width=width)
+                             danger=danger, detail=detail, glyph=glyph, width=width)

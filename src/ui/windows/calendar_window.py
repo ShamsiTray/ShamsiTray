@@ -17,7 +17,10 @@ from PyQt6.QtGui import QColor, QCursor, QFont
 from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
-from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
+from utils.date_utils import (describe_date_distance, days_in_jalali_month,
+                              format_distance_breakdown, format_distance_total,
+                              persian_month_name, persian_weekday_name,
+                              to_persian_digits)
 from utils.event_io import RECURRENCE_NONE, events_for_date
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
@@ -193,6 +196,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 label.clicked.connect(self._on_day_clicked)
                 label.add_event_requested.connect(self._show_event_input_widget)
                 label.remove_event_requested.connect(self._remove_event)
+                label.distance_requested.connect(self._show_date_distance)
                 grid_layout.addWidget(label, row, col)
                 week_labels.append(label)
             self.day_labels.append(week_labels)
@@ -571,3 +575,31 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if not self._confirm_remove(jdate):
             return
         self.event_removed.emit(jdate)
+    def _show_date_distance(self, jdate: jdatetime.date):
+        """Show how far the clicked day sits from today in a themed notice.
+
+        The distance is measured from ``current_date`` rather than a fresh
+        ``date.today()``, so it cannot disagree with the ring the calendar drew
+        around today. Today is a caller-side branch in both formatters, so it
+        gets the plain «تاریخ امروز است.» headline and no breakdown - there is
+        no distance to break down. Pending day-cell tooltips are cancelled for
+        the same reason the delete confirmation does it: the notice is a
+        separate top-level window that a re-armed timer would draw over.
+        """
+        if not jdate:
+            return
+        self._cancel_day_tooltips()
+        distance = describe_date_distance(jdate, today=self.current_date)
+        date_line = (f"{persian_weekday_name(jdate.weekday())} "
+                     f"{to_persian_digits(jdate.day)} "
+                     f"{persian_month_name(jdate.month)} "
+                     f"{to_persian_digits(jdate.year)}")
+        if distance.is_today:
+            message, breakdown = "تاریخ امروز است.", None
+        else:
+            message = format_distance_total(distance)
+            breakdown = format_distance_breakdown(distance)
+        ConfirmDialog.notify(
+            self, "فاصله تا امروز", message,
+            detail="\n".join(filter(None, (breakdown, date_line))),
+            glyph=APP_CONFIG.FAS.FA_CLOCK, width=280)

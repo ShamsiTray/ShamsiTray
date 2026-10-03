@@ -5,8 +5,12 @@ import jdatetime
 import pytest
 
 from utils.date_utils import (
+    DateDistance,
     days_in_gregorian_month,
     days_in_jalali_month,
+    describe_date_distance,
+    format_distance_breakdown,
+    format_distance_total,
     from_persian_digits,
     gregorian_month_name,
     is_gregorian_leap_year,
@@ -16,6 +20,8 @@ from utils.date_utils import (
     persian_weekday_name,
     to_persian_digits,
     validate_year_range,
+    _add_jalali_months,
+    _add_jalali_years,
 )
 
 
@@ -192,3 +198,156 @@ def test_format_gregorian_numeric_zero_pads_and_converts():
     gdate = jdatetime.date(1404, 5, 2).togregorian()
     assert format_gregorian_numeric(jdatetime.date(1404, 5, 2)) == \
         f"{gdate.year}/{gdate.month:02d}/{gdate.day:02d}"
+
+
+# --- date distance (فاصله تا امروز) ---
+
+
+def test_distance_takes_whole_years_even_when_the_day_clamps():
+    """1403 is leap so Esfand 30 exists, but 1405's Esfand stops at 29 - which is
+    exactly where two years on lands, so the user reads «۲ سال», not 1 year 11 months."""
+    distance = describe_date_distance(jdatetime.date(1405, 12, 29),
+                                      today=jdatetime.date(1403, 12, 30))
+    assert (distance.years, distance.months, distance.days) == (2, 0, 0)
+    assert distance.total_days == 730
+
+
+def test_distance_takes_whole_months_when_the_day_clamps_down():
+    """Shahrivar has 31 days and Mehr 30, so a monthly anchor on 31 lands on 30."""
+    distance = describe_date_distance(jdatetime.date(1405, 7, 30),
+                                      today=jdatetime.date(1405, 6, 31))
+    assert (distance.years, distance.months, distance.days) == (0, 1, 0)
+    assert distance.total_days == 30
+
+
+def test_total_days_is_not_a_conversion_of_the_units():
+    """Ten whole years is 3653 days, not 3650 - three leap days fall in the span.
+    A fixed-length reading of years/months/days is wrong here, and is the obvious
+    'simplification' this decomposition must not be collapsed into."""
+    distance = describe_date_distance(jdatetime.date(1405, 1, 1),
+                                      today=jdatetime.date(1395, 1, 1))
+    assert (distance.years, distance.months, distance.days) == (10, 0, 0)
+    assert distance.total_days == 3653
+    assert distance.total_days != 365 * distance.years
+
+
+def test_identical_unit_breakdowns_can_span_different_day_counts():
+    """Both gaps are three whole months; one covers 89 days and the other 90,
+    because the months involved differ in length. The units alone cannot recover
+    the day count."""
+    shorter = describe_date_distance(jdatetime.date(1402, 1, 1),
+                                     today=jdatetime.date(1401, 10, 1))
+    longer = describe_date_distance(jdatetime.date(1405, 11, 1),
+                                    today=jdatetime.date(1405, 8, 1))
+    assert (shorter.years, shorter.months, shorter.days) == \
+           (longer.years, longer.months, longer.days) == (0, 3, 0)
+    assert (shorter.total_days, longer.total_days) == (89, 90)
+
+
+def test_distance_is_signed_by_direction_and_symmetric():
+    earlier, later = jdatetime.date(1403, 5, 5), jdatetime.date(1406, 8, 9)
+    forward = describe_date_distance(later, today=earlier)
+    backward = describe_date_distance(earlier, today=later)
+    assert forward.total_days == -backward.total_days
+    assert (forward.years, forward.months, forward.days) == \
+           (backward.years, backward.months, backward.days)
+    assert forward.total_days > 0 and backward.total_days < 0
+
+
+def test_same_date_is_today_with_no_units():
+    today = jdatetime.date(1405, 7, 1)
+    distance = describe_date_distance(today, today=today)
+    assert distance.is_today
+    assert (distance.years, distance.months, distance.days, distance.total_days) == (0, 0, 0, 0)
+
+
+def test_is_today_agrees_with_the_sign_of_total_days():
+    base = jdatetime.date(1405, 7, 1)
+    for offset in (-400, -30, -1, 0, 1, 30, 400):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset),
+                                          today=base)
+        assert distance.is_today == (distance.total_days == 0)
+        assert distance.total_days == offset
+        if offset == 0:
+            assert (distance.years, distance.months, distance.days) == (0, 0, 0)
+
+
+def test_distance_defaults_to_the_real_today():
+    today = jdatetime.date.today()
+    assert describe_date_distance(today) == describe_date_distance(today, today=today)
+    assert describe_date_distance(today + datetime.timedelta(days=1)).total_days == 1
+
+
+def test_distance_units_are_never_negative():
+    base = jdatetime.date(1403, 1, 1)
+    for offset in (-500, -45, -1, 1, 45, 500):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset),
+                                          today=base)
+        assert distance.years >= 0 and distance.months >= 0 and distance.days >= 0
+
+
+def test_distance_reapplying_the_units_lands_exactly_on_the_target():
+    """The decomposition is only useful if replaying it reproduces the later date,
+    which is what pins the largest-unit-first order and the per-step clamping.
+    The replay starts from the earlier of the pair, since that is where the
+    units were counted from."""
+    today = jdatetime.date(1399, 1, 1)
+    for offset in range(-900, 901, 7):
+        target = today + datetime.timedelta(days=offset)
+        distance = describe_date_distance(target, today=today)
+        earlier, later = (today, target) if offset >= 0 else (target, today)
+        replayed = _add_jalali_months(_add_jalali_years(earlier, distance.years),
+                                      distance.months)
+        replayed += datetime.timedelta(days=distance.days)
+        assert replayed == later
+        assert distance.total_days == offset
+
+
+@pytest.mark.parametrize("earlier,later,expected_years", [
+    (jdatetime.date(1200, 1, 1), jdatetime.date(1600, 12, 29), 400),
+    (jdatetime.date(1, 1, 1), jdatetime.date(1600, 12, 29), 1599),
+])
+def test_distance_survives_the_widest_supported_span(earlier, later, expected_years):
+    """The extreme spans the calendar's supported range can produce."""
+    distance = describe_date_distance(later, today=earlier)
+    assert distance.years == expected_years
+    assert distance.total_days == (later - earlier).days
+    replayed = _add_jalali_months(_add_jalali_years(earlier, distance.years),
+                                  distance.months)
+    assert replayed + datetime.timedelta(days=distance.days) == later
+
+
+def test_distance_formatters_read_as_persian_sentences():
+    future = describe_date_distance(jdatetime.date(1406, 5, 10),
+                                    today=jdatetime.date(1404, 3, 5))
+    past = describe_date_distance(jdatetime.date(1395, 1, 1),
+                                  today=jdatetime.date(1405, 1, 1))
+    assert format_distance_total(future) == "۷۹۷ روز مانده"
+    assert format_distance_breakdown(future) == "۲ سال و ۲ ماه و ۵ روز مانده"
+    assert format_distance_total(past) == "۳۶۵۳ روز گذشته"
+    assert format_distance_breakdown(past) == "۱۰ سال گذشته"
+
+
+def test_distance_formatters_agree_on_direction():
+    """Both renderers must name the same direction, or the dialog headline and its
+    detail line would contradict each other."""
+    base = jdatetime.date(1405, 7, 1)
+    for offset in (-70, -1, 1, 70):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset),
+                                          today=base)
+        word = "مانده" if offset > 0 else "گذشته"
+        assert format_distance_total(distance).endswith(word)
+        assert format_distance_breakdown(distance).endswith(word)
+
+
+def test_distance_breakdown_skips_empty_units():
+    distance = describe_date_distance(jdatetime.date(1406, 1, 6),
+                                      today=jdatetime.date(1404, 1, 1))
+    assert (distance.years, distance.months, distance.days) == (2, 0, 5)
+    assert format_distance_breakdown(distance) == "۲ سال و ۵ روز مانده"
+
+
+def test_distance_is_immutable():
+    distance = DateDistance(years=1, months=2, days=3, total_days=400)
+    with pytest.raises(Exception):
+        distance.years = 2
