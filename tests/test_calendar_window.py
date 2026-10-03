@@ -444,3 +444,94 @@ def test_day_style_defaults():
     assert style.border_style == "none"
     assert style.font_size == APP_CONFIG.FONT_SIZE_LABEL
     assert style.tooltip == ""
+
+
+# --- فاصله تا امروز notice ------------------------------------------------------------
+
+
+@pytest.fixture
+def notices(monkeypatch):
+    """Capture the ConfirmDialog.notify calls the day-cell action produces."""
+    calls = []
+    monkeypatch.setattr(calendar_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **kw: calls.append((a, kw))))
+    return calls
+
+
+def test_distance_notice_leads_with_the_day_total_and_direction(calendar, notices):
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    assert len(notices) == 1
+    args, kwargs = notices[0]
+    assert args[1] == "فاصله تا امروز"
+    assert args[2].endswith("مانده")   # a future day
+    assert "روز" in args[2]
+
+
+def test_distance_notice_names_a_past_day_as_گذشته(calendar, notices):
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1403, 2, 1))
+    assert notices[0][0][2].endswith("گذشته")
+
+
+def test_distance_notice_detail_carries_the_breakdown_and_the_date(calendar, notices):
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    detail = notices[0][1]["detail"].splitlines()
+    assert len(detail) == 2
+    assert detail[0].endswith("مانده") and "سال" not in detail[0]
+    assert "آبان" in detail[1] and "۱۴۰۴" in detail[1]
+
+
+def test_distance_notice_for_today_has_no_breakdown(calendar, notices):
+    """There is no distance to break down, so the headline is the plain literal
+    and only the date line remains under it."""
+    today = jdatetime.date(1404, 5, 10)
+    calendar.current_date = today
+    calendar._show_date_distance(today)
+    args, kwargs = notices[0]
+    assert args[2] == "تاریخ امروز است."
+    assert "مانده" not in kwargs["detail"] and "گذشته" not in kwargs["detail"]
+    assert len(kwargs["detail"].splitlines()) == 1
+
+
+def test_distance_notice_is_measured_from_the_calendriers_own_today(calendar, notices):
+    """current_date is what the calendar drew today as, so the notice agrees with
+    the grid even if the wall clock has moved since the popup opened."""
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 5, 11))
+    assert "۱ روز مانده" in notices[0][0][2]
+    assert "۱ روز مانده" in notices[0][1]["detail"]
+
+
+def test_distance_notice_is_a_narrow_themed_notice(calendar, notices):
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    kwargs = notices[0][1]
+    assert kwargs["width"] == 280        # the calendar is only 305px wide
+    assert kwargs["glyph"] == APP_CONFIG.FAS.FA_CLOCK
+    assert kwargs.get("danger", False) is False
+
+
+def test_distance_notice_ignores_a_missing_date(calendar, notices):
+    calendar._show_date_distance(None)
+    assert notices == []
+
+
+def test_distance_notice_cancels_pending_day_tooltips(calendar, notices, monkeypatch):
+    """The notice is a separate top-level window; a re-armed tooltip timer would
+    otherwise draw the holiday reason over it."""
+    killed = []
+    monkeypatch.setattr(calendar, "_cancel_day_tooltips", lambda: killed.append(True))
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    assert killed == [True]
+
+
+def test_day_cells_are_wired_to_the_distance_action(calendar, notices):
+    """Emitting from a real cell must reach the calendar, not just exist on it."""
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    target = calendar.day_labels[0][0]
+    target.jalali_date = jdatetime.date(1404, 8, 20)
+    target.distance_requested.emit(target.jalali_date)
+    assert len(notices) == 1

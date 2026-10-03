@@ -5,6 +5,7 @@ Date and Calendar Utilities
 This module contains helper functions related to date manipulation, formatting,
 and calendar-specific logic for both Jalali (Shamsi) and Gregorian systems.
 """
+from dataclasses import dataclass
 from typing import Optional
 
 import datetime
@@ -93,6 +94,94 @@ def days_in_gregorian_month(year: int, month: int) -> int:
     if month == 12:
         return 31
     return (datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)).day
+
+@dataclass(frozen=True)
+class DateDistance:
+    """How far apart two Jalali dates are, measured from the earlier one.
+
+    ``total_days`` is signed (``target - today``), so its sign is the
+    direction: negative past, zero today, positive future. It is not a
+    conversion of the other three fields - Jalali months run 29 to 31 days,
+    years 365 or 366, and the clamped decomposition depends on the anchor
+    date. 1395/01/01 -> 1405/01/01 is ten years and 3653 days, not 3650, and
+    1401/10/01 -> 1402/01/01 is three months and 89 days where
+    1405/08/01 -> 1405/11/01 is three months and 90.
+
+    ``years``, ``months`` and ``days`` are all non-negative: the pair is
+    always oriented earlier -> later.
+    """
+
+    years: int
+    months: int
+    days: int
+    total_days: int
+
+    @property
+    def is_today(self) -> bool:
+        return self.total_days == 0
+
+def _add_jalali_years(jdate: jdatetime.date, count: int) -> jdatetime.date:
+    """Shift by whole years, clamping to the target month's last valid day."""
+    year = jdate.year + count
+    return jdatetime.date(year, jdate.month,
+                          min(jdate.day, days_in_jalali_month(year, jdate.month)))
+
+def _add_jalali_months(jdate: jdatetime.date, count: int) -> jdatetime.date:
+    """Shift by whole months, clamping to the target month's last valid day."""
+    year, month = jdate.year + count // 12, jdate.month + count % 12
+    if month > 12:
+        year, month = year + 1, month - 12
+    return jdatetime.date(year, month,
+                          min(jdate.day, days_in_jalali_month(year, month)))
+
+def describe_date_distance(target: jdatetime.date,
+                           today: Optional[jdatetime.date] = None) -> DateDistance:
+    """Decompose the gap between ``target`` and ``today`` (today by default).
+
+    Units are taken largest first - years, then months, then the leftover
+    days - and each step clamps to the target month's last valid day, so the
+    result is order-dependent and is not flat field arithmetic: from
+    1403/12/30, one year on is 1404/12/29, because 1404 has no Esfand 30.
+
+    The walk advances a cursor instead of recomputing from the original date
+    on every iteration, which would be quadratic across wide year spans.
+    """
+    today = today if today is not None else jdatetime.date.today()
+    delta = (target - today).days
+    lo, hi = (today, target) if delta >= 0 else (target, today)
+
+    cursor = lo
+    years = 0
+    while _add_jalali_years(cursor, 1) <= hi:
+        cursor = _add_jalali_years(cursor, 1)
+        years += 1
+
+    months = 0
+    while _add_jalali_months(cursor, 1) <= hi:
+        cursor = _add_jalali_months(cursor, 1)
+        months += 1
+
+    return DateDistance(years=years, months=months, days=(hi - cursor).days,
+                        total_days=delta)
+
+def _distance_status_word(distance: DateDistance) -> str:
+    """The direction word; today is a caller branch, so it is never asked."""
+    return "مانده" if distance.total_days > 0 else "گذشته"
+
+def format_distance_total(distance: DateDistance) -> str:
+    """«۶۹ روز مانده» - the day count and its direction. Not defined for today."""
+    return f"{to_persian_digits(abs(distance.total_days))} روز {_distance_status_word(distance)}"
+
+def format_distance_breakdown(distance: DateDistance) -> str:
+    """«۲ سال و ۲ ماه و ۱ روز مانده». Not defined for today.
+
+    A non-today distance always has at least one non-zero unit, so the part
+    list is never empty.
+    """
+    parts = [f"{to_persian_digits(count)} {unit}" for count, unit in
+             ((distance.years, "سال"), (distance.months, "ماه"), (distance.days, "روز"))
+             if count]
+    return f"{' و '.join(parts)} {_distance_status_word(distance)}"
 
 def validate_year_range(year: int, min_year: int, max_year: int, is_jalali: bool) -> Optional[str]:
     """Check a year against its allowed range, returning a Persian error message or None."""

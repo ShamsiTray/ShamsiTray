@@ -146,7 +146,7 @@ def test_font_awesome_free_covers_every_used_glyph(qtbot):
                  "FA_MOON_SOLID", "FA_XMARK", "FA_MINUS", "FA_TRASH",
                  "FA_ARROWS_ROTATE", "FA_DOWNLOAD", "FA_UPLOAD",
                  "FA_CIRCLE_EXCLAMATION", "FA_CIRCLE_INFO", "FA_WIFI",
-                 "FA_SAVE"):
+                 "FA_SAVE", "FA_CLOCK"):
         glyph = ord(getattr(APP_CONFIG.FAS, name))
         assert metrics.inFontUcs4(glyph), f"{name} (U+{glyph:04X}) missing from {APP_CONFIG.FONT_AWESOME_FAMILY}"
 

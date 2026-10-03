@@ -26,6 +26,10 @@ _COPY_MODES = ("jalali", "gregorian", "both")
 
 _COPY_ACTION_TEXTS = ("تاریخ شمسی", "تاریخ میلادی", "هر دو")
 
+# Its own group, after «کپی تاریخ»: this asks a question about the day rather
+# than acting on it, so it reads as a separate kind of row.
+DISTANCE_ACTION_TEXT = "فاصله تا امروز"
+
 
 def _copy_text_for_mode(mode: str, jdate: jdatetime.date) -> str:
     """Clipboard text for one «کپی تاریخ» entry.
@@ -83,6 +87,7 @@ class ClickableLabel(QLabel):
     clicked = pyqtSignal(object)
     add_event_requested = pyqtSignal(object)
     remove_event_requested = pyqtSignal(object)
+    distance_requested = pyqtSignal(object)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -183,8 +188,16 @@ class ClickableLabel(QLabel):
 
         self._build_copy_date_menu(menu)
 
+        menu.addSeparator()
+
+        distance_widget = MenuActionWidget(DISTANCE_ACTION_TEXT, menu)
+        distance_action = QWidgetAction(menu)
+        distance_action.setDefaultWidget(distance_widget)
+        menu.addAction(distance_action)
+
         add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
         remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
+        distance_widget.triggered.connect(lambda: self._trigger_distance_and_close_menu(menu, self.jalali_date))
 
         menu.exec(clamp_popup_to_work_area(menu, self.mapToGlobal(event.pos())))
 
@@ -259,3 +272,9 @@ class ClickableLabel(QLabel):
     def _trigger_remove_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
         QTimer.singleShot(50, lambda: self.remove_event_requested.emit(jdate))
+
+    def _trigger_distance_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
+        menu.close()
+        # Same deferred emission as the event rows: the notice opens a modal
+        # dialog, which must not appear while the menu still holds its grab.
+        QTimer.singleShot(50, lambda: self.distance_requested.emit(jdate))
