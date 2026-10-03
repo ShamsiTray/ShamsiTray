@@ -35,8 +35,15 @@ OutputBaseFilename=ShamsiTraySetup-{#MyAppVersion}
 SetupIconFile=..\assets\images\icons\icon.ico
 SolidCompression=yes
 Compression=lzma2/ultra64
-WizardStyle=modern
+WizardStyle=dynamic
 WizardSizePercent=100
+WizardImageFile=..\assets\images\wizard\WizardImage.png
+WizardImageFileDynamicDark=..\assets\images\wizard\WizardImage.png
+WizardImageBackColor=#fb2a4e
+WizardImageBackColorDynamicDark=#D52D4A
+WizardSmallImageFile=..\assets\images\wizard\WizardSmallImage.png
+WizardSmallImageFileDynamicDark=..\assets\images\wizard\WizardSmallImage.png
+
 DisableWelcomePage=no
 ; The start-menu group is fixed in [Icons], so this page could only ever be
 ; answered "create" - one more click for a tray app.
