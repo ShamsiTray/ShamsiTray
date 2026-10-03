@@ -14,15 +14,18 @@ from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QC
 from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
 
 from config import APP_CONFIG
-from utils.date_utils import from_persian_digits, to_persian_digits, is_gregorian_leap_year, is_jalali_leap_year, days_in_jalali_month, days_in_gregorian_month, validate_year_range, persian_month_name, gregorian_month_name, persian_weekday_name
+from utils.date_utils import (describe_date_distance, format_distance_breakdown,
+                              from_persian_digits, to_persian_digits,
+                              is_gregorian_leap_year, is_jalali_leap_year,
+                              days_in_jalali_month, days_in_gregorian_month,
+                              validate_year_range, persian_month_name,
+                              gregorian_month_name, persian_weekday_name)
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet)
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
-
-from dateutil.relativedelta import relativedelta  # pinned in requirements.txt
 
 logger = setup_logging(__name__)
 
@@ -446,21 +449,16 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.setFixedSize(650, 470)
 
     def _update_elapsed_time(self, target_date: datetime.date):
+        """Show the gap between the converted date and today.
+
+        The breakdown is Jalali, not Gregorian: this is a Persian calendar, and
+        «۲ سال و ۲ ماه» means two Jalali years to the user reading it. That also
+        means the line matches the calendar's own «فاصله تا امروز» notice, since
+        both go through the shared date-distance helper.
         """
-        Calculates human-readable elapsed time between today and the target date.
-
-        python-dateutil is a hard, pinned dependency of the shipped app, so the
-        old "crude fallback when dateutil is missing" branch (a flat 365/30-day
-        approximation) was unreachable dead code and untested.
-        """
-        today = datetime.date.today()
-        if target_date == today:
-             self.elapsed_text.setText("تاریخ امروز است.")
-             return
-
-        future = target_date > today
-        delta = relativedelta(today, target_date)
-        parts = [f"{to_persian_digits(abs(d))} {n}" for d, n in [(delta.years, "سال"), (delta.months, "ماه"), (delta.days, "روز")] if d]
-
-        status = "مانده" if future else "گذشته"
-        self.elapsed_text.setText(f"فاصله زمانی: {' '.join(parts)} {status}")
+        distance = describe_date_distance(
+            jdatetime.date.fromgregorian(date=target_date))
+        if distance.is_today:
+            self.elapsed_text.setText("تاریخ امروز است.")
+            return
+        self.elapsed_text.setText(f"فاصله زمانی: {format_distance_breakdown(distance)}")
