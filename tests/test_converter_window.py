@@ -5,7 +5,8 @@ import jdatetime
 import pytest
 
 from ui.windows.converter_window import DateConverterWindow
-from utils.date_utils import to_persian_digits
+from utils.date_utils import (describe_date_distance, format_distance_breakdown,
+                              to_persian_digits)
 
 
 @pytest.fixture
@@ -129,6 +130,51 @@ def test_elapsed_time_for_a_past_date(window):
     window._convert_date()
     assert "گذشته" in window.elapsed_text.text()
     assert "مانده" not in window.elapsed_text.text()
+
+
+def _convert_jalali(window, target: jdatetime.date):
+    set_jalali_input(window, to_persian_digits(str(target.year)),
+                     target.month - 1, to_persian_digits(str(target.day)))
+    window._convert_date()
+
+
+def test_elapsed_line_is_the_shared_jalali_decomposition(window):
+    """The converter's line and the calendar's «فاصله تا امروز» notice must not be
+    able to disagree, so the line comes from the same helper rather than a second
+    decomposition."""
+    target = jdatetime.date.today() + datetime.timedelta(days=800)
+    _convert_jalali(window, target)
+    expected = describe_date_distance(target, today=jdatetime.date.today())
+    assert window.elapsed_text.text() == \
+        f"فاصله زمانی: {format_distance_breakdown(expected)}"
+
+
+def test_elapsed_line_breaks_the_units_down_in_jalali_not_gregorian(window):
+    """A Persian calendar app means Jalali years and months here. The two calendars
+    disagree on where the year boundary falls, so a span that crosses one lands on
+    different month counts depending on which calendar is asked."""
+    target = jdatetime.date.today() + datetime.timedelta(days=400)
+    _convert_jalali(window, target)
+    jalali = describe_date_distance(target, today=jdatetime.date.today())
+    gregorian_years = target.togregorian().year - jdatetime.date.today().togregorian().year
+    assert (jalali.years, jalali.months) != (gregorian_years, 0)
+    assert f"{to_persian_digits(jalali.years)} سال" in window.elapsed_text.text() \
+        or f"{to_persian_digits(jalali.months)} ماه" in window.elapsed_text.text()
+
+
+def test_elapsed_line_reads_units_with_and(window):
+    """The old line space-joined the units («۲ سال ۵ روز»); the shared formatter
+    puts «و» between them."""
+    target = jdatetime.date.today() + datetime.timedelta(days=760)
+    _convert_jalali(window, target)
+    distance = describe_date_distance(target, today=jdatetime.date.today())
+    assert sum(1 for n in (distance.years, distance.months, distance.days) if n) >= 2
+    assert " و " in window.elapsed_text.text()
+
+
+def test_elapsed_line_for_today_is_unchanged(window):
+    _convert_jalali(window, jdatetime.date.today())
+    assert window.elapsed_text.text() == "تاریخ امروز است."
 
 
 # --- live year-range error (#6) -----------------------------------------------------------
