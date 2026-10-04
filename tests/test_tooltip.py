@@ -58,6 +58,45 @@ def test_show_tooltip_flips_left_near_right_edge(qtbot):
     tooltip.hide()
 
 
+def test_flash_tooltip_shows_then_auto_hides(qtbot):
+    tooltip = CustomTooltip.instance()
+    qtbot.addWidget(tooltip)
+    tooltip.flash_tooltip("کپی شد", QPoint(200, 200), duration_ms=50)
+    assert tooltip.isVisible()
+    assert tooltip._auto_hide_timer.isActive()
+    qtbot.wait(150)
+    assert not tooltip.isVisible()
+
+
+def test_a_second_flash_gets_its_own_full_window(qtbot):
+    """Two copies in a row must not share one deadline.
+
+    The callers used to schedule an uncancellable QTimer.singleShot(600, hide)
+    each, so the SECOND confirmation was hidden by the FIRST one's timer - it
+    appeared for a fraction of the intended window."""
+    tooltip = CustomTooltip.instance()
+    qtbot.addWidget(tooltip)
+    tooltip.flash_tooltip("کپی شد", QPoint(200, 200), duration_ms=400)
+    qtbot.wait(300)                      # 300ms into the first flash's window
+    tooltip.flash_tooltip("کپی شد", QPoint(200, 200), duration_ms=400)
+    qtbot.wait(300)                      # past where the FIRST timer would fire
+    assert tooltip.isVisible(), "the first flash's timer hid the second flash"
+
+
+def test_a_stale_flash_cannot_hide_a_later_tooltip(qtbot):
+    """An explicit show must survive a confirmation still counting down.
+
+    Without stopping the timer, a holiday tooltip arriving just after a copy
+    was hidden mid-read by the leftover flash."""
+    tooltip = CustomTooltip.instance()
+    qtbot.addWidget(tooltip)
+    tooltip.flash_tooltip("کپی شد", QPoint(200, 200), duration_ms=100)
+    tooltip.show_tooltip("تعطیلی: عید نوروز", QPoint(200, 200))
+    qtbot.wait(250)
+    assert tooltip.isVisible()
+    assert tooltip._label.text() == "تعطیلی: عید نوروز"
+
+
 def test_show_tooltip_flips_up_near_bottom_edge(qtbot):
     tooltip = CustomTooltip.instance()
     qtbot.addWidget(tooltip)

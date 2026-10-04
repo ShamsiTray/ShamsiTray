@@ -309,6 +309,50 @@ def test_enter_does_not_convert_while_the_button_is_disabled(window):
     assert not window.output_widget.isVisible()
 
 
+def test_copy_payloads_use_latin_digits_while_labels_show_persian(window):
+    """Copying a converter row must match the calendar's «کپی تاریخ» convention.
+
+    Copying label.text() put the Persian-digit DISPLAY text on the clipboard,
+    so the same day copied to Latin digits from the calendar and to Persian
+    digits from here."""
+    from PyQt6.QtWidgets import QApplication
+    from utils.date_utils import (format_gregorian_long, format_gregorian_numeric,
+                                   format_jalali_long, format_jalali_numeric)
+
+    set_jalali_input(window, "۱۴۰۳", 0, "۱")
+    window._convert_date()
+    j_date = jdatetime.date(1403, 1, 1)
+    g_date = j_date.togregorian()
+    clipboard = QApplication.clipboard()
+
+    for label, expected in (
+        (window.jalali_date_value_1, format_jalali_numeric(j_date)),
+        (window.jalali_date_value_2, format_jalali_long(j_date, persian_digits=False)),
+        (window.gregorian_date_value_1, format_gregorian_numeric(j_date)),
+        (window.gregorian_date_value_2,
+         format_gregorian_long(g_date, persian_digits=False)),
+    ):
+        window._copy_to_clipboard(label)
+        assert clipboard.text() == expected
+
+    # The visible Jalali rows still read in Persian digits - only the clipboard
+    # payload is Latin, which is the whole point.
+    assert window.jalali_date_value_1.text() == "۱۴۰۳/۰۱/۰۱"
+
+
+def test_copy_payloads_are_rebuilt_on_every_conversion(window):
+    """A second conversion must replace the payloads, not merge into them."""
+    from PyQt6.QtWidgets import QApplication
+    from utils.date_utils import format_jalali_numeric
+
+    set_jalali_input(window, "۱۴۰۳", 0, "۱")
+    window._convert_date()
+    set_jalali_input(window, "۱۴۰۴", 5, "۱۵")
+    window._convert_date()
+    window._copy_to_clipboard(window.jalali_date_value_1)
+    assert QApplication.clipboard().text() == format_jalali_numeric(jdatetime.date(1404, 6, 15))
+
+
 def test_enter_converts_through_the_button_when_submittable(window):
     """The routing must not swallow Enter for a valid year — it goes through the
     button and still converts."""
