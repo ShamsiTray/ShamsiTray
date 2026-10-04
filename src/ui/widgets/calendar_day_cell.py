@@ -87,6 +87,8 @@ class ClickableLabel(QLabel):
     clicked = pyqtSignal(object)
     add_event_requested = pyqtSignal(object)
     remove_event_requested = pyqtSignal(object)
+    edit_event_requested_specific = pyqtSignal(object, str, dict)
+    remove_event_requested_specific = pyqtSignal(str)
     distance_requested = pyqtSignal(object)
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -184,23 +186,76 @@ class ClickableLabel(QLabel):
 
         menu.addSeparator()
 
-        add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
-        add_event_widget = MenuActionWidget(add_action_text, menu)
-        add_action = QWidgetAction(menu)
-        add_action.setDefaultWidget(add_event_widget)
-        menu.addAction(add_action)
+        from utils.event_io import events_on_date  # local import to avoid cycle
 
-        menu.addSeparator()
+        day_events = events_on_date(self.window().user_events, self.jalali_date) if hasattr(self.window(), "user_events") else []
+        self._day_events_list = day_events
 
-        remove_event_widget = MenuActionWidget("حذف رویداد", menu)
-        remove_action = QWidgetAction(menu)
-        remove_action.setDefaultWidget(remove_event_widget)
-        menu.addAction(remove_action)
-        remove_action.setEnabled(self.has_user_event)
-        remove_event_widget.setEnabled(self.has_user_event)
+        if len(day_events) <= 1:
+            add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
+            add_event_widget = MenuActionWidget(add_action_text, menu)
+            add_action = QWidgetAction(menu)
+            add_action.setDefaultWidget(add_event_widget)
+            menu.addAction(add_action)
 
-        add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
-        remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
+            menu.addSeparator()
+
+            remove_event_widget = MenuActionWidget("حذف رویداد", menu)
+            remove_action = QWidgetAction(menu)
+            remove_action.setDefaultWidget(remove_event_widget)
+            menu.addAction(remove_action)
+            remove_action.setEnabled(self.has_user_event)
+            remove_event_widget.setEnabled(self.has_user_event)
+
+            add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
+            remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
+        else:
+            edit_menu = CenteredTextMenu(menu)
+            edit_menu.setTitle("ویرایش رویداد")
+            menu.addMenu(edit_menu)
+            edit_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
+            edit_menu.setLayoutDirection(menu.layoutDirection())
+
+            for key, entry in day_events:
+                text = str(entry.get("text", ""))
+                if len(text) > 30:
+                    text = text[:30] + "…"
+                rec = entry.get("recurrence", "none")
+                if rec == "yearly":
+                    label = f"{text} (سالانه)"
+                elif rec == "monthly":
+                    label = f"{text} (ماهانه)"
+                else:
+                    label = text
+                action = edit_menu.addAction(label)
+                action.triggered.connect(
+                    lambda checked=False, k=key, e=entry: self._trigger_edit_specific_and_close(menu, k, e)
+                )
+
+            menu.addSeparator()
+
+            del_menu = CenteredTextMenu(menu)
+            del_menu.setTitle("حذف رویداد")
+            menu.addMenu(del_menu)
+            del_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
+            del_menu.setLayoutDirection(menu.layoutDirection())
+
+            for key, entry in day_events:
+                text = str(entry.get("text", ""))
+                if len(text) > 30:
+                    text = text[:30] + "…"
+                rec = entry.get("recurrence", "none")
+                if rec == "yearly":
+                    label = f"{text} (سالانه)"
+                elif rec == "monthly":
+                    label = f"{text} (ماهانه)"
+                else:
+                    label = text
+                action = del_menu.addAction(label)
+                action.triggered.connect(
+                    lambda checked=False, k=key: self._trigger_remove_specific_and_close(menu, k)
+                )
+
         distance_widget.triggered.connect(lambda: self._trigger_distance_and_close_menu(menu, self.jalali_date))
 
         menu.exec(clamp_popup_to_work_area(menu, self.mapToGlobal(event.pos())))
@@ -276,6 +331,14 @@ class ClickableLabel(QLabel):
     def _trigger_remove_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
         QTimer.singleShot(50, lambda: self.remove_event_requested.emit(jdate))
+
+    def _trigger_edit_specific_and_close(self, menu: QMenu, key: str, entry: dict):
+        menu.close()
+        QTimer.singleShot(50, lambda: self.edit_event_requested_specific.emit(self.jalali_date, key, entry))
+
+    def _trigger_remove_specific_and_close(self, menu: QMenu, key: str):
+        menu.close()
+        QTimer.singleShot(50, lambda: self.remove_event_requested_specific.emit(key))
 
     def _trigger_distance_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()

@@ -48,6 +48,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
     CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED = True
     event_added = pyqtSignal(object, str, str, bool)  # jdate, text, recurrence, remove_after_finish
     event_removed = pyqtSignal(object)
+    event_removed_by_key = pyqtSignal(str)
 
     def __init__(self, holidays_cache: dict, user_events: dict):
         super().__init__()
@@ -157,7 +158,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # One persistent instance per shape (single-button notice, two-button
         # ask), shown and hidden, so nothing has to track a destroyed widget.
         self._active_overlay: Optional[ConfirmOverlay] = None
+        self._editing_event_key: Optional[str] = None
         self._pending_remove: Optional[jdatetime.date] = None
+        self._pending_remove_key: Optional[str] = None
         self._distance_overlay = ConfirmOverlay(
             self, "فاصله تا امروز", danger=False,
             glyph=APP_CONFIG.FAS.FA_CLOCK, notice=True)
@@ -244,6 +247,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 label.clicked.connect(self._on_day_clicked)
                 label.add_event_requested.connect(self._show_event_input_widget)
                 label.remove_event_requested.connect(self._remove_event)
+                label.edit_event_requested_specific.connect(self._show_event_input_for_specific)
+                label.remove_event_requested_specific.connect(self._remove_event_by_key)
                 label.distance_requested.connect(self._show_date_distance)
                 grid_layout.addWidget(label, row, col)
                 week_labels.append(label)
@@ -547,6 +552,27 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.overlay_blocker.hide()
         self.normalize_day_hover()
 
+    def _show_event_input_for_specific(self, jdate: jdatetime.date, key: str, entry: dict):
+        if not jdate or self.event_input_widget.isVisible():
+            return
+        self._cancel_day_tooltips()
+        self.editing_date = jdate
+        self._editing_event_key = key
+        existing_text = entry.get("text", "")
+        recurrence = entry.get("recurrence", RECURRENCE_NONE)
+        remove_after_finish = entry.get("remove_after_finish", False)
+        self.event_input_widget.set_data(existing_text, recurrence, remove_after_finish)
+        self.overlay_blocker.resize(self.size())
+        self.overlay_blocker.show()
+        self.overlay_blocker.raise_()
+        width = self.width() - 40
+        height = 245
+        x = (self.width() - width) // 2
+        y = (self.height() - height) // 2 + 15
+        self.event_input_widget.setGeometry(x, y, width, height)
+        self.event_input_widget.show()
+        self.event_input_widget.raise_()
+
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
             return
@@ -557,6 +583,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # and it would pop the holiday tooltip over this editor 500ms later.
         self._cancel_day_tooltips()
         self.editing_date = jdate
+        self._editing_event_key = None
         matched = events_for_date(self.user_events, jdate)
         if matched is None:
             existing_text, recurrence, remove_after_finish = "", RECURRENCE_NONE, False
@@ -591,6 +618,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def _hide_event_input_widget(self):
         self.editing_date = None
+        self._editing_event_key = None
         self.event_input_widget.hide()
         self.overlay_blocker.hide()
         # Both the tooltip (top-level window) and a stale hover flag would
@@ -630,8 +658,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
         re-entrant emit cannot see a stale date.
         """
         target, self._pending_remove = self._pending_remove, None
+        target_key, self._pending_remove_key = getattr(self, '_pending_remove_key', None), None
         self._dismiss_active_overlay()
         self.normalize_day_hover()
+        if target_key is not None:
+            if text == self._remove_overlay.confirm_button.text():
+                self.event_removed_by_key.emit(target_key)
+            return
         if target is None:
             return
         if text == self._remove_overlay.confirm_button.text():
@@ -648,6 +681,20 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._dismiss_active_overlay()
         self.normalize_day_hover()
 
+    def _remove_event_by_key(self, key: str):
+        if not key:
+            return
+        if self._active_overlay is not None:
+            return
+        self._pending_remove_key = key
+        from utils.event_io import events_for_key
+        entry = events_for_key(self.user_events, key)
+        text = str(entry.get("text", "")) if entry else ""
+        preview = text if len(text) <= 40 else text[:40] + "…"
+        self._remove_overlay.set_message("این رویداد حذف شود؟")
+        self._remove_overlay.set_detail(preview)
+        self._present_overlay(self._remove_overlay)
+
     def _remove_event(self, jdate: jdatetime.date):
         if not jdate:
             return
@@ -655,6 +702,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # date, so the first one owns the answer.
         if self._active_overlay is not None:
             return
+        self._pending_remove_key = None
         self._request_remove_confirmation(jdate)
 
     def _show_date_distance(self, jdate: jdatetime.date):
