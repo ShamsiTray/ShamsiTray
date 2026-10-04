@@ -166,8 +166,23 @@ class ClickableLabel(QLabel):
         menu.setStyleSheet(_menu_stylesheet(palette))
         # Persian app: the day menu presents RTL, and the copy submenu inherits
         # the direction below (Qt mirrors the popup side, the submenu arrow and
-        # keyboard navigation from it).
+        # keyboard navigation from it). Layout direction changes which *side* a
+        # row sits on, not the order: insertion order is the reading order here,
+        # so this block is the menu as the user reads it - first the two ways to
+        # take the day away with them (its text, how far off it is), then the two
+        # that change the day itself.
         menu.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
+        self._build_copy_date_menu(menu)
+
+        menu.addSeparator()
+
+        distance_widget = MenuActionWidget(DISTANCE_ACTION_TEXT, menu)
+        distance_action = QWidgetAction(menu)
+        distance_action.setDefaultWidget(distance_widget)
+        menu.addAction(distance_action)
+
+        menu.addSeparator()
 
         add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
         add_event_widget = MenuActionWidget(add_action_text, menu)
@@ -183,17 +198,6 @@ class ClickableLabel(QLabel):
         menu.addAction(remove_action)
         remove_action.setEnabled(self.has_user_event)
         remove_event_widget.setEnabled(self.has_user_event)
-
-        menu.addSeparator()
-
-        self._build_copy_date_menu(menu)
-
-        menu.addSeparator()
-
-        distance_widget = MenuActionWidget(DISTANCE_ACTION_TEXT, menu)
-        distance_action = QWidgetAction(menu)
-        distance_action.setDefaultWidget(distance_widget)
-        menu.addAction(distance_action)
 
         add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
         remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
