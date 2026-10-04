@@ -148,6 +148,26 @@ def keys_matching_date(events: Dict[str, dict], jdate: jdatetime.date) -> List[s
     return [key for key in events if key_matches_date(key, jdate)]
 
 
+def events_on_date(events: Dict[str, dict], jdate: jdatetime.date) -> List[Tuple[str, dict]]:
+    """All stored (key, entry) pairs whose event occurs on ``jdate``.
+
+    The returned list may contain multiple recurrence modes (e.g. one-time and
+    monthly) on the same date.
+    """
+    matches = keys_matching_date(events, jdate)
+    result: List[Tuple[str, dict]] = []
+    for key in matches:
+        entry = events.get(key)
+        if entry is not None:
+            result.append((key, entry))
+    return result
+
+
+def count_events_on_date(events: Dict[str, dict], jdate: jdatetime.date) -> int:
+    """Count of events occurring on ``jdate``."""
+    return len(keys_matching_date(events, jdate))
+
+
 def events_for_date(events: Dict[str, dict], jdate: jdatetime.date) -> Optional[Tuple[str, dict]]:
     """The event shown for ``jdate``, as (key, entry).
 
@@ -171,6 +191,11 @@ def events_for_date(events: Dict[str, dict], jdate: jdatetime.date) -> Optional[
 
     best = min(matches, key=rank)
     return best, events[best]
+
+
+def events_for_key(events: Dict[str, dict], key: str) -> Optional[dict]:
+    """Return entry for a specific key, or None if missing."""
+    return events.get(key) if key else None
 
 
 def next_occurrence_jdate(key: str, today: Optional[jdatetime.date] = None) -> Optional[jdatetime.date]:

@@ -130,6 +130,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget = PersianCalendarWidget(self.holidays_cache, self.user_events)
         self.calendar_widget.event_added.connect(self.add_user_event)
         self.calendar_widget.event_removed.connect(self.remove_user_event)
+        if hasattr(self.calendar_widget, "event_removed_by_key"):
+            self.calendar_widget.event_removed_by_key.connect(self.remove_user_event_by_key)
 
         QTimer.singleShot(1000, self._prewarm_calendar)
 
@@ -501,6 +503,18 @@ class SystemTrayIcon(QSystemTrayIcon):
         """
         if self._events.add(jdate, text, recurrence, remove_after_finish):
             self._refresh_after_events_changed()
+
+    def remove_user_event_by_key(self, key: str, save: bool = True):
+        """Remove a single event by its store key."""
+        if self._events.delete_key(key) if hasattr(self._events, "delete_key") else False:
+            self._refresh_after_events_changed()
+            return
+        # fallback
+        if key and key in self._events.events:
+            snapshot = dict(self._events.events)
+            del self._events.events[key]
+            if self._events._commit(snapshot) if hasattr(self._events, "_commit") else True:
+                self._refresh_after_events_changed()
 
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
         """Remove every event variant matching ``jdate`` (specific, yearly, monthly)."""

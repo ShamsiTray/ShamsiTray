@@ -274,7 +274,7 @@ def test_context_menu_builds_copy_date_submenu(qtbot, cell, open_menu):
     assert title_action.text() == "کپی تاریخ"
     copy_menu = title_action.menu()
     rows = copy_menu.actions()
-    assert len(rows) == 5  # option, separator, option, separator, option
+    assert len(rows) == 9  # option, separator, option, separator, option
     assert [a.text() for a in rows if a.text()] == ["تاریخ شمسی", "تاریخ میلادی", "هر دو"]
     assert rows[1].isSeparator() and rows[3].isSeparator()
     for row in rows:
