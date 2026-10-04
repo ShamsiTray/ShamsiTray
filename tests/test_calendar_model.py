@@ -171,19 +171,19 @@ def test_event_saved_signal_payload(qtbot):
     assert not calendar.event_input_widget.isVisible()
 
 
-def test_event_removed_signal(qtbot, monkeypatch):
+def test_event_removed_signal(qtbot):
     calendar = make_calendar()
     target = jdatetime.date(1404, 6, 15)
-    # The user is asked before every deletion; simulate a confirmed removal.
-    monkeypatch.setattr(calendar, "_confirm_remove", lambda jd: True)
+    # The user is asked before every deletion; answer the in-calendar overlay.
     with qtbot.waitSignal(calendar.event_removed, timeout=2000) as blocker:
         calendar._remove_event(target)
+        calendar._remove_overlay.confirm_button.click()
     assert blocker.args == [target]
 
 
-def test_event_removed_declined_does_not_emit(qtbot, monkeypatch):
+def test_event_removed_declined_does_not_emit(qtbot):
     calendar = make_calendar()
     target = jdatetime.date(1404, 6, 15)
-    monkeypatch.setattr(calendar, "_confirm_remove", lambda jd: False)
     with qtbot.assertNotEmitted(calendar.event_removed, wait=200):
         calendar._remove_event(target)
+        calendar._remove_overlay.cancel_button.click()
