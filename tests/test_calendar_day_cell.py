@@ -281,6 +281,42 @@ def test_context_menu_builds_copy_date_submenu(qtbot, cell, open_menu):
         assert isinstance(row, QAction) and not isinstance(row, QWidgetAction)
 
 
+def _menu_rows(menu: QMenu):
+    """The day menu as the user reads it: separators and rows in order.
+
+    Insertion order is the visual order even though the menu is RTL, so this is
+    the one place that can assert the whole layout at once.
+    """
+    rows = []
+    for action in menu.actions():
+        if action.isSeparator():
+            rows.append("---")
+        elif action.menu() is not None:
+            rows.append(action.text())          # the plain «کپی تاریخ» submenu
+        else:
+            rows.append(action.defaultWidget().label.text())
+    return rows
+
+
+def test_context_menu_reads_copy_distance_add_delete(qtbot, cell, open_menu):
+    """The day's menu leads with the two ways to read the day - its text, and how
+    far off today it is - and only then offers the two that change it. Each row
+    sits in its own block, so the distance notice stays separable from the copy
+    formats above it."""
+    cell.setText("۱")
+    rows = _menu_rows(open_menu(cell))
+    assert rows == ["کپی تاریخ", "---", DISTANCE_ACTION_TEXT, "---",
+                    "افزودن رویداد", "---", "حذف رویداد"]
+
+
+def test_context_menu_add_row_reads_as_edit_on_an_event_day(qtbot, cell, open_menu):
+    """Reordering must not cost the add/edit wording swap, and it must not move the
+    swap to a different row."""
+    cell.setText("۱")
+    cell.has_user_event = True
+    assert _menu_rows(open_menu(cell))[4] == "ویرایش رویداد"
+
+
 def test_existing_day_menu_actions_survive_copy_submenu(qtbot, cell, open_menu):
     cell.setText("۵")
     menu = open_menu(cell)
@@ -403,7 +439,10 @@ def test_native_copy_rows_match_the_widget_row_geometry(qtbot, cell, open_menu):
     menu = open_menu(cell)
     menu.popup(QPoint(10, 10))  # force the menu to lay its rows out
     title = _copy_title_action(menu)
-    widget_row = next(a for a in menu.actions() if a.defaultWidget() is not None)
+    # Matched by type, not by position: the plain submenu title is a QAction with
+    # no defaultWidget at all, so probing that attribute row by row would raise
+    # on it the moment it is not last.
+    widget_row = next(a for a in menu.actions() if isinstance(a, QWidgetAction))
     widget_height = menu.actionGeometry(widget_row).height()
     title_height = menu.actionGeometry(title).height()
     copy_menu = title.menu()
@@ -749,17 +788,19 @@ def _distance_widget(menu: QMenu):
 
 
 def test_context_menu_offers_the_distance_action_in_its_own_group(qtbot, cell, open_menu):
-    """The row sits last, after a separator that follows the copy submenu, so it
-    reads as a separate kind of row rather than another copy format."""
-    cell.setText("۵")
+    """The row reads as a separate kind of row rather than another copy format:
+    a separator on each side keeps it off the «کپی تاریخ» submenu even though the
+    two now sit next to each other in the reading order."""
+    cell.setText("۱")
     menu = open_menu(cell)
     rows = menu.actions()
-    assert isinstance(_distance_action(menu), QWidgetAction)
-    # A separator separates it from the «کپی تاریخ» submenu above it.
-    assert rows[-2].isSeparator()
-    assert rows[-1] is _distance_action(menu)
-    # And the copy submenu is still the last titled row before that separator.
-    assert _copy_title_action(menu) in rows[:-2]
+    distance = _distance_action(menu)
+    assert isinstance(distance, QWidgetAction)
+    index = rows.index(distance)
+    assert rows[index - 1].isSeparator()
+    assert rows[index + 1].isSeparator()
+    # The copy submenu is the row directly above that first separator.
+    assert rows[index - 2] is _copy_title_action(menu)
 
 
 def test_distance_action_is_enabled_even_without_a_user_event(qtbot, cell, open_menu):
