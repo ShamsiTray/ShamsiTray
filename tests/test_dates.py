@@ -272,6 +272,45 @@ def test_is_today_agrees_with_the_sign_of_total_days():
             assert (distance.years, distance.months, distance.days) == (0, 0, 0)
 
 
+def test_has_calendar_units_is_false_only_under_one_month():
+    """The property exists so a surface can avoid rendering the total twice:
+    under a month the breakdown is pure days, which *is* the total."""
+    base = jdatetime.date(1404, 8, 20)
+    for offset in (-400, -31, -30, -29, -1, 1, 29, 30, 31, 366, 400):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset),
+                                          today=base)
+        has_units = distance.years > 0 or distance.months > 0
+        assert distance.has_calendar_units == has_units
+        # And that is the whole point: without a month or a year the two
+        # formatters emit the identical sentence.
+        assert (format_distance_breakdown(distance) == format_distance_total(distance)) is not has_units
+
+
+def test_has_calendar_units_is_false_for_today_too():
+    """Today has no calendar units, which is why it cannot stand in for the
+    is_today branch - both formatters are undefined for it (see below)."""
+    today = jdatetime.date(1405, 7, 1)
+    assert not describe_date_distance(today, today=today).has_calendar_units
+
+
+def test_formatters_are_undefined_for_today_and_look_like_it():
+    """Characterisation, not endorsement.
+
+    Both docstrings promise "Not defined for today", but nothing raised, so a
+    caller could mistake the output for a real distance: the total reads
+    "۰ روز گذشته" and the breakdown collapses to the bare direction word with no
+    unit at all - plus the separator space the join leaves behind, since the
+    part list really is empty. Pinning today's output keeps that trap visible; if
+    a refactor ever changes it, the callers branching on is_today are the ones to
+    revisit.
+    """
+    today = jdatetime.date(1405, 7, 1)
+    distance = describe_date_distance(today, today=today)
+    assert distance.is_today
+    assert format_distance_total(distance) == "۰ روز گذشته"
+    assert format_distance_breakdown(distance) == " گذشته"
+
+
 def test_distance_defaults_to_the_real_today():
     today = jdatetime.date.today()
     assert describe_date_distance(today) == describe_date_distance(today, today=today)

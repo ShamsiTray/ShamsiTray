@@ -120,6 +120,22 @@ class DateDistance:
     def is_today(self) -> bool:
         return self.total_days == 0
 
+    @property
+    def has_calendar_units(self) -> bool:
+        """True when the decomposition says more than the plain day total.
+
+        ``years == 0 and months == 0`` is exactly the case where
+        ``format_distance_breakdown`` renders the same sentence as
+        ``format_distance_total``: the breakdown is pure days, and those days
+        *are* the total. A surface showing both would repeat one line, so it
+        asks this first. Any non-zero month or year makes the two differ,
+        because the breakdown then leads with a different unit word.
+
+        Not a substitute for the ``is_today`` branch: today has no calendar
+        units either, but both formatters are undefined for it.
+        """
+        return self.years > 0 or self.months > 0
+
 def _add_jalali_years(jdate: jdatetime.date, count: int) -> jdatetime.date:
     """Shift by whole years, clamping to the target month's last valid day."""
     year = jdate.year + count
