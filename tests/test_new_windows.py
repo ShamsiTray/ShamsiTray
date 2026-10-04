@@ -6,12 +6,14 @@ import pytest
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QCursor
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QComboBox, QDialog, QLabel
+from PyQt6.QtWidgets import QApplication, QComboBox, QDialog, QLabel, QWidget
 
 from config import APP_CONFIG
 from ui.windows.base_window import BaseFramelessWindow
 from ui.windows.calendar_window import PersianCalendarWidget
+from ui.widgets.confirm_card import ConfirmCard
 from ui.widgets.confirm_dialog import ConfirmDialog
+from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.tooltip import CustomTooltip
 from ui.windows.event_manager_window import EventManagerWindow, _event_date_label
 from utils.event_io import recurrence_of_key as _event_recurrence
@@ -455,7 +457,7 @@ def test_manager_window_has_no_tool_flag(manager):
 
 # --- calendar delete confirmation (2.2) ---
 
-def test_calendar_remove_event_asks_confirmation(tray, monkeypatch):
+def test_calendar_remove_event_asks_confirmation(tray):
     calendar = tray.calendar_widget
     today = jdatetime.date.today()
     tray.add_user_event(today, "رویداد تقویم", "none", False)
@@ -463,13 +465,13 @@ def test_calendar_remove_event_asks_confirmation(tray, monkeypatch):
     calendar.event_removed.connect(lambda jd: emitted.append(jd))
 
     # Decline: nothing is removed.
-    monkeypatch.setattr(calendar, "_confirm_remove", lambda jd: False)
     calendar._remove_event(today)
+    calendar._remove_overlay.cancel_button.click()
     assert not emitted
 
     # Confirm: the removal signal fires.
-    monkeypatch.setattr(calendar, "_confirm_remove", lambda jd: True)
     calendar._remove_event(today)
+    calendar._remove_overlay.confirm_button.click()
     assert emitted == [today]
 
 
@@ -600,6 +602,25 @@ def test_manager_past_filter_shows_recurring_even_when_hiding_past(manager):
 
 
 # --- themed confirmation dialog ---
+
+def test_confirm_card_is_a_mixin_not_a_widget(qtbot):
+    """The card must stay free of any QWidget base, or mixing it into QDialog
+    would give that class two QWidget branches and an ambiguous super()."""
+    assert ConfirmCard.__bases__ == (object,)
+    dialog_mro = ConfirmDialog.__mro__
+    assert dialog_mro.index(ConfirmCard) < dialog_mro.index(QDialog)
+    # Exactly one QWidget-derived base on the dialog: no QWidget of its own.
+    assert sum(c.__name__ == "QWidget" for c in dialog_mro) == 1
+    assert not issubclass(ConfirmDialog, ConfirmOverlay)
+
+
+def test_confirm_dialog_still_paints_translucent_corners(qtbot):
+    """WA_TranslucentBackground moved into the shared card; without it the rounded
+    card gets square corners (invisible on a dialog, wrong over the calendar)."""
+    dialog = ConfirmDialog(None, "حذف رویداد", "متن", confirm_text="حذف")
+    qtbot.addWidget(dialog)
+    assert dialog.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
 
 def test_confirm_dialog_ask_returns_button_choice(qtbot, monkeypatch):
     widget = EventInputWidget()
@@ -1137,3 +1158,125 @@ def test_danger_notify_button_gets_danger_stylesheet(qtbot):
                            actions=[("باشه", "danger")])
     qtbot.addWidget(dialog)
     assert dialog.buttons[0].styleSheet() == danger_button_stylesheet(APP_CONFIG.get_current_palette())
+
+
+# --- in-calendar confirm overlay ---
+
+@pytest.fixture
+def host(qtbot):
+    """A plain widget to parent an overlay to; the calendar is only one host."""
+    widget = QWidget()
+    widget.resize(APP_CONFIG.CALENDAR_WIDTH, APP_CONFIG.CALENDAR_HEIGHT)
+    qtbot.addWidget(widget)
+    widget.show()
+    return widget
+
+
+def test_overlay_is_a_child_card_not_a_window(qtbot, host):
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="این رویداد حذف شود؟")
+    overlay.show()
+    assert overlay.parent() is host
+    assert not overlay.isWindow()
+    assert not isinstance(overlay, QDialog)
+    # A child has no window flags of its own and must not be draggable.
+    assert not hasattr(overlay, "handle_drag_press")
+
+
+def test_overlay_reports_and_hides_on_choice(qtbot, host):
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="x")
+    overlay.show()
+    seen = []
+    overlay.chosen.connect(seen.append)
+    QTest.mouseClick(overlay.confirm_button, Qt.MouseButton.LeftButton)
+    assert seen == [overlay.confirm_button.text()]
+    assert not overlay.isVisible()
+    assert overlay.choice == overlay.confirm_button.text()
+
+
+def test_overlay_ask_shape_has_a_cancel_button(qtbot, host):
+    overlay = ConfirmOverlay(host, "حذف رویداد", confirm_text="حذف", cancel_text="انصراف")
+    seen = []
+    overlay.chosen.connect(seen.append)
+    QTest.mouseClick(overlay.cancel_button, Qt.MouseButton.LeftButton)
+    assert seen == ["انصراف"]
+
+
+def test_overlay_notice_shape_is_single_button(qtbot, host):
+    """The read-only notice shape has no cancel; `cancel_button` is None rather
+    than a missing attribute a host could trip over."""
+    overlay = ConfirmOverlay(host, "فاصله تا امروز", notice=True, danger=False)
+    assert len(overlay.buttons) == 1
+    assert overlay.cancel_button is None
+    assert overlay.confirm_button is overlay.buttons[0]
+
+
+def test_overlay_carries_no_message_line(qtbot, host):
+    """An overlay starts with no description line, so a box-only notice leaves no
+    dead air above it; a host that wants one raises it per use."""
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="متن")
+    overlay.show()
+    assert overlay.message_label.text() == ""
+    assert not overlay.message_label.isVisible()
+    assert overlay.detail_label.isVisible()
+
+
+def test_overlay_set_message_raises_the_description_line(qtbot, host):
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="یادداشت")
+    overlay.show()
+    overlay.set_message("این رویداد حذف شود؟")
+    assert overlay.message_label.isVisible()
+    # Pinned to its real wrapped height, not Qt's inflated word-wrap hint.
+    assert overlay.message_label.height() > 0
+    assert overlay.message_label.height() < 60
+
+
+def test_overlay_set_message_clears_the_line_for_the_next_use(qtbot, host):
+    """Overlays are persistent: a stale question or a stale height pinned for the
+    previous wording must not survive into the next card."""
+    overlay = ConfirmOverlay(host, "حذف رویداد")
+    overlay.show()
+    overlay.set_message("این رویداد حذف شود؟")
+    overlay.set_message("")
+    assert overlay.message_label.text() == ""
+    assert not overlay.message_label.isVisible()
+
+
+def test_overlay_set_message_resets_the_choice(qtbot, host):
+    """Refilling a reused card must not leave the previous answer behind, or a
+    host could act on a click the user never made."""
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="یادداشت")
+    overlay.show()
+    overlay.confirm_button.click()
+    assert overlay.choice is not None
+    overlay.set_message("این رویداد حذف شود؟")
+    assert overlay.choice is None
+
+
+
+def test_overlay_width_never_exceeds_its_host(qtbot, host):
+    """The calendar is 305px; a caption that would push the card wider must not
+    be able to overflow the popup."""
+    overlay = ConfirmOverlay(host, "حذف رویداد", confirm_text="حذف", cancel_text="انصراف")
+    overlay.show()
+    assert overlay.width() <= host.width()
+
+
+def test_overlay_reuse_refills_the_box_and_resets_the_choice(qtbot, host):
+    """The overlay is persistent, so stale text or a stale choice from a previous
+    question must not leak into the next one."""
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="اولی")
+    overlay.show()
+    overlay.confirm_button.click()
+    overlay.set_detail("دومی")
+    assert overlay.detail_label.text() == "دومی"
+    assert overlay.choice is None
+    overlay.set_detail("")
+    assert not overlay.detail_label.isVisible()
+
+
+def test_overlay_centers_over_its_host(qtbot, host):
+    overlay = ConfirmOverlay(host, "حذف رویداد", detail="متن")
+    overlay.show()
+    overlay.center_in(host)
+    assert abs(overlay.x() - (host.width() - overlay.width()) // 2) <= 1
+    assert abs(overlay.y() - (host.height() - overlay.height()) // 2) <= 1

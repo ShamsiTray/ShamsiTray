@@ -24,7 +24,7 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
 from utils.event_io import RECURRENCE_NONE, events_for_date
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
-from ui.widgets.confirm_dialog import ConfirmDialog
+from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import EventInputWidget
 from ui.widgets.menu_widgets import MenuActionWidget
@@ -84,9 +84,37 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if self.event_input_widget.isVisible():
             self.event_input_widget.hide()
             self.editing_date = None
+        # A confirmation in flight dies with the popup, and its pending deletion
+        # with it: leaving the date set would let a later choice remove an event
+        # the user was no longer looking at.
+        self._dismiss_active_overlay()
         self.overlay_blocker.hide()
         self._cancel_day_tooltips()
         super().hideEvent(event)
+
+    def _dismiss_active_overlay(self):
+        """Hide whichever confirm overlay is up and forget any pending action.
+
+        Idempotent, and the single teardown path: a hidden calendar must never
+        come back with a dimmed grid or a confirmation waiting for an answer.
+        Relies on an overlay being the only thing that dims the grid, so the
+        blocker goes down with it.
+        """
+        overlay, self._active_overlay = self._active_overlay, None
+        self._pending_remove = None
+        if overlay is not None:
+            overlay.hide()
+            self.overlay_blocker.hide()
+
+    def _present_overlay(self, overlay: ConfirmOverlay):
+        """Dim the grid and raise ``overlay`` in the middle of the popup."""
+        self._active_overlay = overlay
+        self.overlay_blocker.resize(self.size())
+        self.overlay_blocker.show()
+        self.overlay_blocker.raise_()
+        overlay.center_in(self)
+        overlay.show()
+        overlay.raise_()
 
     def _cancel_day_tooltips(self):
         """Kill every pending cell tooltip (and hide the shared tooltip window).
@@ -123,6 +151,26 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.overlay_blocker = QWidget(self)
         self.overlay_blocker.setStyleSheet("background-color: rgba(0, 0, 0, 75); border-radius: 26px; margin: 1px;")
         self.overlay_blocker.hide()
+
+        # Confirmation surfaces are part of the popup, not windows over it: no
+        # drag, no separate top-level card, and the dimmed blocker behind them.
+        # One persistent instance per shape (single-button notice, two-button
+        # ask), shown and hidden, so nothing has to track a destroyed widget.
+        self._active_overlay: Optional[ConfirmOverlay] = None
+        self._pending_remove: Optional[jdatetime.date] = None
+        self._distance_overlay = ConfirmOverlay(
+            self, "فاصله تا امروز", danger=False,
+            glyph=APP_CONFIG.FAS.FA_CLOCK, notice=True)
+        # Both overlays must answer back: an overlay only hides itself, so without
+        # this the dimmer would stay up over a notice that is already gone and the
+        # grid would refuse every click.
+        self._distance_overlay.chosen.connect(self._on_distance_choice)
+        self._distance_overlay.hide()
+        self._remove_overlay = ConfirmOverlay(
+            self, "حذف رویداد", confirm_text="حذف", cancel_text="انصراف",
+            danger=True)
+        self._remove_overlay.chosen.connect(self._on_remove_choice)
+        self._remove_overlay.hide()
 
         self.event_input_widget = EventInputWidget(self)
         self.event_input_widget.saved.connect(self._handle_event_saved)
@@ -551,42 +599,88 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._cancel_day_tooltips()
         self.normalize_day_hover()
 
-    def _confirm_remove(self, jdate: jdatetime.date) -> bool:
+    def _request_remove_confirmation(self, jdate: jdatetime.date):
         """Ask before deleting; a context-menu click must never delete silently.
 
-        Uses the themed in-app dialog (the stock QMessageBox ignored the app
-        palette and its long-winded wording read like a system error). The
-        dialog is narrower than the default: the calendar is only 305px wide,
-        and the 340px default literally overflowed the window on both sides.
-        Pending day-cell tooltips are cancelled first: the dialog is a separate
-        top-level window and a re-armed timer would otherwise draw the holiday
-        reason over it."""
+        Asks with the in-calendar overlay rather than a top-level dialog, so the
+        question is part of the popup: it cannot be dragged away, it dims the grid
+        like the editor and Go-To-Date do, and it disappears with the calendar.
+        The date is parked in ``_pending_remove`` for ``_on_remove_choice`` to
+        consume - a modal ask used to answer this inline, an overlay can only
+        answer later. Pending day-cell tooltips are cancelled because the tooltip
+        is its own top-level window and would float over the overlay.
+        """
         self._cancel_day_tooltips()
         matched = events_for_date(self.user_events, jdate)
         text = str(matched[1].get("text", "")) if matched else ""
         preview = text if len(text) <= 40 else text[:40] + "…"
-        return ConfirmDialog.ask(
-            self, "حذف رویداد", "این رویداد حذف شود؟", detail=preview,
-            confirm_text="حذف", cancel_text="انصراف", danger=True, width=280)
+        self._pending_remove = jdate
+        # The question is the card's description line, the event text is what the
+        # box is for - the same split the event manager's dialog uses. An event
+        # with no text simply has no box.
+        self._remove_overlay.set_message("این رویداد حذف شود؟")
+        self._remove_overlay.set_detail(preview)
+        self._present_overlay(self._remove_overlay)
+
+    def _on_remove_choice(self, text: str):
+        """Act on the delete overlay's answer.
+
+        The pending date is cleared *before* anything else, so cancel and confirm
+        share this path, the overlay can never be answered twice, and a
+        re-entrant emit cannot see a stale date.
+        """
+        target, self._pending_remove = self._pending_remove, None
+        self._dismiss_active_overlay()
+        self.normalize_day_hover()
+        if target is None:
+            return
+        if text == self._remove_overlay.confirm_button.text():
+            self.event_removed.emit(target)
+
+    def _on_distance_choice(self, text: str):
+        """Dismiss the read-only distance notice.
+
+        There is nothing to answer, so this only tears the surface down: the
+        overlay already hid itself, and the dimmer is the calendar's to lower.
+        Hover is re-synced for the same reason the delete path does it - the
+        blocker was swallowing enter/leave for as long as it was up.
+        """
+        self._dismiss_active_overlay()
+        self.normalize_day_hover()
 
     def _remove_event(self, jdate: jdatetime.date):
         if not jdate:
             return
-        if not self._confirm_remove(jdate):
+        # A second request while a confirmation is up would overwrite the pending
+        # date, so the first one owns the answer.
+        if self._active_overlay is not None:
             return
-        self.event_removed.emit(jdate)
+        self._request_remove_confirmation(jdate)
+
     def _show_date_distance(self, jdate: jdatetime.date):
-        """Show how far the clicked day sits from today in a themed notice.
+        """Show how far the clicked day sits from today, in the popup.
 
         The distance is measured from ``current_date`` rather than a fresh
         ``date.today()``, so it cannot disagree with the ring the calendar drew
-        around today. Today is a caller-side branch in both formatters, so it
-        gets the plain «تاریخ امروز است.» headline and no breakdown - there is
-        no distance to break down. Pending day-cell tooltips are cancelled for
-        the same reason the delete confirmation does it: the notice is a
-        separate top-level window that a re-armed timer would draw over.
+        around today.
+
+        Everything lives in the card's box rather than splitting across a
+        headline and a detail line: the day total leads, the breakdown follows
+        only when it adds something, and the day's own date closes the box. Under
+        a month the breakdown *is* the total in different words - same days, same
+        direction word - so ``has_calendar_units`` suppresses it instead of
+        printing one line twice. Today keeps its own literal, since there is no
+        distance to state and both formatters are undefined for it.
+
+        Pending day-cell tooltips are cancelled because the tooltip is a separate
+        top-level window and would otherwise draw over this overlay.
         """
         if not jdate:
+            return
+        # The blocker already covers the grid, so this only guards programmatic
+        # callers: a second request would orphan the pending state of whatever is
+        # already up.
+        if self._active_overlay is not None:
             return
         self._cancel_day_tooltips()
         distance = describe_date_distance(jdate, today=self.current_date)
@@ -595,11 +689,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
                      f"{persian_month_name(jdate.month)} "
                      f"{to_persian_digits(jdate.year)}")
         if distance.is_today:
-            message, breakdown = "تاریخ امروز است.", None
+            lines = ["تاریخ امروز است.", date_line]
         else:
-            message = format_distance_total(distance)
-            breakdown = format_distance_breakdown(distance)
-        ConfirmDialog.notify(
-            self, "فاصله تا امروز", message,
-            detail="\n".join(filter(None, (breakdown, date_line))),
-            glyph=APP_CONFIG.FAS.FA_CLOCK, width=280)
+            lines = [format_distance_total(distance)]
+            if distance.has_calendar_units:
+                lines.append(format_distance_breakdown(distance))
+            lines.append(date_line)
+        self._distance_overlay.set_detail("\n".join(lines))
+        self._present_overlay(self._distance_overlay)

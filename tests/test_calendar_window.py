@@ -2,9 +2,9 @@
 styling, the event editor overlay and the go-to-date popup."""
 import jdatetime
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtWidgets import QApplication
 
-import ui.windows.calendar_window as calendar_module
 from config import APP_CONFIG
 from ui.windows.calendar_window import DayStyle, PersianCalendarWidget
 from ui.widgets.calendar_day_cell import ClickableLabel
@@ -285,26 +285,118 @@ def test_canceled_event_only_closes(calendar):
     assert calendar.editing_date is None
 
 
-def test_remove_event_requires_confirmation(calendar, monkeypatch):
-    monkeypatch.setattr(calendar_module.ConfirmDialog, "ask",
-                        staticmethod(lambda *a, **k: False))
+def test_remove_event_requires_confirmation(calendar):
+    """A context-menu click must never delete silently: the overlay comes up and
+    only answering «حذف» removes anything."""
     received = []
     calendar.event_removed.connect(lambda j: received.append(j))
     calendar._remove_event(jdatetime.date(1404, 5, 10))
     assert received == []
+    assert calendar._remove_overlay.isVisible()
+    assert calendar.overlay_blocker.isVisible()
+    assert calendar._pending_remove == jdatetime.date(1404, 5, 10)
+    calendar._remove_overlay.cancel_button.click()
+    assert received == []
 
 
-def test_confirmed_remove_emits_event_removed(calendar, monkeypatch):
-    ask_calls = []
-    monkeypatch.setattr(calendar_module.ConfirmDialog, "ask",
-                        staticmethod(lambda *a, **kw: ask_calls.append((a, kw)) or True))
+def test_confirmed_remove_emits_event_removed(calendar):
     received = []
     calendar.event_removed.connect(lambda j: received.append(j))
     calendar._remove_event(jdatetime.date(1404, 5, 10))
+    calendar._remove_overlay.confirm_button.click()
     assert received == [jdatetime.date(1404, 5, 10)]
-    # The delete confirmation is a narrow dialog (the calendar is 305px wide).
-    assert ask_calls[0][1]["width"] == 280
-    assert ask_calls[0][1]["danger"] is True
+
+
+def test_delete_confirmation_is_an_in_calendar_overlay(calendar):
+    """The question is part of the popup: dimmed grid behind it, no separate
+    window, and nothing to drag away."""
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    overlay = calendar._remove_overlay
+    assert overlay.parent() is calendar
+    assert not overlay.isWindow()
+    assert overlay.width() <= calendar.width()   # the calendar is 305px wide
+    assert overlay.title_label.text() == "حذف رویداد"
+    assert overlay._danger
+
+
+def test_delete_question_stays_out_of_the_preview_box(calendar):
+    """The description line states what is about to happen; the box holds the
+    event being acted on, so the two can never blur into one another."""
+    calendar.user_events = {"1404-05-10": {"text": "یادداشت مهم", "recurrence": "none",
+                                           "remove_after_finish": False}}
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    overlay = calendar._remove_overlay
+    assert overlay.message_label.text() == "این رویداد حذف شود؟"
+    assert overlay.detail_label.text() == "یادداشت مهم"
+    assert "حذف شود" not in overlay.detail_label.text()
+
+
+def test_delete_confirmation_without_event_text_shows_no_box(calendar):
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    overlay = calendar._remove_overlay
+    overlay.show()
+    assert overlay.message_label.text() == "این رویداد حذف شود؟"
+    assert not overlay.detail_label.isVisible()
+
+
+def test_answering_the_delete_confirmation_tears_it_down(calendar):
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    calendar._remove_overlay.confirm_button.click()
+    assert not calendar._remove_overlay.isVisible()
+    assert calendar._active_overlay is None
+    assert calendar._pending_remove is None
+    assert not calendar.overlay_blocker.isVisible()
+
+
+def test_delete_confirmation_emits_only_once_per_confirmation(calendar):
+    """The pending date is cleared before the emit, so a second answer - or a
+    re-entrant one - cannot delete twice."""
+    received = []
+    calendar.event_removed.connect(lambda j: received.append(j))
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    overlay = calendar._remove_overlay
+    overlay.confirm_button.click()
+    overlay.confirm_button.click()
+    assert received == [jdatetime.date(1404, 5, 10)]
+
+
+def test_a_second_delete_request_cannot_replace_the_pending_one(calendar):
+    """Two context-menu clicks in a row: the first confirmation owns the answer,
+    so the second date can never be the one deleted."""
+    received = []
+    calendar.event_removed.connect(lambda j: received.append(j))
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    calendar._remove_event(jdatetime.date(1404, 5, 20))
+    assert calendar._pending_remove == jdatetime.date(1404, 5, 10)
+    calendar._remove_overlay.confirm_button.click()
+    assert received == [jdatetime.date(1404, 5, 10)]
+
+
+def test_hiding_the_calendar_drops_a_pending_deletion(calendar):
+    """The popup closing mid-question must not leave a date waiting to be
+    deleted: reopening and answering later would remove an event the user was no
+    longer looking at."""
+    received = []
+    calendar.event_removed.connect(lambda j: received.append(j))
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    calendar.hide()
+    assert calendar._pending_remove is None
+    assert calendar._active_overlay is None
+    assert not calendar._remove_overlay.isVisible()
+    assert not calendar.overlay_blocker.isVisible()
+    # And a late answer to the dismissed card does nothing.
+    calendar._on_remove_choice(calendar._remove_overlay.confirm_button.text())
+    assert received == []
+
+
+def test_reopening_the_calendar_leaves_no_stale_overlay(calendar):
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    calendar.hide()
+    calendar.show()
+    assert not calendar.overlay_blocker.isVisible()
+    assert not calendar._distance_overlay.isVisible()
+    assert not calendar._remove_overlay.isVisible()
+    assert calendar._active_overlay is None
 
 
 def test_remove_event_ignores_none(calendar):
@@ -449,78 +541,127 @@ def test_day_style_defaults():
 # --- فاصله تا امروز notice ------------------------------------------------------------
 
 
-@pytest.fixture
-def notices(monkeypatch):
-    """Capture the ConfirmDialog.notify calls the day-cell action produces."""
-    calls = []
-    monkeypatch.setattr(calendar_module.ConfirmDialog, "notify",
-                        staticmethod(lambda *a, **kw: calls.append((a, kw))))
-    return calls
+def notice_lines(calendar):
+    """The notice is an in-calendar overlay now, so read the live card's own text
+    instead of intercepting a static call: what the user sees is the widget."""
+    return calendar._distance_overlay.detail_label.text().splitlines()
 
 
-def test_distance_notice_leads_with_the_day_total_and_direction(calendar, notices):
+def test_distance_notice_leads_with_the_day_total_and_direction(calendar):
     calendar.current_date = jdatetime.date(1404, 5, 10)
     calendar._show_date_distance(jdatetime.date(1404, 8, 20))
-    assert len(notices) == 1
-    args, kwargs = notices[0]
-    assert args[1] == "فاصله تا امروز"
-    assert args[2].endswith("مانده")   # a future day
-    assert "روز" in args[2]
+    lines = notice_lines(calendar)
+    assert lines[0].endswith("مانده")   # a future day
+    assert "روز" in lines[0]
 
 
-def test_distance_notice_names_a_past_day_as_گذشته(calendar, notices):
+def test_distance_notice_names_a_past_day_as_گذشته(calendar):
     calendar.current_date = jdatetime.date(1404, 5, 10)
     calendar._show_date_distance(jdatetime.date(1403, 2, 1))
-    assert notices[0][0][2].endswith("گذشته")
+    assert notice_lines(calendar)[0].endswith("گذشته")
 
 
-def test_distance_notice_detail_carries_the_breakdown_and_the_date(calendar, notices):
+def test_distance_notice_box_carries_total_breakdown_and_date(calendar):
     calendar.current_date = jdatetime.date(1404, 5, 10)
     calendar._show_date_distance(jdatetime.date(1404, 8, 20))
-    detail = notices[0][1]["detail"].splitlines()
-    assert len(detail) == 2
-    assert detail[0].endswith("مانده") and "سال" not in detail[0]
-    assert "آبان" in detail[1] and "۱۴۰۴" in detail[1]
+    lines = notice_lines(calendar)
+    assert len(lines) == 3
+    assert lines[0].endswith("مانده") and "سال" not in lines[0]   # day total
+    assert lines[1].endswith("مانده") and "ماه" in lines[1]      # breakdown
+    assert "آبان" in lines[2] and "۱۴۰۴" in lines[2]              # the day's date
 
 
-def test_distance_notice_for_today_has_no_breakdown(calendar, notices):
-    """There is no distance to break down, so the headline is the plain literal
-    and only the date line remains under it."""
+def test_distance_notice_omits_the_breakdown_under_one_month(calendar):
+    """Under a month the breakdown is the total restated - same days, same
+    direction word - so printing both would show one line twice."""
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 5, 20))   # +10 days
+    lines = notice_lines(calendar)
+    assert len(lines) == 2
+    assert lines[0] == "۱۰ روز مانده"
+    assert "۱۰ روز مانده" not in lines[1]      # not repeated
+    assert "مرداد" in lines[1]                # the day's own date
+
+
+def test_distance_notice_for_today_has_no_breakdown(calendar):
+    """There is no distance to break down, so the plain literal and the date line
+    are all there is."""
     today = jdatetime.date(1404, 5, 10)
     calendar.current_date = today
     calendar._show_date_distance(today)
-    args, kwargs = notices[0]
-    assert args[2] == "تاریخ امروز است."
-    assert "مانده" not in kwargs["detail"] and "گذشته" not in kwargs["detail"]
-    assert len(kwargs["detail"].splitlines()) == 1
+    lines = notice_lines(calendar)
+    assert lines[0] == "تاریخ امروز است."
+    assert not any("مانده" in line or "گذشته" in line for line in lines)
+    assert len(lines) == 2
 
 
-def test_distance_notice_is_measured_from_the_calendriers_own_today(calendar, notices):
+def test_distance_notice_is_measured_from_the_calendriers_own_today(calendar):
     """current_date is what the calendar drew today as, so the notice agrees with
     the grid even if the wall clock has moved since the popup opened."""
     calendar.current_date = jdatetime.date(1404, 5, 10)
     calendar._show_date_distance(jdatetime.date(1404, 5, 11))
-    assert "۱ روز مانده" in notices[0][0][2]
-    assert "۱ روز مانده" in notices[0][1]["detail"]
+    lines = notice_lines(calendar)
+    assert lines[0] == "۱ روز مانده"
+    assert lines.count("۱ روز مانده") == 1
 
 
-def test_distance_notice_is_a_narrow_themed_notice(calendar, notices):
+def test_distance_notice_is_an_in_calendar_overlay(calendar):
+    """It dims the grid and lives inside the popup - no separate window, and not
+    draggable."""
     calendar.current_date = jdatetime.date(1404, 5, 10)
     calendar._show_date_distance(jdatetime.date(1404, 8, 20))
-    kwargs = notices[0][1]
-    assert kwargs["width"] == 280        # the calendar is only 305px wide
-    assert kwargs["glyph"] == APP_CONFIG.FAS.FA_CLOCK
-    assert kwargs.get("danger", False) is False
+    overlay = calendar._distance_overlay
+    assert overlay.parent() is calendar
+    assert not overlay.isWindow()
+    assert overlay.isVisible()
+    assert calendar.overlay_blocker.isVisible()
+    assert calendar._active_overlay is overlay
+    assert overlay.width() <= calendar.width()   # the calendar is only 305px wide
+    assert overlay.icon_badge.text() == APP_CONFIG.FAS.FA_CLOCK
+    assert not overlay._danger
 
 
-def test_distance_notice_ignores_a_missing_date(calendar, notices):
+def test_distance_notice_dismissal_frees_the_grid(calendar):
+    """Answering the notice must lower the dimmer, not just the card.
+
+    The overlay only ever hides itself; the blocker is the calendar's own widget,
+    so without a teardown handler the black sheet stayed over a notice that was
+    already gone and swallowed every click on the grid.
+    """
+    calendar.current_date = jdatetime.date(1404, 5, 10)
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    assert calendar.overlay_blocker.isVisible()
+    # A point in the calendar's left margin: clear of the centred card, so the
+    # widget answering there is the dimmer itself and not something inside it.
+    probe = calendar.mapToGlobal(QPoint(6, calendar.rect().center().y()))
+    assert QApplication.widgetAt(probe) is calendar.overlay_blocker
+
+    calendar._distance_overlay.confirm_button.click()
+
+    assert not calendar._distance_overlay.isVisible()
+    assert not calendar.overlay_blocker.isVisible()
+    assert calendar._active_overlay is None
+    # The real proof the grid is live again: the same point now reaches the grid.
+    assert QApplication.widgetAt(probe) is not calendar.overlay_blocker
+
+
+def test_distance_notice_ignores_a_request_while_another_overlay_is_up(calendar):
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    pending = calendar._pending_remove
+    calendar._show_date_distance(jdatetime.date(1404, 8, 20))
+    assert calendar._active_overlay is calendar._remove_overlay
+    assert calendar._pending_remove == pending
+
+
+def test_distance_notice_ignores_a_missing_date(calendar):
     calendar._show_date_distance(None)
-    assert notices == []
+    assert not calendar._distance_overlay.isVisible()
+    assert calendar._active_overlay is None
 
 
-def test_distance_notice_cancels_pending_day_tooltips(calendar, notices, monkeypatch):
-    """The notice is a separate top-level window; a re-armed tooltip timer would
-    otherwise draw the holiday reason over it."""
+def test_distance_notice_cancels_pending_day_tooltips(calendar, monkeypatch):
+    """The tooltip is a separate top-level window; a re-armed tooltip timer would
+    otherwise draw the holiday reason over the overlay."""
     killed = []
     monkeypatch.setattr(calendar, "_cancel_day_tooltips", lambda: killed.append(True))
     calendar.current_date = jdatetime.date(1404, 5, 10)
@@ -528,10 +669,11 @@ def test_distance_notice_cancels_pending_day_tooltips(calendar, notices, monkeyp
     assert killed == [True]
 
 
-def test_day_cells_are_wired_to_the_distance_action(calendar, notices):
+def test_day_cells_are_wired_to_the_distance_action(calendar):
     """Emitting from a real cell must reach the calendar, not just exist on it."""
     calendar.current_date = jdatetime.date(1404, 5, 10)
     target = calendar.day_labels[0][0]
     target.jalali_date = jdatetime.date(1404, 8, 20)
     target.distance_requested.emit(target.jalali_date)
-    assert len(notices) == 1
+    assert calendar._distance_overlay.isVisible()
+    assert notice_lines(calendar)[0].endswith("مانده")
