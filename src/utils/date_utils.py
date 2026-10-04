@@ -216,3 +216,27 @@ def ms_until_midnight(now: datetime.datetime) -> int:
     tomorrow = now + datetime.timedelta(days=1)
     next_midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
     return max(0, int((next_midnight - now).total_seconds() * 1000))
+
+
+def format_jalali_long(jdate, *, persian_digits=True):
+    day_str = to_persian_digits(jdate.day) if persian_digits else str(jdate.day)
+    year_str = to_persian_digits(jdate.year) if persian_digits else str(jdate.year)
+    return persian_weekday_name(jdate.weekday()) + " " + day_str + " " + persian_month_name(jdate.month) + " " + year_str
+
+def format_gregorian_long(gdate, *, persian_digits=True):
+    """Readable Gregorian date, e.g. «Tuesday 21 October 2025».
+
+    The weekday and month names come from the app's own tables rather than
+    ``strftime('%A'/'%B')``: those follow the process locale, so the same call
+    returned Persian names on a Persian Windows install and English ones
+    elsewhere. ``persian_digits`` defaults True to match ``format_jalali_long`` -
+    the two are read side by side, and the copy entry that wants Latin digits
+    asks for them explicitly.
+    """
+    if not 1 <= gdate.month <= 12 or not 0 <= gdate.weekday() <= 6:
+        raise ValueError("Gregorian month or weekday out of range")
+    day_str = to_persian_digits(gdate.day) if persian_digits else str(gdate.day)
+    year_str = to_persian_digits(gdate.year) if persian_digits else str(gdate.year)
+    return (f"{APP_CONFIG.GREGORIAN_WEEKDAY_NAMES[gdate.weekday()]} {day_str} "
+            f"{gregorian_month_name(gdate.month)} {year_str}")
+

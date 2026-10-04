@@ -14,7 +14,12 @@ from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QCursor
 from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
-from utils.date_utils import format_gregorian_numeric, format_jalali_numeric
+from utils.date_utils import (
+    format_gregorian_long,
+    format_gregorian_numeric,
+    format_jalali_long,
+    format_jalali_numeric,
+)
 from utils.ui_helpers import clamp_popup_to_work_area
 from .menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_H,
                            MENU_ITEM_PADDING_V, MenuActionWidget)
@@ -22,9 +27,9 @@ from .tooltip import CustomTooltip
 
 # Clipboard payloads of the «کپی تاریخ» submenu entries, built from the
 # right-clicked day's own Jalali date (the Gregorian half derives from it).
-_COPY_MODES = ("jalali", "gregorian", "both")
+_COPY_MODES = ("jalali", "jalali_full", "gregorian", "gregorian_full", "both", "both_full")
 
-_COPY_ACTION_TEXTS = ("تاریخ شمسی", "تاریخ میلادی", "هر دو")
+_COPY_ACTION_TEXTS = ("تاریخ شمسی", "تاریخ شمسی کامل", "تاریخ میلادی", "تاریخ میلادی کامل", "هر دو", "هر دو کامل")
 
 # Its own group, after «کپی تاریخ»: this asks a question about the day rather
 # than acting on it, so it reads as a separate kind of row.
@@ -41,8 +46,15 @@ def _copy_text_for_mode(mode: str, jdate: jdatetime.date) -> str:
     """
     if mode == "jalali":
         return format_jalali_numeric(jdate)
+    if mode == "jalali_full":
+        return format_jalali_long(jdate, persian_digits=False)
     if mode == "gregorian":
         return format_gregorian_numeric(jdate)
+    if mode == "gregorian_full":
+        return format_gregorian_long(jdate.togregorian(), persian_digits=False)
+    if mode == "both_full":
+        return (f"{format_jalali_long(jdate, persian_digits=False)}\n"
+                f"{format_gregorian_long(jdate.togregorian(), persian_digits=False)}")
     return f"{format_jalali_numeric(jdate)}\n{format_gregorian_numeric(jdate)}"
 
 
@@ -319,8 +331,7 @@ class ClickableLabel(QLabel):
 
     def _flash_copied_feedback(self):
         """Brief «کپی شد» confirmation, matching the converter's copy feedback."""
-        CustomTooltip.instance().show_tooltip("کپی شد", QCursor.pos())
-        QTimer.singleShot(600, CustomTooltip.instance().hide)
+        CustomTooltip.instance().flash_tooltip("کپی شد", QCursor.pos())
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()

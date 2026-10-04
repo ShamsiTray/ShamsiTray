@@ -6,7 +6,7 @@ This module provides `CustomTooltip`, a custom-rendered tooltip that bypasses
 Qt6's native tooltip rendering. This fixes the issue where native tooltips on
 Windows ignore border-radius styling and appear as rectangles with sharp corners.
 """
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, QTimer
 from PyQt6.QtWidgets import QLabel, QWidget, QVBoxLayout, QApplication
 
 from config import APP_CONFIG
@@ -29,13 +29,37 @@ class CustomTooltip(QWidget):
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._layout.addWidget(self._label)
 
+        # One reusable auto-hide timer for the copy confirmations. The callers
+        # used to schedule their own QTimer.singleShot(600, hide), which cannot
+        # be cancelled: a second copy inside the first one's window was cut
+        # short by the FIRST timer's deadline, and the orphan timer could then
+        # hide an unrelated tooltip (a holiday, say) mid-display. Restarting a
+        # single shot gives every copy its own full window and leaves no
+        # stragglers.
+        self._auto_hide_timer = QTimer(self)
+        self._auto_hide_timer.setSingleShot(True)
+        self._auto_hide_timer.timeout.connect(self.hide)
+
     @classmethod
     def instance(cls):
         if cls._instance is None:
             cls._instance = CustomTooltip()
         return cls._instance
 
+    def flash_tooltip(self, text: str, global_pos: QPoint, duration_ms: int = 600):
+        """Show a transient confirmation (e.g. «کپی شد») that hides itself.
+
+        Restarting the single shot on every call is the point: two copies in a
+        row never shorten each other's feedback window.
+        """
+        self.show_tooltip(text, global_pos)
+        self._auto_hide_timer.start(duration_ms)
+
     def show_tooltip(self, text: str, global_pos: QPoint):
+        # An explicit show must never be auto-hidden by a flash still counting
+        # down - a holiday or event tooltip arriving right after a copy would
+        # vanish mid-read.
+        self._auto_hide_timer.stop()
         if not text:
             self.hide()
             return

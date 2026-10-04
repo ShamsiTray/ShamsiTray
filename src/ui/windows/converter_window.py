@@ -15,11 +15,12 @@ from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxL
 
 from config import APP_CONFIG
 from utils.date_utils import (describe_date_distance, format_distance_breakdown,
+                              format_gregorian_long, format_gregorian_numeric,
+                              format_jalali_long, format_jalali_numeric,
                               from_persian_digits, to_persian_digits,
                               is_gregorian_leap_year, is_jalali_leap_year,
                               days_in_jalali_month, days_in_gregorian_month,
-                              validate_year_range, persian_month_name,
-                              gregorian_month_name, persian_weekday_name)
+                              validate_year_range, gregorian_month_name)
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet)
@@ -44,6 +45,11 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.setWindowTitle("تبدیل تاریخ")
         self.setFixedSize(650, self._initial_height)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
+        # Label identity -> clipboard payload, rebuilt by _display_results on
+        # every conversion. Keyed by id() because the rows are created once and
+        # never reparented, so their identity is stable for the window's life.
+        self._copy_payloads: dict = {}
 
         self._setup_ui()
         self.update_styles()
@@ -294,14 +300,18 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.year_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def _copy_to_clipboard(self, label: QLabel):
-        """Copy the label's text to clipboard and show a brief confirmation."""
-        text = label.text()
+        """Copy the row's clipboard payload and show a brief confirmation.
+
+        The payload is the Latin-digit form from the shared formatters, not the
+        Persian-digit text on screen; an unmapped label falls back to its own
+        text so nothing silently copies nothing.
+        """
+        text = self._copy_payloads.get(id(label), label.text())
         if text and text != "...":
             clipboard = QApplication.clipboard()
             clipboard.setText(text)
             global_pos = QCursor.pos()
-            CustomTooltip.instance().show_tooltip("کپی شد", global_pos)
-            QTimer.singleShot(600, CustomTooltip.instance().hide)
+            CustomTooltip.instance().flash_tooltip("کپی شد", global_pos)
 
     def _apply_windows_styles(self):
         apply_windows_styles(self)
@@ -434,9 +444,20 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
     def _display_results(self, j_date: jdatetime.date, g_date: datetime.date, is_jalali_input: bool):
         self.jalali_date_value_1.setText(to_persian_digits(j_date.strftime("%Y/%m/%d")))
-        self.jalali_date_value_2.setText(f"{persian_weekday_name(j_date.weekday())} - {to_persian_digits(j_date.day)} {persian_month_name(j_date.month)} {to_persian_digits(j_date.year)}")
+        self.jalali_date_value_2.setText(format_jalali_long(j_date))
         self.gregorian_date_value_1.setText(g_date.strftime("%Y-%m-%d"))
         self.gregorian_date_value_2.setText(f"{g_date.strftime('%A')} - {gregorian_month_name(g_date.month)} {g_date.day}, {g_date.year}")
+        # What each row puts on the clipboard, keyed by label identity and
+        # rebuilt on every conversion: the labels show Persian digits, so
+        # copying label.text() gave the user a date in a different numeral
+        # system than the calendar's «کپی تاریخ» menu produces for the same day.
+        # The payloads come from the shared formatters so both surfaces agree.
+        self._copy_payloads = {
+            id(self.jalali_date_value_1): format_jalali_numeric(j_date),
+            id(self.jalali_date_value_2): format_jalali_long(j_date, persian_digits=False),
+            id(self.gregorian_date_value_1): format_gregorian_numeric(j_date),
+            id(self.gregorian_date_value_2): format_gregorian_long(g_date, persian_digits=False),
+        }
 
         self._update_elapsed_time(g_date)
         input_year = j_date.year if is_jalali_input else g_date.year

@@ -172,6 +172,11 @@ class Config:
     ]
     PERSIAN_WEEKDAYS_SHORT = ["ش", "ی", "د", "س", "چ", "پ", "ج"]
     PERSIAN_WEEKDAY_NAMES = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه"]
+    # Monday-first to match datetime.date.weekday(); the Persian list above is
+    # Saturday-first to match jdatetime. Reading a date's weekday without
+    # knowing which convention a table uses is exactly the bug this avoids.
+    GREGORIAN_WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                               "Friday", "Saturday", "Sunday"]
 
     # --- FontAwesome Icon Characters ---
     # Every glyph below is covered by the bundled FA7 Free Solid cmap; the

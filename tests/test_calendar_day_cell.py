@@ -274,9 +274,12 @@ def test_context_menu_builds_copy_date_submenu(qtbot, cell, open_menu):
     assert title_action.text() == "کپی تاریخ"
     copy_menu = title_action.menu()
     rows = copy_menu.actions()
-    assert len(rows) == 9  # option, separator, option, separator, option
-    assert [a.text() for a in rows if a.text()] == ["تاریخ شمسی", "تاریخ میلادی", "هر دو"]
-    assert rows[1].isSeparator() and rows[3].isSeparator()
+    assert len(rows) == 11  # 6 options, a hairline between every pair
+    assert [a.text() for a in rows if a.text()] == [
+        "تاریخ شمسی", "تاریخ شمسی کامل", "تاریخ میلادی", "تاریخ میلادی کامل",
+        "هر دو", "هر دو کامل",
+    ]
+    assert all(rows[i].isSeparator() for i in (1, 3, 5, 7, 9))
     for row in rows:
         assert isinstance(row, QAction) and not isinstance(row, QWidgetAction)
 
@@ -347,7 +350,8 @@ def test_existing_day_menu_actions_survive_copy_submenu(qtbot, cell, open_menu):
 def test_copy_actions_put_the_right_clicked_day_on_clipboard(qtbot, cell, open_menu, jy, jm, jd):
     """Every entry copies the RIGHT-CLICKED day, not today; formats follow the
     app's shared numeric convention (1405/07/01 · 2026/09/23)."""
-    from utils.date_utils import format_gregorian_numeric, format_jalali_numeric
+    from utils.date_utils import (format_gregorian_long, format_gregorian_numeric,
+                                   format_jalali_long, format_jalali_numeric)
 
     cell.setText("۵")
     cell.jalali_date = jdatetime.date(jy, jm, jd)
@@ -356,10 +360,16 @@ def test_copy_actions_put_the_right_clicked_day_on_clipboard(qtbot, cell, open_m
     clipboard = QApplication.clipboard()
     jalali_text = format_jalali_numeric(cell.jalali_date)
     gregorian_text = format_gregorian_numeric(cell.jalali_date)
+    jalali_full = format_jalali_long(cell.jalali_date, persian_digits=False)
+    gregorian_full = format_gregorian_long(cell.jalali_date.togregorian(),
+                                           persian_digits=False)
     expected = {
         "تاریخ شمسی": jalali_text,
+        "تاریخ شمسی کامل": jalali_full,
         "تاریخ میلادی": gregorian_text,
+        "تاریخ میلادی کامل": gregorian_full,
         "هر دو": f"{jalali_text}\n{gregorian_text}",
+        "هر دو کامل": f"{jalali_full}\n{gregorian_full}",
     }
     for action in copy_menu.actions():
         if not action.text():
