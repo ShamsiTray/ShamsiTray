@@ -402,6 +402,13 @@ def normalize_events_mapping(raw) -> Tuple[Dict[str, dict], int]:
     legacy v1 case), and a recurring key on a one-time entry gets the entry
     re-flagged when there is no full date to re-key with. Either way the key
     (what matching uses) and the entry (what expiry uses) encode the same mode.
+
+    Canonical-key COLLISIONS are counted and logged, never silent: two source
+    keys can normalize onto one canonical form (``1405/01/01`` and
+    ``1405-01-01``), and a recurrence re-key can land on a key already present.
+    The policy is deterministic last-write-wins (file order), and the losing
+    entry is reported through the ``skipped`` accounting - so a load that folded
+    a collision is marked untrusted and never bulldozed with an empty save.
     """
     if not isinstance(raw, dict):
         return {}, 1 if raw is not None else 0
@@ -427,6 +434,13 @@ def normalize_events_mapping(raw) -> Tuple[Dict[str, dict], int]:
                 entry["recurrence"] = key_recurrence
                 if key_recurrence != RECURRENCE_NONE:
                     entry["remove_after_finish"] = False
+        if canonical_key in events:
+            # Two source entries landed on one canonical key. The loss must be
+            # visible, not silent - count it and say which form won.
+            skipped += 1
+            logger.warning(
+                f"User event key collision on {canonical_key!r}: entry {key!r} "
+                f"replaces an earlier normalized entry (last write wins).")
         events[canonical_key] = entry
     return events, skipped
 
@@ -470,7 +484,10 @@ def load_user_events() -> Dict[str, dict]:
 
     Also records how trustworthy the load was: a missing or clean file is
     trusted; an unreadable one, or one with malformed entries skipped, is not
-    (so ``save_user_events`` refuses to bulldoze it with an empty set).
+    (so ``save_user_events`` refuses to bulldoze it with an empty set). The
+    clean case actively RESETS the flag: a malformed load followed by an
+    externally repaired file must become trusted again, or the repaired store
+    could never be saved to.
     """
     global _LAST_LOAD_TRUSTED
     try:
@@ -490,6 +507,8 @@ def load_user_events() -> Dict[str, dict]:
     if skipped:
         logger.warning(f"Loaded user events with {skipped} malformed entr{'y' if skipped == 1 else 'ies'} skipped.")
         _LAST_LOAD_TRUSTED = False
+    else:
+        _LAST_LOAD_TRUSTED = True
     return events
 
 
