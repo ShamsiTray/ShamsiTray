@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushB
 from config import APP_CONFIG
 from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               format_distance_breakdown, format_distance_total,
-                              persian_month_name, persian_weekday_name,
+                              format_jalali_long, persian_month_name,
                               to_persian_digits)
 from utils.event_io import RECURRENCE_NONE, events_for_date, events_on_date
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
@@ -736,10 +736,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
             return
         self._cancel_day_tooltips()
         distance = describe_date_distance(jdate, today=self.current_date)
-        date_line = (f"{persian_weekday_name(jdate.weekday())} "
-                     f"{to_persian_digits(jdate.day)} "
-                     f"{persian_month_name(jdate.month)} "
-                     f"{to_persian_digits(jdate.year)}")
+        # The shared long formatter: the exact line this window used to build
+        # inline, now also used by the copy menu and the converter.
+        date_line = format_jalali_long(jdate)
         if distance.is_today:
             lines = ["تاریخ امروز است.", date_line]
         else:

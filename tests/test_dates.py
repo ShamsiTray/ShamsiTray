@@ -451,6 +451,20 @@ def test_jalali_and_gregorian_long_agree_on_one_day():
             == "Thursday 20 November 2025")
 
 
+def test_format_jalali_long_agrees_with_weekday_and_month_names():
+    d = jdatetime.date(1404, 12, 29)
+    expected = (f"{persian_weekday_name(d.weekday())} {to_persian_digits(29)} "
+                f"{persian_month_name(12)} {to_persian_digits(1404)}")
+    assert format_jalali_long(d) == expected
+
+
+def test_format_jalali_long_matches_the_distance_popup_line():
+    """The distance overlay's closing line and this helper are one string, not
+    two spellings of the same date."""
+    d = jdatetime.date(1405, 7, 1)
+    assert format_jalali_long(d) == "چهارشنبه ۱ مهر ۱۴۰۵"
+
+
 def test_both_full_copy_payload_pairs_the_two_long_forms():
     """The «هر دو کامل» payload is the two long lines, newline separated."""
     j_date = jdatetime.date(1404, 8, 29)
