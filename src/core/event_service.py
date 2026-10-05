@@ -62,8 +62,16 @@ class EventService:
     # --- state ------------------------------------------------------------------
 
     def reload(self) -> None:
-        """(Re)load the store from disk."""
-        self.events = load_user_events()
+        """(Re)load the store from disk.
+
+        The refresh happens IN PLACE (``clear()`` + ``update()``) for the same
+        reason the rollback in ``_commit`` does: the calendar widget holds a live
+        reference to this dict, so rebinding would leave the calendar reading a
+        stale object that nothing ever mutates again.
+        """
+        loaded = load_user_events()
+        self.events.clear()
+        self.events.update(loaded)
         logger.info(f"Loaded {len(self.events)} user events.")
 
     # --- queries (thin delegates; the key model lives in event_io) --------------
