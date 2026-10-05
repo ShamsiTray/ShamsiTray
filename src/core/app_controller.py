@@ -35,7 +35,7 @@ from core.update_checker import DAY_MS, UpdateChecker, file_sha256, should_notif
 from utils.date_utils import ms_until_midnight, persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import (
     RECURRENCE_NONE,
-    events_for_date,
+    events_on_date,
     export_events_to_file,
     import_events_from_file,
 )
@@ -560,9 +560,11 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         day_str_persian = to_persian_digits(new_date.day)
 
-        matched = events_for_date(self.user_events, new_date)
-        user_event_text = matched[1].get("text") if matched else None
-        is_user_event = bool(user_event_text)
+        # Every event occurring today, not just the winner: the tray tooltip is the
+        # only always-visible surface for a day with several events, and silently
+        # dropping the monthly one behind a one-time entry made it look absent.
+        day_events = events_on_date(self.user_events, new_date)
+        is_user_event = bool(day_events)
         is_holiday = bool(new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day)))
 
         color = APP_CONFIG.TRAY_ICON_DARK_COLOR if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.TRAY_ICON_LIGHT_COLOR
@@ -588,8 +590,11 @@ class SystemTrayIcon(QSystemTrayIcon):
                 tooltip_lines.append("تعطیلی:")
                 tooltip_lines.extend(holiday_reasons)
         if is_user_event:
-            tooltip_lines.append("رویداد:")
-            tooltip_lines.extend(user_event_text.split('\n'))
+            # The header is plural once more than one event occurs today, so the
+            # plural form reads as a section rather than a label on one line.
+            tooltip_lines.append("رویدادها:" if len(day_events) > 1 else "رویداد:")
+            for _key, entry in day_events:
+                tooltip_lines.extend(str(entry.get("text", "")).split('\n'))
 
         self.setToolTip(self._fit_tooltip(tooltip_lines))
 

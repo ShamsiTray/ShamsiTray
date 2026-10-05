@@ -417,6 +417,37 @@ def test_tray_tooltip_includes_user_event(tray):
     tray.remove_user_event(today)
 
 
+def test_tray_tooltip_lists_every_event_on_the_day(tray):
+    """A one-time and a monthly event on the same date are both listed.
+
+    Only the priority winner used to be shown, so the monthly one looked absent
+    even though it was stored and editable."""
+    today = jdatetime.date.today()
+    # Seeded straight into the store: add_user_event enforces one event per date
+    # (the second add would replace the first), so a collision like this can only
+    # arrive from a store written elsewhere - which is exactly the case the
+    # tooltip must survive.
+    tray._events.events[f"{today.year:04d}-{today.month:02d}-{today.day:02d}"] = {
+        "text": "doctor appointment", "recurrence": "none", "remove_after_finish": False}
+    tray._events.events[f"0000-{today.month:02d}-{today.day:02d}"] = {
+        "text": "monthly bill", "recurrence": "monthly", "remove_after_finish": False}
+    tray.update_tray_icon(force=True)
+    tooltip = tray.toolTip()
+    assert "doctor appointment" in tooltip
+    assert "monthly bill" in tooltip
+    assert "رویدادها:" in tooltip
+
+
+def test_tray_tooltip_stays_singular_for_one_event(tray):
+    """The plural header is for 2+ only; a single event keeps «رویداد:»."""
+    today = jdatetime.date.today()
+    tray.add_user_event(today, "lunch", "none", False)
+    tray.update_tray_icon(force=True)
+    tooltip = tray.toolTip()
+    assert "رویداد:" in tooltip
+    assert "رویدادها:" not in tooltip
+
+
 def test_tray_tooltip_includes_holiday_reason(tray, monkeypatch):
     """Pick a real holiday date from the cache; the tooltip lists its reasons."""
     holiday_date, reasons = None, None

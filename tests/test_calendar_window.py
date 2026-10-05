@@ -132,6 +132,22 @@ def test_tooltip_combines_holiday_and_event_lines(calendar):
     assert style.tooltip.startswith("<qt>")
 
 
+def test_tooltip_lists_every_event_on_the_date(calendar):
+    """A one-time and a monthly event on one date both appear in the tooltip.
+
+    Only the priority winner was listed, so the monthly event looked absent from
+    the very surface a user reads to find out what is scheduled."""
+    calendar.user_events = {
+        "1404-05-03": {"text": "one-time thing", "recurrence": "none",
+                       "remove_after_finish": False},
+        "0000-00-03": {"text": "monthly thing", "recurrence": "monthly",
+                       "remove_after_finish": False},
+    }
+    style = calendar._determine_day_style(jdatetime.date(1404, 5, 3), True)
+    assert "one-time thing" in style.tooltip
+    assert "monthly thing" in style.tooltip
+
+
 def test_plain_day_has_no_tooltip(calendar):
     plain = None
     for day in range(1, 28):
