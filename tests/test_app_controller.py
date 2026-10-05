@@ -767,14 +767,10 @@ def test_tray_tooltip_lists_every_event_on_the_day(tray):
     Only the priority winner used to be shown, so the monthly one looked absent
     even though it was stored and editable."""
     today = jdatetime.date.today()
-    # Seeded straight into the store: add_user_event enforces one event per date
-    # (the second add would replace the first), so a collision like this can only
-    # arrive from a store written elsewhere - which is exactly the case the
-    # tooltip must survive.
-    tray._events.events[f"{today.year:04d}-{today.month:02d}-{today.day:02d}"] = {
-        "text": "doctor appointment", "recurrence": "none", "remove_after_finish": False}
-    tray._events.events[f"0000-{today.month:02d}-{today.day:02d}"] = {
-        "text": "monthly bill", "recurrence": "monthly", "remove_after_finish": False}
+    # Two adds of DIFFERENT recurrences on one date: they coexist, which is the
+    # case the tooltip has to survive.
+    tray.add_user_event(today, "doctor appointment", "none", False)
+    tray.add_user_event(today, "monthly bill", "monthly", False)
     tray.update_tray_icon(force=True)
     tooltip = tray.toolTip()
     assert "doctor appointment" in tooltip
@@ -1792,6 +1788,70 @@ def test_add_user_event_rejects_none_date(tray):
 
 def test_remove_user_event_with_no_match_is_safe(tray):
     tray.remove_user_event(jdatetime.date(1500, 1, 1))  # no matching events
+
+
+# --- keyed edits through the calendar's own signals ------------------------------------
+
+
+def _two_events_today(tray):
+    """Today's date carrying a one-time and a monthly event, added the way the app does."""
+    today = jdatetime.date.today()
+    tray.add_user_event(today, "Doctor", "none", True)
+    tray.add_user_event(today, "Pay bills", "monthly", False)
+    return today, f"{today.year:04d}-{today.month:02d}-{today.day:02d}", f"0000-00-{today.day:02d}"
+
+
+def test_editing_one_of_two_events_leaves_the_other_alone(tray):
+    """End to end through the calendar: the per-event menu edits ONE of the day's
+    events, so the other one must be untouched."""
+    today, one_time_key, monthly_key = _two_events_today(tray)
+
+    tray.calendar_widget.event_updated_by_key.emit(monthly_key, today, "Pay bills later",
+                                                   "monthly", False, "")
+
+    assert tray.user_events[monthly_key]["text"] == "Pay bills later"
+    assert tray.user_events[one_time_key]["text"] == "Doctor"
+
+
+def test_deleting_one_of_two_events_leaves_the_other_alone(tray):
+    _today, one_time_key, monthly_key = _two_events_today(tray)
+
+    tray.calendar_widget.event_removed_by_key.emit(monthly_key)
+
+    assert monthly_key not in tray.user_events
+    assert one_time_key in tray.user_events
+
+
+def test_a_confirmed_merge_lands_as_one_entry(tray):
+    """The calendar's merge ask resolves to a single entry carrying both texts."""
+    today, one_time_key, monthly_key = _two_events_today(tray)
+
+    tray.calendar_widget.event_updated_by_key.emit(one_time_key, today, "Doctor",
+                                                   "monthly", False, monthly_key)
+
+    assert set(tray.user_events) == {monthly_key}
+    assert tray.user_events[monthly_key]["text"] == "Pay bills\nDoctor"
+    assert tray.user_events[monthly_key]["recurrence"] == "monthly"
+
+
+def test_update_user_event_by_key_is_safe_for_an_unknown_key(tray):
+    """An expired or already-removed key must not raise, and must not refresh."""
+    tray.user_events = {}
+    tray.update_user_event_by_key("1405-01-01", jdatetime.date(1405, 1, 1), "ghost")
+    assert tray.user_events == {}
+
+
+def test_update_user_event_by_key_rolls_back_on_save_failure(tray, monkeypatch):
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: None))
+    today, _one_time_key, monthly_key = _two_events_today(tray)
+    snapshot = dict(tray.user_events)
+
+    tray.calendar_widget.event_updated_by_key.emit(monthly_key, today, "will fail",
+                                                   "monthly", False, "")
+
+    assert tray.user_events == snapshot
 
 
 # --- import collision confirmation (EVT-5 / #1) -----------------------------------------

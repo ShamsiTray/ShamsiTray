@@ -311,7 +311,28 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         self._on_recurrence_changed()
 
     def recurrence(self) -> str:
-        return _RECURRENCE_VALUES[self.recurrence_combo.currentIndex()]
+        """The selected recurrence mode.
+
+        An index of -1 (every item disabled) reads as one-time rather than
+        indexing the tuple from the end, which would silently pick yearly.
+        """
+        index = self.recurrence_combo.currentIndex()
+        if 0 <= index < len(_RECURRENCE_VALUES):
+            return _RECURRENCE_VALUES[index]
+        return RECURRENCE_NONE
+
+    def set_disabled_recurrences(self, taken) -> None:
+        """Grey out the recurrence modes that are already used on this date.
+
+        A date can hold only one event per mode, so a mode already taken there
+        would silently replace the existing event instead of adding one. The
+        labels stay readable: the disabled state is what carries the rule.
+        """
+        model = self.recurrence_combo.model()
+        for index, mode in enumerate(_RECURRENCE_VALUES):
+            item = model.item(index)
+            if item is not None:
+                item.setEnabled(mode not in taken)
 
     def _on_recurrence_changed(self, *_args):
         mode = self.recurrence()

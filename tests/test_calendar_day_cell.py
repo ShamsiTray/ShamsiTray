@@ -147,34 +147,51 @@ def test_context_menu_add_action_emits_after_menu_closes(qtbot, cell, monkeypatc
     assert cell._context_menu_open is False  # reset after exec returns
 
 
-def test_context_menu_remove_disabled_without_user_event(qtbot, cell, monkeypatch):
-    """Without a user event on this day, حذف رویداد is greyed out."""
-    actions = {}
+def test_context_menu_without_user_event_offers_only_adding(qtbot, cell, open_menu):
+    """Nothing to edit or remove yet: the day menu offers just the add row.
 
-    def fake_exec(self, pos):
-        for action in self.actions():
-            default_widget = getattr(action, "defaultWidget", lambda: None)()
-            if default_widget is not None and hasattr(default_widget, "label"):
-                actions[default_widget.label.text()] = (action.isEnabled(),
-                                                        default_widget.isEnabled())
-
-    monkeypatch.setattr(QMenu, "exec", fake_exec)
+    The delete row used to be present-but-greyed here; it is now absent, because
+    the store - not the cell's has_user_event hint - is what the menu reads."""
     cell.setText("۵")
-    event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5),
-                              cell.mapToGlobal(QPoint(5, 5)))
-    cell.contextMenuEvent(event)
-    assert actions["افزودن رویداد"] == (True, True)
-    assert actions["حذف رویداد"] == (False, False)  # disabled on action + widget
+    rows = _menu_rows(open_menu(cell))
+    assert "افزودن رویداد" in rows
+    assert "ویرایش رویداد" not in rows
+    assert "حذف رویداد" not in rows
 
 
-def test_context_menu_remove_enabled_with_user_event(qtbot, cell, monkeypatch):
-    monkeypatch.setattr(QMenu, "exec", lambda self, pos: None)
-    cell.setText("۵")
-    cell.has_user_event = True
-    event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5),
-                              cell.mapToGlobal(QPoint(5, 5)))
-    cell.contextMenuEvent(event)
-    # (Not executed interactively; flag presence is what the menu reads.)
+def test_a_day_with_an_event_can_still_add_a_different_one(qtbot, open_menu):
+    """A monthly event must not lock the date against other events: «افزودن
+    رویداد» stays available so a one-time event can join it."""
+    host = _HostWindow({"0000-00-02": {"text": "Take medication", "recurrence": "monthly",
+                                       "remove_after_finish": False}})
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+
+    rows = _menu_rows(open_menu(label))
+    assert "افزودن رویداد" in rows
+    # ...alongside the row that edits the one that is already there.
+    assert "ویرایش رویداد" in rows
+    assert "حذف رویداد" in rows
+
+
+def test_context_menu_remove_enabled_with_user_event(qtbot, open_menu):
+    host = _HostWindow({"1404-05-02": {"text": "Doctor", "recurrence": "none",
+                                       "remove_after_finish": False}})
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+
+    menu = open_menu(label)
+    remove_widget = next(a.defaultWidget() for a in menu.actions()
+                         if getattr(a, "defaultWidget", lambda: None)() is not None
+                         and hasattr(a.defaultWidget(), "label")
+                         and a.defaultWidget().label.text() == "حذف رویداد")
+    assert remove_widget.isEnabled() is True
 
 
 def test_add_event_emission_is_delayed_until_menu_gone(cell, qtbot):
@@ -308,21 +325,55 @@ def test_context_menu_reads_copy_distance_add_delete(qtbot, cell, open_menu):
     formats above it."""
     cell.setText("۱")
     rows = _menu_rows(open_menu(cell))
-    assert rows == ["کپی تاریخ", "---", DISTANCE_ACTION_TEXT, "---",
-                    "افزودن رویداد", "---", "حذف رویداد"]
+    assert rows == ["کپی تاریخ", "---", DISTANCE_ACTION_TEXT, "---", "افزودن رویداد"]
 
 
-def test_context_menu_add_row_reads_as_edit_on_an_event_day(qtbot, cell, open_menu):
-    """Reordering must not cost the add/edit wording swap, and it must not move the
-    swap to a different row."""
-    cell.setText("۱")
-    cell.has_user_event = True
-    assert _menu_rows(open_menu(cell))[4] == "ویرایش رویداد"
+def test_the_add_row_keeps_its_wording_on_an_event_day(qtbot, open_menu):
+    """The row used to double as add-OR-edit and relabelled itself «ویرایش
+    رویداد» on an event day, which is what left a recurring day with no way to
+    add a second, different event."""
+    host = _HostWindow({"0000-00-02": {"text": "Take medication", "recurrence": "monthly",
+                                       "remove_after_finish": False}})
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+
+    assert _menu_rows(open_menu(label))[4] == "افزودن رویداد"
 
 
-def test_existing_day_menu_actions_survive_copy_submenu(qtbot, cell, open_menu):
-    cell.setText("۵")
-    menu = open_menu(cell)
+def test_the_add_row_disappears_when_every_mode_is_taken(qtbot, open_menu):
+    """A date holds at most one event per mode, so a day carrying all three has
+    nothing left to create - and must not open an editor with no usable mode."""
+    host = _HostWindow({
+        "1404-05-02": {"text": "Doctor", "recurrence": "none", "remove_after_finish": False},
+        "0000-00-02": {"text": "Take medication", "recurrence": "monthly",
+                       "remove_after_finish": False},
+        "0000-05-02": {"text": "Dentist", "recurrence": "yearly", "remove_after_finish": False},
+    })
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+
+    rows = _menu_rows(open_menu(label))
+    assert "افزودن رویداد" not in rows
+    # The three events are still reachable for editing and deleting.
+    assert "ویرایش رویداد" in rows and "حذف رویداد" in rows
+
+
+def test_existing_day_menu_actions_survive_copy_submenu(qtbot, open_menu):
+    host = _HostWindow({"1404-05-02": {"text": "Doctor", "recurrence": "none",
+                                       "remove_after_finish": False}})
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+
+    menu = open_menu(label)
     labels = []
     for action in menu.actions():
         widget = action.defaultWidget() if hasattr(action, "defaultWidget") else None
@@ -332,12 +383,230 @@ def test_existing_day_menu_actions_survive_copy_submenu(qtbot, cell, open_menu):
     assert "حذف رویداد" in labels
     # The copy entry is the plain submenu title (not a widget row).
     assert "کپی تاریخ" in [a.text() for a in menu.actions()]
-    # The delete row's enable/disable logic is untouched.
-    remove_widget = next(a.defaultWidget() for a in menu.actions()
-                         if hasattr(a, "defaultWidget") and a.defaultWidget() is not None
-                         and hasattr(a.defaultWidget(), "label")
-                         and a.defaultWidget().label.text() == "حذف رویداد")
-    assert remove_widget.isEnabled() is False
+
+
+# --- per-event rows when a day carries several events -------------------------------
+
+
+class _HostWindow(QWidget):
+    """Minimal stand-in for the calendar popup: the cell only reads its events."""
+
+    def __init__(self, events):
+        super().__init__()
+        self.user_events = events
+        self.normalized = 0
+
+    def normalize_day_hover(self):
+        self.normalized += 1
+
+
+class _FakeMenu:
+    """Just enough menu for the deferred-emission helpers, which only close it."""
+
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def _two_event_cell(qtbot):
+    """A cell inside a host whose day carries a one-time and a monthly event."""
+    host = _HostWindow({
+        "1404-05-02": {"text": "Doctor", "recurrence": "none", "remove_after_finish": False},
+        "0000-00-02": {"text": "Pay bills", "recurrence": "monthly", "remove_after_finish": False},
+    })
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+    return host, label
+
+
+def _submenu_rows(menu, title):
+    """The rows of one named submenu, in the order they were added."""
+    action = next(a for a in menu.actions() if a.menu() is not None and a.text() == title)
+    return [a.text() for a in action.menu().actions()]
+
+
+def test_a_multi_event_day_offers_one_row_per_event(qtbot, open_menu):
+    """With several events on the day there is no single "the" event any more, so
+    edit and delete become submenus listing each event with its recurrence."""
+    _host, cell = _two_event_cell(qtbot)
+
+    rows = _menu_rows(open_menu(cell))
+
+    # The plain edit/delete rows are gone: a date-level edit would be ambiguous
+    # once two events share the date. Adding is not ambiguous - it targets a new
+    # key - so its row stays.
+    assert rows == ["کپی تاریخ", "---", DISTANCE_ACTION_TEXT, "---", "افزودن رویداد",
+                    "---", "ویرایش رویداد", "---", "حذف رویداد"]
+
+
+def test_multi_event_rows_carry_the_text_and_its_recurrence(qtbot, open_menu):
+    _host, cell = _two_event_cell(qtbot)
+    menu = open_menu(cell)
+
+    assert _submenu_rows(menu, "ویرایش رویداد") == ["Doctor", "Pay bills (ماهانه)"]
+    assert _submenu_rows(menu, "حذف رویداد") == ["Doctor", "Pay bills (ماهانه)"]
+
+
+def test_choosing_an_event_to_edit_emits_that_key(qtbot, open_menu):
+    """The row the user picked decides which event the editor opens - not the day."""
+    _host, cell = _two_event_cell(qtbot)
+    received = []
+    cell.edit_event_requested_specific.connect(
+        lambda jdate, key, entry: received.append((jdate, key, entry["text"])))
+    menu = open_menu(cell)
+
+    edit_menu = next(a.menu() for a in menu.actions() if a.text() == "ویرایش رویداد")
+    next(a for a in edit_menu.actions() if a.text() == "Pay bills (ماهانه)").trigger()
+    assert received == []  # deferred until the menu is gone
+    qtbot.wait(100)
+
+    assert received == [(cell.jalali_date, "0000-00-02", "Pay bills")]
+
+
+def _merged_cell(qtbot, text="Pay bills\nDoctor appointment", recurrence="monthly"):
+    """A cell whose single event carries several text lines (the merge result)."""
+    host = _HostWindow({
+        "0000-00-02": {"text": text, "recurrence": recurrence, "remove_after_finish": False},
+        "1404-05-02": {"text": "Standalone", "recurrence": "none", "remove_after_finish": False},
+    })
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+    return host, label
+
+
+def test_a_merged_event_stays_one_menu_row(qtbot, open_menu):
+    """A merge leaves ONE logical event holding several lines. Qt renders a "\n"
+    inside QAction text as a line break, so the raw text would make the row twice
+    as tall and push the submenu off the screen."""
+    _host, cell = _merged_cell(qtbot)
+    menu = open_menu(cell)
+
+    for title in ("ویرایش رویداد", "حذف رویداد"):
+        rows = _submenu_rows(menu, title)
+        merged = [row for row in rows if "Pay bills" in row]
+        assert len(merged) == 1, rows
+        assert "\n" not in merged[0]
+        # Both halves stay readable, and the recurrence still reads.
+        assert "Pay bills" in merged[0] and "Doctor appointment" in merged[0]
+        assert "ماهانه" in merged[0]
+        # The join is a plain hyphen: the em dash is not a character this menu
+        # should ever show.
+        assert merged[0] == "Pay bills - Doctor appointment (ماهانه)"
+
+
+def test_the_menu_label_is_shorter_than_the_stored_text(qtbot, open_menu):
+    """Only the presentation shrinks; picking the row still hands the editor the
+    full multi-line text."""
+    text = "Pay bills\nDoctor appointment"
+    _host, cell = _merged_cell(qtbot, text=text)
+    received = []
+    cell.edit_event_requested_specific.connect(
+        lambda jdate, key, entry: received.append((key, entry["text"])))
+    menu = open_menu(cell)
+
+    edit_menu = next(a.menu() for a in menu.actions() if a.text() == "ویرایش رویداد")
+    merged_row = next(a for a in edit_menu.actions() if "Pay bills" in a.text())
+    merged_row.trigger()
+    qtbot.wait(100)
+
+    assert received == [("0000-00-02", text)]
+
+
+def test_a_long_merged_event_is_elided_on_one_line(qtbot, open_menu):
+    _host, cell = _merged_cell(qtbot, text="A very long first line indeed\nand a second one too")
+    menu = open_menu(cell)
+
+    edit_menu = next(a.menu() for a in menu.actions() if a.text() == "ویرایش رویداد")
+    row = next(a for a in edit_menu.actions() if a.text().startswith("A very long"))
+    assert "\n" not in row.text()
+    assert row.text().endswith("… (ماهانه)")
+    assert len(row.text()) < len("A very long first line indeed\nand a second one too")
+
+
+def test_a_merged_event_presents_exactly_like_its_single_line_form(qtbot, open_menu):
+    """The geometry invariant behind the fix: folding the lines back must leave
+    the submenu indistinguishable from a text that was written on one line.
+
+    Qt does not wrap an embedded newline - it lays it out as one very wide row
+    (the submenu more than doubled in width), which is what pushed it past the
+    screen edge."""
+    def submenu_hint(lines, separator="\n"):
+        text = separator.join(lines)
+        _host, cell = _merged_cell(qtbot, text=text)
+        menu = open_menu(cell)
+        edit_menu = next(a.menu() for a in menu.actions() if a.text() == "ویرایش رویداد")
+        return edit_menu.sizeHint(), [a.text() for a in edit_menu.actions()]
+
+    joined_hint, joined_rows = submenu_hint(["Pay bills", "Doctor appointment"])
+    one_line_hint, one_line_rows = submenu_hint(["Pay bills - Doctor appointment"], "")
+
+    assert joined_rows == one_line_rows
+    assert joined_hint == one_line_hint
+
+    # Rows stay uniform no matter how many lines the text carries.
+    _host, three = _merged_cell(qtbot, text="Pay bills\nDoctor appointment\nAnd a third")
+    edit_menu = next(a.menu() for a in open_menu(three).actions() if a.text() == "ویرایش رویداد")
+    assert edit_menu.sizeHint().height() == joined_hint.height()
+
+
+def test_choosing_an_event_to_delete_emits_that_key(cell, qtbot):
+    """Deleting one event of a several-event day takes only that one."""
+    received = []
+    cell.remove_event_requested_specific.connect(lambda key: received.append(key))
+    cell._trigger_remove_specific_and_close(_FakeMenu(), "0000-00-02")
+
+    assert received == []  # deferred until the menu is gone
+    qtbot.wait(100)
+    assert received == ["0000-00-02"]
+
+
+def test_a_single_event_day_keeps_its_plain_rows(qtbot, open_menu):
+    """One event on the day: add, then the plain edit/delete pair."""
+    host = _HostWindow({"1404-05-02": {"text": "Doctor", "recurrence": "none",
+                                       "remove_after_finish": False}})
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+
+    rows = _menu_rows(open_menu(label))
+
+    assert rows == ["کپی تاریخ", "---", DISTANCE_ACTION_TEXT, "---", "افزودن رویداد",
+                    "---", "ویرایش رویداد", "---", "حذف رویداد"]
+
+
+def test_the_single_event_edit_row_emits_that_events_key(qtbot, open_menu):
+    """The plain edit row edits the one event that is there, by key - the same
+    key-scoped path the multi-event submenu rows use."""
+    host = _HostWindow({"0000-00-02": {"text": "Take medication", "recurrence": "monthly",
+                                       "remove_after_finish": False}})
+    qtbot.addWidget(host)
+    label = ClickableLabel(host)
+    label.jalali_date = jdatetime.date(1404, 5, 2)
+    label.setText("۲")
+    label.has_user_event = True
+    received = []
+    label.edit_event_requested_specific.connect(
+        lambda jdate, key, entry: received.append((jdate, key)))
+
+    menu = open_menu(label)
+    edit_widget = next(a.defaultWidget() for a in menu.actions()
+                       if getattr(a, "defaultWidget", lambda: None)() is not None
+                       and hasattr(a.defaultWidget(), "label")
+                       and a.defaultWidget().label.text() == "ویرایش رویداد")
+    edit_widget.triggered.emit()
+    qtbot.wait(100)
+
+    assert received == [(label.jalali_date, "0000-00-02")]
 
 
 @pytest.mark.parametrize("jy,jm,jd", [

@@ -21,12 +21,14 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               format_distance_breakdown, format_distance_total,
                               format_jalali_long, persian_month_name,
                               to_persian_digits)
-from utils.event_io import RECURRENCE_NONE, events_for_date, events_on_date
+from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, events_for_date,
+                            events_on_date, make_event_key, recurrence_of_key,
+                            recurrences_on_date)
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.go_to_date import GoToDateWindow
-from ui.widgets.event_input import EventInputWidget
+from ui.widgets.event_input import EventInputWidget, recurrence_label
 from ui.widgets.menu_widgets import MenuActionWidget
 from .base_window import BaseFramelessWindow
 
@@ -47,6 +49,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
     # always-on-top switched off, a click outside it dismisses it.
     CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED = True
     event_added = pyqtSignal(object, str, str, bool)  # jdate, text, recurrence, remove_after_finish
+    # key-scoped edit: key, jdate, text, recurrence, remove_after_finish, merge_into
+    # (merge_into is empty unless the user confirmed folding this edit into the
+    # event already living on the key the edit would land on)
+    event_updated_by_key = pyqtSignal(str, object, str, str, bool, str)
     event_removed = pyqtSignal(object)
     event_removed_by_key = pyqtSignal(str)
 
@@ -85,6 +91,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if self.event_input_widget.isVisible():
             self.event_input_widget.hide()
             self.editing_date = None
+            # The key decides which event a save touches, so it must not outlive
+            # the editor it belongs to.
+            self._editing_event_key = None
         # A confirmation in flight dies with the popup, and its pending deletion
         # with it: leaving the date set would let a later choice remove an event
         # the user was no longer looking at.
@@ -103,6 +112,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         """
         overlay, self._active_overlay = self._active_overlay, None
         self._pending_remove = None
+        self._pending_merge = None
         if overlay is not None:
             overlay.hide()
             self.overlay_blocker.hide()
@@ -161,6 +171,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._editing_event_key: Optional[str] = None
         self._pending_remove: Optional[jdatetime.date] = None
         self._pending_remove_key: Optional[str] = None
+        # key, jdate, target_key, text, recurrence, remove_after_finish
+        self._pending_merge: Optional[Tuple[str, jdatetime.date, str, str, str, bool]] = None
         self._distance_overlay = ConfirmOverlay(
             self, "فاصله تا امروز", danger=False,
             glyph=APP_CONFIG.FAS.FA_CLOCK, notice=True)
@@ -174,6 +186,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
             danger=True)
         self._remove_overlay.chosen.connect(self._on_remove_choice)
         self._remove_overlay.hide()
+        self._merge_overlay = ConfirmOverlay(
+            self, "ادغام رویداد", confirm_text="ادغام", cancel_text="انصراف",
+            danger=False)
+        self._merge_overlay.chosen.connect(self._on_merge_choice)
+        self._merge_overlay.hide()
 
         self.event_input_widget = EventInputWidget(self)
         self.event_input_widget.saved.connect(self._handle_event_saved)
@@ -565,6 +582,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         existing_text = entry.get("text", "")
         recurrence = entry.get("recurrence", RECURRENCE_NONE)
         remove_after_finish = entry.get("remove_after_finish", False)
+        # Editing may change the recurrence, so nothing is greyed out here; the
+        # widget is shared with the add path and would keep its disabled rows.
+        self.event_input_widget.set_disabled_recurrences(())
         self.event_input_widget.set_data(existing_text, recurrence, remove_after_finish)
         self.overlay_blocker.resize(self.size())
         self.overlay_blocker.show()
@@ -580,6 +600,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
             return
+        # This row means "add a new event". The modes already used on the date
+        # are greyed out rather than silently replacing what is there, and a
+        # date holding all three modes has nothing left to add - the day menu
+        # drops the row, and this guard keeps the editor unreachable anyway.
+        taken = recurrences_on_date(self.user_events, jdate)
+        if len(taken) == len(RECURRENCE_MODES):
+            return
         # The tooltip is a top-level window; without an explicit hide it can
         # keep floating above the editor overlay (right-click opens the menu
         # without ever leaving the cell, so nothing else dismisses it).
@@ -588,15 +615,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._cancel_day_tooltips()
         self.editing_date = jdate
         self._editing_event_key = None
-        matched = events_for_date(self.user_events, jdate)
-        if matched is None:
-            existing_text, recurrence, remove_after_finish = "", RECURRENCE_NONE, False
-        else:
-            entry = matched[1]
-            existing_text = entry.get("text", "")
-            recurrence = entry.get("recurrence", RECURRENCE_NONE)
-            remove_after_finish = entry.get("remove_after_finish", False)
-        self.event_input_widget.set_data(existing_text, recurrence, remove_after_finish)
+        self.event_input_widget.set_disabled_recurrences(taken)
+        self.event_input_widget.set_data("", RECURRENCE_NONE, False)
         self.overlay_blocker.resize(self.size())
         self.overlay_blocker.show()
         self.overlay_blocker.raise_()
@@ -613,9 +633,74 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _handle_event_saved(self, text: str, recurrence: str, remove_after_finish: bool):
         # Save is disabled while the text is empty, so an empty text here is impossible;
         # event deletion goes through the context menu (_remove_event) instead.
-        if self.editing_date:
-            self.event_added.emit(self.editing_date, text, recurrence, remove_after_finish)
+        jdate, key = self.editing_date, self._editing_event_key
+        if not jdate:
+            self._hide_event_input_widget()
+            return
+        # An edit that would move the event onto a key another event already owns
+        # is not applied: the store refuses such an overwrite, and merging two
+        # events is a decision only the user can make.
+        target_key = self._edited_target_key(jdate, key, recurrence)
+        collision = (key is not None and target_key != key
+                     and target_key in self.user_events)
+        if collision:
+            self._pending_merge = (key, jdate, target_key, text, recurrence,
+                                   remove_after_finish)
+        elif key is not None:
+            self.event_updated_by_key.emit(key, jdate, text, recurrence,
+                                           remove_after_finish, "")
+        else:
+            self.event_added.emit(jdate, text, recurrence, remove_after_finish)
+        # Teardown first: hiding the editor takes the blocker down with it, so the
+        # merge overlay has to be presented after, not before.
         self._hide_event_input_widget()
+        if collision:
+            self._present_merge_confirmation(target_key, recurrence)
+
+    def _edited_target_key(self, jdate: jdatetime.date, key: Optional[str],
+                           recurrence: str) -> Optional[str]:
+        """Where an edit of ``key`` would land, mirroring the service's own rule.
+
+        Mirrored rather than asked for because the collision has to be known
+        BEFORE the store is touched: an unchanged recurrence keeps the entry's own
+        key (a clamped occurrence must not walk a recurring event's anchor), and
+        anything else is re-derived from the occurrence the user was shown.
+        """
+        if key is None or recurrence_of_key(key) == recurrence:
+            return key
+        return make_event_key(jdate, recurrence)
+
+    def _present_merge_confirmation(self, target_key: str, recurrence: str):
+        """Ask before folding the edited event into the one already on ``target_key``.
+
+        A recurrence change can land an event on a key another event owns, and
+        overwriting it would silently destroy that event. The ask names the
+        recurrence and previews the text that would be kept, as the delete card
+        splits question and event text.
+        """
+        self._cancel_day_tooltips()
+        existing = str(self.user_events.get(target_key, {}).get("text", ""))
+        preview = existing if len(existing) <= 40 else existing[:40] + "…"
+        self._merge_overlay.set_message(
+            f"رویدادی با تکرار {recurrence_label(recurrence)} از قبل روی این تاریخ وجود دارد؛ ادغام شود؟")
+        self._merge_overlay.set_detail(preview)
+        self._present_overlay(self._merge_overlay)
+
+    def _on_merge_choice(self, text: str):
+        """Apply or drop the parked merge.
+
+        The pending request is cleared *before* anything else, exactly like the
+        delete ask, so cancel and confirm share this path and the overlay can
+        never be answered twice.
+        """
+        pending, self._pending_merge = self._pending_merge, None
+        self._dismiss_active_overlay()
+        self.normalize_day_hover()
+        if pending is None or text != self._merge_overlay.confirm_button.text():
+            return
+        key, jdate, target_key, merged_text, recurrence, remove_after_finish = pending
+        self.event_updated_by_key.emit(key, jdate, merged_text, recurrence,
+                                       remove_after_finish, target_key)
 
     def _handle_event_canceled(self):
         self._hide_event_input_widget()

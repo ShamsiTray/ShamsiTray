@@ -27,11 +27,14 @@ All entry parsing is fault-isolated: one malformed entry is skipped with a
 logged warning and never takes down the whole event set. Save failures are
 reported to the caller and logged; the in-memory state stays valid.
 
- There is at most one event per calendar date: saving an event for a date
- replaces whichever event previously matched that date (see
- ``keys_matching_date``). Imports honour the same invariant: ``build_import_plan``
- reconciles imported entries against the store by *visible date* rather than by
- key string, so importing can never silently stack two events on one day.
+A calendar date can show several events: they are told apart by their key, so a
+one-time and a monthly event on one day are two entries, each edited and deleted
+by its own key (see ``keys_matching_date``). The interactive add path follows
+that model - it replaces only the event of the SAME recurrence. Import is the
+deliberate exception: ``build_import_plan`` reconciles imported entries against
+the store by *visible date* rather than by key string, so an import stays a
+clean slate instead of stacking a second event on a day the user already filled
+(and says what it would replace before doing so).
 
  The last load is tracked as trusted/untrusted: an unreadable store or one
  with malformed entries is never bulldozed with an empty save (see
@@ -41,7 +44,7 @@ reported to the caller and logged; the in-memory state stays valid.
 import json
 import logging
 import os
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 
 import jdatetime
 
@@ -161,6 +164,28 @@ def events_on_date(events: Dict[str, dict], jdate: jdatetime.date) -> List[Tuple
         if entry is not None:
             result.append((key, entry))
     return result
+
+
+def recurrences_on_date(events: Dict[str, dict],
+                        jdate: jdatetime.date) -> Set[str]:
+    """The recurrence modes already occupied on ``jdate``.
+
+    A visible date can hold at most one event per mode - a one-time key *is*
+    the date, a monthly key carries only a day and a yearly key a month+day -
+    so this set is what decides whether a new event of some mode still fits
+    there. A date holding all three has nothing left to add.
+    """
+    return {recurrence_of_key(key) for key in keys_matching_date(events, jdate)}
+
+
+def free_recurrences_on_date(events: Dict[str, dict],
+                             jdate: jdatetime.date) -> Set[str]:
+    """The modes that can still be added on ``jdate``.
+
+    Empty once the date holds an event of every mode - there is nothing left to
+    create there, which is what the day's add row reports by being absent.
+    """
+    return set(RECURRENCE_MODES) - recurrences_on_date(events, jdate)
 
 
 def count_events_on_date(events: Dict[str, dict], jdate: jdatetime.date) -> int:
@@ -571,13 +596,13 @@ def import_events_from_file(path) -> Optional[Tuple[Dict[str, dict], int]]:
 
 # --- Import reconciliation (EVT-5) -------------------------------------------
 #
-# A store holds at most one event per *visible* calendar date, but different
-# store keys can land on the same date: a one-time ``1405-08-01`` and a yearly
-# ``0000-08-01`` are distinct keys that both fire on 1405/08/01 (and
-# ``events_for_date`` then silently picks a winner while the event manager lists
-# both). A flat ``dict.update`` would deduplicate exact keys only, so everything
-# below reconciles an import the same way the interactive add path does: by
-# visible date, not by key string.
+# An import is reconciled by VISIBLE DATE, deliberately stricter than the
+# interactive add path, which is keyed. Different store keys can land on the same
+# date: a one-time ``1405-08-01`` and a yearly ``0000-08-01`` are distinct keys
+# that both fire on 1405/08/01. A flat ``dict.update`` would deduplicate exact keys
+# only, so everything below folds by date: importing a file that touches a busy
+# day replaces that day after the user has been shown what it would lose, rather
+# than quietly adding a second event beside the first.
 
 # Years sampled for recurring-vs-recurring collision checks: one leap and one
 # non-leap Jalali year. Recurring keys carry no year of their own, so every date

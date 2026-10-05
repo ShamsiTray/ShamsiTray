@@ -36,6 +36,29 @@ _COPY_ACTION_TEXTS = ("تاریخ شمسی", "تاریخ شمسی کامل", "ت
 DISTANCE_ACTION_TEXT = "فاصله تا امروز"
 
 
+# A merged event stores its lines as one text, so the menu has to fold them back
+# into a single row: Qt renders a "\n" inside QAction text as a line break, which
+# would make one event a two-line item and stretch the submenu past the screen.
+_MENU_LINE_SEPARATOR = " - "
+_MENU_LABEL_MAX_CHARS = 30
+
+_RECURRENCE_MENU_SUFFIX = {"yearly": " (سالانه)", "monthly": " (ماهانه)"}
+
+
+def _event_menu_label(entry: dict) -> str:
+    """One-line «ویرایش/حذف رویداد» row label for a stored event.
+
+    Merged events hold several lines; they are joined, elided and given their
+    recurrence suffix so one event stays one compact row. The stored text is
+    untouched - only this presentation is shortened.
+    """
+    lines = [part.strip() for part in str(entry.get("text", "")).splitlines()]
+    text = _MENU_LINE_SEPARATOR.join(part for part in lines if part)
+    if len(text) > _MENU_LABEL_MAX_CHARS:
+        text = text[:_MENU_LABEL_MAX_CHARS] + "…"
+    return text + _RECURRENCE_MENU_SUFFIX.get(entry.get("recurrence", "none"), "")
+
+
 def _copy_text_for_mode(mode: str, jdate: jdatetime.date) -> str:
     """Clipboard text for one «کپی تاریخ» entry.
 
@@ -198,17 +221,35 @@ class ClickableLabel(QLabel):
 
         menu.addSeparator()
 
-        from utils.event_io import events_on_date  # local import to avoid cycle
+        from utils.event_io import events_on_date, free_recurrences_on_date  # local import to avoid cycle
 
-        day_events = events_on_date(self.window().user_events, self.jalali_date) if hasattr(self.window(), "user_events") else []
+        events = getattr(self.window(), "user_events", {})
+        day_events = events_on_date(events, self.jalali_date) if self.jalali_date else []
         self._day_events_list = day_events
 
-        if len(day_events) <= 1:
-            add_action_text = "ویرایش رویداد" if self.has_user_event else "افزودن رویداد"
-            add_event_widget = MenuActionWidget(add_action_text, menu)
+        # Add / edit / delete are three different acts. The single row this used
+        # to carry both "add" and "edit" is what left a day holding a recurring
+        # event with no way to add a second, different one: the label flipped to
+        # «ویرایش» and the editor opened prefilled on the existing event.
+        if self.jalali_date and free_recurrences_on_date(events, self.jalali_date):
+            add_event_widget = MenuActionWidget("افزودن رویداد", menu)
             add_action = QWidgetAction(menu)
             add_action.setDefaultWidget(add_event_widget)
             menu.addAction(add_action)
+            add_event_widget.triggered.connect(
+                lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
+
+            if day_events:
+                menu.addSeparator()
+
+        if len(day_events) == 1:
+            key, entry = day_events[0]
+            edit_event_widget = MenuActionWidget("ویرایش رویداد", menu)
+            edit_action = QWidgetAction(menu)
+            edit_action.setDefaultWidget(edit_event_widget)
+            menu.addAction(edit_action)
+            edit_event_widget.triggered.connect(
+                lambda k=key, e=entry: self._trigger_edit_specific_and_close(menu, k, e))
 
             menu.addSeparator()
 
@@ -216,12 +257,9 @@ class ClickableLabel(QLabel):
             remove_action = QWidgetAction(menu)
             remove_action.setDefaultWidget(remove_event_widget)
             menu.addAction(remove_action)
-            remove_action.setEnabled(self.has_user_event)
-            remove_event_widget.setEnabled(self.has_user_event)
-
-            add_event_widget.triggered.connect(lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
-            remove_event_widget.triggered.connect(lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
-        else:
+            remove_event_widget.triggered.connect(
+                lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
+        elif day_events:
             edit_menu = CenteredTextMenu(menu)
             edit_menu.setTitle("ویرایش رویداد")
             menu.addMenu(edit_menu)
@@ -229,17 +267,7 @@ class ClickableLabel(QLabel):
             edit_menu.setLayoutDirection(menu.layoutDirection())
 
             for key, entry in day_events:
-                text = str(entry.get("text", ""))
-                if len(text) > 30:
-                    text = text[:30] + "…"
-                rec = entry.get("recurrence", "none")
-                if rec == "yearly":
-                    label = f"{text} (سالانه)"
-                elif rec == "monthly":
-                    label = f"{text} (ماهانه)"
-                else:
-                    label = text
-                action = edit_menu.addAction(label)
+                action = edit_menu.addAction(_event_menu_label(entry))
                 action.triggered.connect(
                     lambda checked=False, k=key, e=entry: self._trigger_edit_specific_and_close(menu, k, e)
                 )
@@ -253,17 +281,7 @@ class ClickableLabel(QLabel):
             del_menu.setLayoutDirection(menu.layoutDirection())
 
             for key, entry in day_events:
-                text = str(entry.get("text", ""))
-                if len(text) > 30:
-                    text = text[:30] + "…"
-                rec = entry.get("recurrence", "none")
-                if rec == "yearly":
-                    label = f"{text} (سالانه)"
-                elif rec == "monthly":
-                    label = f"{text} (ماهانه)"
-                else:
-                    label = text
-                action = del_menu.addAction(label)
+                action = del_menu.addAction(_event_menu_label(entry))
                 action.triggered.connect(
                     lambda checked=False, k=key: self._trigger_remove_specific_and_close(menu, k)
                 )
