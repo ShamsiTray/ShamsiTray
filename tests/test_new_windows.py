@@ -686,6 +686,46 @@ def test_confirm_dialog_wiring(qtbot):
     assert dialog2.result() == int(QDialog.DialogCode.Rejected)
 
 
+def test_confirm_dialog_static_flows_go_through_the_shared_tail(qtbot, monkeypatch):
+    """One presentation path for every dialog.
+
+    The sizing/centering tail used to be duplicated per flow, so a change to
+    how dialogs are shown could land in one flow and silently miss another -
+    or in a hand-built dialog that has to keep its own reference (the update
+    popup). exec_centered() is that single tail."""
+    calls = []
+
+    def fake_exec_centered(self, parent=None):
+        calls.append(parent)
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", fake_exec_centered)
+    assert ConfirmDialog.ask(None, "ت", "م") is True
+    ConfirmDialog.choose(None, "ت", "م", actions=[("یک", "accent")])
+    assert calls == [None, None]
+
+
+def test_confirm_dialog_exec_centered_sizes_and_centers_then_runs(qtbot, monkeypatch):
+    dialog = ConfirmDialog(None, "ت", "م")
+    qtbot.addWidget(dialog)
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    parent.resize(400, 300)
+    parent.move(300, 300)
+    parent.show()
+    qtbot.waitExposed(parent)
+
+    seen = {}
+    monkeypatch.setattr(dialog, "exec", lambda: seen.setdefault("ran", True))
+    dialog.showMessage = None
+    dialog.exec_centered(parent)
+
+    assert seen["ran"] is True
+    center = parent.geometry().center()
+    assert abs(dialog.x() + dialog.width() // 2 - center.x()) <= 1
+    assert abs(dialog.y() + dialog.height() // 2 - center.y()) <= 1
+
+
 def test_confirm_dialog_shows_detail_box_and_centers_content():
     """The preview gets its own box; without a detail the box stays hidden."""
     dialog = ConfirmDialog(None, "حذف رویداد", "این رویداد حذف شود؟", detail="جلسه پروژه")
