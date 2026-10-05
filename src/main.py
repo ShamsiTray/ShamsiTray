@@ -73,7 +73,7 @@ def main():
     app.setFont(QFont(APP_CONFIG.FONT_FAMILY, 10))
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        ConfirmDialog.notify(None, "خطا", "No system tray was found on this system.",
+        ConfirmDialog.notify(None, "خطا", "ناحیه اعلان (System Tray) در این سیستم پیدا نشد.",
                              danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
         sys.exit(1)
 
