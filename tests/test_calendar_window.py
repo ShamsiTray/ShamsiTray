@@ -3,9 +3,10 @@ styling, the event editor overlay and the go-to-date popup."""
 import jdatetime
 import pytest
 from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication
 
-from config import APP_CONFIG
+from config import APP_CONFIG, Config
 from ui.windows.calendar_window import DayStyle, PersianCalendarWidget
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.go_to_date import GoToDateWindow
@@ -303,6 +304,71 @@ def test_the_modes_already_used_on_the_date_are_greyed_out(calendar):
     assert enabled == {"none": True, "monthly": False, "yearly": True}
     # The label stays readable - the disabled state is what carries the rule.
     assert combo.itemText(1) == "ماهانه"
+
+
+def test_a_disabled_mode_is_readable_but_visibly_unavailable(calendar):
+    """A mode the date already spent stays listed so it reads as a spent choice,
+    not a hidden one, and it is painted in the theme's muted grey."""
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
+    calendar._show_event_input_widget(jdate)
+    combo = calendar.event_input_widget.recurrence_combo
+
+    muted = combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
+
+    assert muted is not None, "a disabled row must carry its own colour"
+    assert QColor(muted) == QColor(APP_CONFIG.get_current_palette()["GREY_COLOR"])
+    assert muted != combo.model().item(0).data(Qt.ItemDataRole.ForegroundRole)
+    assert muted != combo.model().item(2).data(Qt.ItemDataRole.ForegroundRole)
+
+
+def test_the_dimmed_modes_follow_the_theme(calendar):
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
+    calendar._show_event_input_widget(jdate)
+    widget = calendar.event_input_widget
+    dark_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
+
+    APP_CONFIG.set_theme(Config.Theme.LIGHT)
+    try:
+        widget.update_styles()
+        light_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
+    finally:
+        APP_CONFIG.set_theme(Config.Theme.DARK)
+        widget.update_styles()
+
+    assert QColor(light_grey) == QColor(Config.LIGHT_PALETTE["GREY_COLOR"])
+    assert QColor(light_grey) != QColor(dark_grey)
+
+
+@pytest.mark.parametrize("taken,expected", [
+    ({"none": "1404-05-10"}, "monthly"),
+    ({"monthly": "0000-00-10"}, "none"),
+    ({"yearly": "0000-05-10"}, "none"),
+    ({"none": "1404-05-10", "yearly": "0000-05-10"}, "monthly"),
+])
+def test_the_add_editor_never_starts_on_a_disabled_mode(calendar, taken, expected):
+    """«بدون تکرار» is row 0 and the add path prefills it, so a date that
+    already holds a one-time event used to open the editor showing a disabled
+    row as the active choice - and to report that disabled mode back on save."""
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {
+        key: {"text": key, "recurrence": mode, "remove_after_finish": False}
+        for mode, key in taken.items()
+    }
+    calendar._show_event_input_widget(jdate)
+    editor = calendar.event_input_widget
+
+    index = editor.recurrence_combo.currentIndex()
+
+    assert index >= 0
+    assert editor.recurrence_combo.model().item(index).isEnabled() is True
+    assert editor.recurrence() == expected
+    assert editor.recurrence() not in taken
+    # The row the editor started on is one the date has not spent yet.
+    assert editor.recurrence_combo.model().item(index).data(Qt.ItemDataRole.ForegroundRole) is None
 
 
 def test_the_editor_refuses_to_open_when_every_mode_is_taken(calendar):

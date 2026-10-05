@@ -131,6 +131,8 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         for label in _RECURRENCE_LABELS:
             self.recurrence_combo.addItem(label)
         center_combo_items(self.recurrence_combo)
+        # Modes this widget must not offer; empty until a caller says otherwise.
+        self._disabled_recurrences: set[str] = set()
         recurrence_row.addWidget(recurrence_label_widget)
         recurrence_row.addWidget(self.recurrence_combo)
         recurrence_row.addStretch()
@@ -277,6 +279,9 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         # The QSS font lands after Qt's sizeHint, so enforce a measured width
         # or the closed combo elides «بدون تکرار» to "بدو...رار".
         fit_combo_width(self.recurrence_combo)
+        # Re-stamp the disabled rows so a theme switch repaints them in this
+        # theme's grey rather than the one the widget was built with.
+        self._apply_recurrence_item_states()
 
         date_row_label = self.date_row.findChild(QLabel, "DateRowLabel")
         if date_row_label:
@@ -308,6 +313,10 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         self.recurrence_combo.setCurrentIndex(
             _RECURRENCE_VALUES.index(recurrence) if recurrence in _RECURRENCE_VALUES else 0)
         self.remove_after_finish_checkbox.setChecked(remove_after_finish)
+        # Callers set the disabled modes before or after this, so the guard runs
+        # here too and the year/month/checkbox rows are then built from the mode
+        # that actually survives.
+        self._select_enabled_recurrence()
         self._on_recurrence_changed()
 
     def recurrence(self) -> str:
@@ -326,13 +335,50 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
 
         A date can hold only one event per mode, so a mode already taken there
         would silently replace the existing event instead of adding one. The
-        labels stay readable: the disabled state is what carries the rule.
+        labels stay listed and readable, dimmed: the mode is a real choice this
+        date already spent, not a hidden one.
         """
+        self._disabled_recurrences = set(taken)
+        self._apply_recurrence_item_states()
+
+    def _apply_recurrence_item_states(self) -> None:
+        """Paint each mode from ``_disabled_recurrences`` and keep the selection usable.
+
+        The combo draws its popup straight from the model, so the disabled look
+        has to be item data - ``combo_stylesheet`` has no ``::item:disabled``
+        rule, and a row stays grey even while the enabled rows take the theme's
+        text colour. Called from ``update_styles()`` too, so a theme switch
+        repaints the dimmed rows in that theme's grey.
+        """
+        muted = QColor(APP_CONFIG.get_current_palette()["GREY_COLOR"])
         model = self.recurrence_combo.model()
         for index, mode in enumerate(_RECURRENCE_VALUES):
             item = model.item(index)
-            if item is not None:
-                item.setEnabled(mode not in taken)
+            if item is None:
+                continue
+            enabled = mode not in self._disabled_recurrences
+            item.setEnabled(enabled)
+            item.setData(None if enabled else muted, Qt.ItemDataRole.ForegroundRole)
+        self._select_enabled_recurrence()
+
+    def _select_enabled_recurrence(self) -> None:
+        """Never leave the combo sitting on a mode this widget refuses.
+
+        «بدون تکرار» is row 0, so the add path - which prefills one-time - would
+        otherwise open on a disabled row whenever the date already holds a
+        one-time event, and hand that disabled mode back on save.
+        """
+        combo = self.recurrence_combo
+        current = combo.currentIndex()
+        if current >= 0 and combo.model().item(current).isEnabled():
+            return
+        for index, mode in enumerate(_RECURRENCE_VALUES):
+            if mode not in self._disabled_recurrences:
+                combo.setCurrentIndex(index)
+                return
+        # Nothing is selectable, so there is no row to move to. Callers refuse
+        # to open the add editor at all in that state; leaving the selection
+        # alone beats showing an empty combo.
 
     def _on_recurrence_changed(self, *_args):
         mode = self.recurrence()
