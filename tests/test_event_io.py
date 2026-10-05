@@ -434,3 +434,63 @@ def test_build_import_plan_no_collisions():
     assert plan.replaced_existing == {}
     assert plan.internal_replaced == 0
     assert set(plan.applied) == {"1406-03-05"}
+
+
+# --- canonical-key collisions are accounted for ---------------------------------
+
+
+def test_normalize_counts_slash_vs_dash_duplicate_keys():
+    """'1405/01/01' and '1405-01-01' both normalize to 1405-01-01: the second
+    entry used to silently overwrite the first. Now the loss is counted."""
+    raw = {
+        "1405/01/01": {"text": "Event A"},
+        "1405-01-01": {"text": "Event B"},
+    }
+    events, skipped = event_io.normalize_events_mapping(raw)
+    assert set(events) == {"1405-01-01"}
+    assert events["1405-01-01"]["text"] == "Event B"  # deterministic last write wins
+    assert skipped == 1
+
+
+def test_normalize_counts_recurrence_rekey_collision():
+    """A yearly re-key that lands on an existing wildcard key is a collision."""
+    raw = {
+        "0000-01-01": {"text": "existing yearly"},
+        "1400-01-01": {"text": "v1 birthday", "yearly": True},  # re-keys to 0000-01-01
+    }
+    events, skipped = event_io.normalize_events_mapping(raw)
+    assert set(events) == {"0000-01-01"}
+    assert events["0000-01-01"]["text"] == "v1 birthday"
+    assert skipped == 1
+
+
+def test_collision_loaded_from_store_marks_load_untrusted(store_path):
+    store_path.write_text(json.dumps({
+        "1405/01/01": {"text": "A"},
+        "1405-01-01": {"text": "B"},
+    }), encoding="utf-8")
+    events = event_io.load_user_events()
+    assert set(events) == {"1405-01-01"}
+    assert event_io.last_load_trusted() is False
+    # ...and the refusal still guards the empty save afterwards.
+    assert event_io.save_user_events({}) is False
+
+
+# --- a clean load resets the trusted flag ---------------------------------------
+
+
+def test_load_clean_file_resets_trusted_flag(store_path):
+    """Malformed load, then the file repaired externally, then reload(): the
+    store must be trusted again, or every later save behaves as if the data
+    is still suspect."""
+    store_path.write_text("{bad json", encoding="utf-8")
+    assert event_io.load_user_events() == {}
+    assert event_io.last_load_trusted() is False
+    # The file "gets repaired" (a real, clean store) and the app reloads it.
+    store_path.write_text(json.dumps({
+        "1405-05-05": {"text": "ok", "recurrence": "none", "remove_after_finish": True},
+    }), encoding="utf-8")
+    events = event_io.load_user_events()
+    assert set(events) == {"1405-05-05"}
+    assert event_io.last_load_trusted() is True
+    assert event_io.save_user_events({}) is True  # empty save allowed again
