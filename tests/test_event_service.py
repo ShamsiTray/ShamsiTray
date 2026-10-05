@@ -44,6 +44,38 @@ def test_service_loads_store_on_init(service, user_data):
     assert service.events["1405-01-01"]["text"] == "kept"
 
 
+def test_reload_refreshes_the_live_reference_in_place(service, user_data):
+    """The calendar widget keeps a live reference to service.events, so a reload
+    that REBINDS the dict would leave the calendar reading an object nothing
+    mutates again. It must see the new contents through its own reference."""
+    APP_CONFIG.USER_EVENTS_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    APP_CONFIG.USER_EVENTS_FILE_PATH.write_text(
+        json.dumps({"version": event_io.EVENTS_STORE_VERSION,
+                    "events": {"1405-01-01": _entry("from disk")}}), encoding="utf-8")
+    live_reference = service.events  # what the calendar widget would hold
+
+    service.reload()
+
+    assert live_reference is service.events, "dict identity must survive a reload"
+    assert live_reference["1405-01-01"]["text"] == "from disk"
+
+
+def test_reload_drops_entries_that_left_the_file(service, user_data, monkeypatch):
+    """A reload is a mirror of the file, not an addition to memory: an entry
+    only present in the stale dict must not survive."""
+    service.events["1405-02-02"] = _entry("gone from disk")
+    APP_CONFIG.USER_EVENTS_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    APP_CONFIG.USER_EVENTS_FILE_PATH.write_text(
+        json.dumps({"version": event_io.EVENTS_STORE_VERSION,
+                    "events": {"1405-01-01": _entry("on disk")}}), encoding="utf-8")
+    live_reference = service.events
+
+    service.reload()
+
+    assert live_reference is service.events
+    assert set(live_reference) == {"1405-01-01"}
+
+
 def test_resaving_a_monthly_event_keeps_its_anchor(service, monkeypatch):
     """Day 31 exists in only half the months: re-saving the clamped 30th the
     user was shown must not walk the anchor towards the start of the month."""
