@@ -122,6 +122,28 @@ def test_add_replaces_only_the_same_recurrence_variant(service, monkeypatch):
                               "0000-08-01": _entry("yearly", RECURRENCE_YEARLY)}
 
 
+def test_target_key_reuses_the_same_recurrence_anchor_only(service):
+    """The verdict add() acts on, exposed because the event manager adds through
+    its own editor and must reach the same one."""
+    day = jdatetime.date(1405, 8, 1)
+    service.events["1405-08-01"] = _entry("one-time")
+    service.events["0000-08-01"] = _entry("yearly", RECURRENCE_YEARLY)
+    service.events["0000-00-01"] = _entry("monthly", RECURRENCE_MONTHLY)
+
+    assert service.target_key(day, RECURRENCE_NONE) == "1405-08-01"
+    assert service.target_key(day, RECURRENCE_YEARLY) == "0000-08-01"
+    assert service.target_key(day, RECURRENCE_MONTHLY) == "0000-00-01"
+    # Nothing there yet, so the key is derived from the date itself.
+    assert service.target_key(jdatetime.date(1405, 9, 3), RECURRENCE_MONTHLY) == "0000-00-03"
+
+
+def test_target_key_keeps_a_clamped_monthly_on_its_own_anchor(service):
+    """The editor can be opened on a clamped occurrence (a day-31 monthly shown on
+    the 30th); the target is still the day-31 event, not a new day-30 anchor."""
+    service.events["0000-00-31"] = _entry("monthly", RECURRENCE_MONTHLY)
+    assert service.target_key(jdatetime.date(1405, 7, 30), RECURRENCE_MONTHLY) == "0000-00-31"
+
+
 @pytest.mark.parametrize("first,second", [
     (RECURRENCE_NONE, RECURRENCE_YEARLY),
     (RECURRENCE_NONE, RECURRENCE_MONTHLY),

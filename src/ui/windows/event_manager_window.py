@@ -515,13 +515,16 @@ class EventManagerWindow(BaseFramelessWindow):
         if editing_key is None:
             if picked_date is None:
                 return
-            new_key = make_event_key(picked_date, recurrence)
-            # The colliding event can carry a different key for the same day (a
-            # yearly 0000-08-01 and a one-time 1405-08-01), so the store is
-            # searched by visible date rather than by exact key.
-            collisions = self._colliding_keys(new_key)
-            if collisions and not self._confirm_replace(collisions[0]):
-                return
+            # The store owns the verdict on which key this add lands on, exactly
+            # as EventService.add() does: an event of ANOTHER recurrence on the
+            # same visible date is a different logical event and stays where it
+            # is. Only landing on the key that is already there is a duplicate,
+            # and that still asks first.
+            new_key = self.event_store.target_key(picked_date, recurrence)
+            if new_key in self.user_events:
+                if not self._confirm_replace(new_key):
+                    return
+                collisions = [new_key]
         else:
             if editing_key not in self.user_events:
                 return

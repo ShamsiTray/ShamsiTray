@@ -123,7 +123,7 @@ class EventService:
 
     # --- mutations --------------------------------------------------------------
 
-    def _target_key(self, jdate: jdatetime.date, recurrence: str) -> str:
+    def target_key(self, jdate: jdatetime.date, recurrence: str) -> str:
         """The key an event with ``recurrence`` takes when added on ``jdate``.
 
         Reusing an existing key of the SAME recurrence keeps a re-added
@@ -135,6 +135,10 @@ class EventService:
         Any other recurrence is a different logical event, so it gets its own
         key: a date may carry a one-time and a monthly event at once, which is
         what the calendar's per-event menus exist for.
+
+        Public because the event manager adds through its own editor and must
+        reach the same verdict as ``add()`` - a visible-date match there would
+        call every event on the date a duplicate.
         """
         anchor = next((key for key in keys_matching_date(self.events, jdate)
                        if recurrence_of_key(key) == recurrence), None)
@@ -162,10 +166,10 @@ class EventService:
             logger.warning("Ignoring attempt to add a user event with empty text.")
             return False
         snapshot = dict(self.events)
-        target_key = self._target_key(jdate, recurrence)
+        key = self.target_key(jdate, recurrence)
         if recurrence != RECURRENCE_NONE:
             remove_after_finish = False
-        self.events[target_key] = {
+        self.events[key] = {
             "text": text,
             "recurrence": recurrence,
             "remove_after_finish": remove_after_finish,
