@@ -132,10 +132,22 @@ class MenuActionWidget(HoverWidget):
         self.label.setStyleSheet(f"color: {text_color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; background: transparent; border: none;")
 
 class ThemeToggleActionWidget(MenuActionWidget):
-    """Widget for the 'App Theme' toggle in the context menu."""
-    def __init__(self, current_theme_getter, parent: Optional[QWidget] = None):
+    """Widget for the theme row in the context menu.
+
+    One row, three states: the click cycles the preference
+    system → light → dark → system (the controller owns the cycle; this
+    widget only reads the current preference back and labels it, so
+    «هماهنگ با سیستم» is visible and reachable again after any pin).
+    """
+    _DISPLAY = (
+        ("system", "FA_DESKTOP", "تم برنامه: هماهنگ با سیستم"),
+        ("light", "FA_SUN_SOLID", "تم برنامه: روشن"),
+        ("dark", "FA_MOON_SOLID", "تم برنامه: تاریک"),
+    )
+
+    def __init__(self, theme_choice_getter, parent: Optional[QWidget] = None):
         super().__init__("", parent)
-        self.current_theme_getter = current_theme_getter
+        self.theme_choice_getter = theme_choice_getter
         layout = self.layout()
         while layout.count():
             item = layout.takeAt(0)
@@ -154,9 +166,15 @@ class ThemeToggleActionWidget(MenuActionWidget):
         self.update_display()
 
     def update_display(self):
-        theme = self.current_theme_getter()
-        icon = APP_CONFIG.FAS.FA_MOON_SOLID if theme == APP_CONFIG.Theme.DARK else APP_CONFIG.FAS.FA_SUN_SOLID
-        text = "تم برنامه: تاریک" if theme == APP_CONFIG.Theme.DARK else "تم برنامه: روشن"
+        choice = self.theme_choice_getter()
+        for value, glyph_name, text in self._DISPLAY:
+            if choice == value:
+                icon = getattr(APP_CONFIG.FAS, glyph_name)
+                break
+        else:
+            # An unknown preference reads as "system", but the row still
+            # labels whatever it cannot resolve defensively.
+            icon, text = APP_CONFIG.FAS.FA_DESKTOP, self._DISPLAY[0][2]
         self.icon_label.setText(icon)
         self.label.setText(text)
         color = APP_CONFIG.current_palette['TEXT_COLOR']

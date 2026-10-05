@@ -97,3 +97,52 @@ def test_raising_callback_is_contained():
 
     assert result == (False, 0)
     assert any("native event filter" in r for r in records)
+
+
+# --- WM_SETTINGCHANGE / theme broadcast ---------------------------------------------
+
+WM_SETTINGCHANGE = 0x001A
+
+
+def _setting_msg(message_id: int, section: str) -> int:
+    """A MSG with a real wide-string lParam, like Windows sends."""
+    msg = ctypes.wintypes.MSG()
+    msg.message = message_id
+    msg.lParam = ctypes.cast(ctypes.create_unicode_buffer(section), ctypes.c_void_p).value
+    return ctypes.addressof(msg)
+
+
+def test_settingchange_color_set_fires_callback_with_section():
+    seen = []
+    filt = TimeChangeEventFilter(lambda: seen.append("time"),
+                                 on_setting_change_callback=seen.append)
+    filt.nativeEventFilter("windows_generic_MSG",
+                           _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet"))
+    assert seen == ["ImmersiveColorSet"]
+
+
+def test_settingchange_other_sections_are_ignored():
+    seen = []
+    filt = TimeChangeEventFilter(lambda: seen.append("time"),
+                                 on_setting_change_callback=seen.append)
+    filt.nativeEventFilter("windows_generic_MSG",
+                           _setting_msg(WM_SETTINGCHANGE, "Environment"))
+    assert seen == []
+
+
+def test_settingchange_null_lparam_is_safe():
+    seen = []
+    filt = TimeChangeEventFilter(lambda: seen.append("time"),
+                                 on_setting_change_callback=seen.append)
+    msg = ctypes.wintypes.MSG()
+    msg.message = WM_SETTINGCHANGE
+    msg.lParam = 0
+    assert filt.nativeEventFilter("windows_generic_MSG", ctypes.addressof(msg)) == (False, 0)
+    assert seen == []
+
+
+def test_settingchange_without_callback_is_safe():
+    filt = TimeChangeEventFilter(None)  # no second callback wired
+    assert filt.nativeEventFilter(
+        "windows_generic_MSG",
+        _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet")) == (False, 0)

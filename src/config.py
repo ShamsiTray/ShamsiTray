@@ -78,8 +78,16 @@ class Config:
 
     # --- Theme Management ---
     class Theme:
+        SYSTEM = "system"
         DARK = "dark"
         LIGHT = "light"
+
+    # The three-valued appearance preference stored under
+    # Appearance/ThemeChoice: "system" follows Windows light/dark live,
+    # "light"/"dark" pin the theme. The key's ABSENCE reads as "system" too -
+    # the behaviour a fresh install has always had; the old toggle only ever
+    # wrote "light"/"dark", so existing pinned users keep their pin.
+    THEME_CHOICES = (Theme.SYSTEM, Theme.LIGHT, Theme.DARK)
 
     DARK_PALETTE = {
         "TEXT_COLOR": "#e0e0e0", "BACKGROUND_COLOR": "#2c2c2c",
@@ -186,6 +194,7 @@ class Config:
         FA_SQUARE_CHECK_SOLID = '\uf14a'
         FA_SUN_SOLID = '\uf185'  # f185 replaces the Pro-only e28f codepoint
         FA_MOON_SOLID = '\uf186'
+        FA_DESKTOP = '\uf390'  # the "follow system" stop of the theme cycle
         FA_XMARK = '\uf00d'
         FA_MINUS = '\uf068'
         FA_TRASH = '\uf1f8'
