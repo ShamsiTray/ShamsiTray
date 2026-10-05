@@ -215,9 +215,9 @@ def test_manager_edit_recurring_ignores_auto_delete(manager):
     assert manager.controller.user_events["0000-05-05"]["remove_after_finish"] is False
 
 
-def test_manager_asks_before_replacing_an_event_on_the_same_day(manager, monkeypatch):
-    """A yearly 0000-08-01 and a one-time 1405-08-01 are two keys for the same
-    day, so the new event must ask about the stored one instead of stacking."""
+def test_manager_adds_a_one_time_beside_a_yearly_event_on_the_same_day(manager, monkeypatch):
+    """A yearly 0000-08-01 and a one-time 1405-08-01 are different logical events
+    that merely share a day, so the add stacks beside it and asks nothing."""
     manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
                                          "remove_after_finish": False}
     asked = []
@@ -227,8 +227,89 @@ def test_manager_asks_before_replacing_an_event_on_the_same_day(manager, monkeyp
 
     manager._on_edit_saved("یک‌بار", RECURRENCE_NONE, False)
 
-    assert asked == ["0000-08-01"]
+    assert asked == []
+    assert set(manager.user_events) == {"0000-08-01", "1405-08-01"}
+    assert manager.user_events["0000-08-01"]["text"] == "سالانه"  # untouched
+    assert manager.user_events["1405-08-01"]["text"] == "یک‌بار"
+
+
+def test_manager_adds_a_monthly_beside_a_one_time_event_on_the_same_day(manager, monkeypatch):
+    manager.user_events["1405-08-01"] = {"text": "Doctor", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("Pay bills", RECURRENCE_MONTHLY, False)
+
+    assert asked == []
+    assert set(manager.user_events) == {"1405-08-01", "0000-00-01"}
+    assert manager.user_events["1405-08-01"]["text"] == "Doctor"
+    assert manager.user_events["0000-00-01"]["text"] == "Pay bills"
+
+
+def test_manager_adds_a_yearly_beside_a_one_time_event_on_the_same_day(manager, monkeypatch):
+    manager.user_events["1405-08-01"] = {"text": "Doctor", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("Dentist", RECURRENCE_YEARLY, False)
+
+    assert asked == []
+    assert set(manager.user_events) == {"1405-08-01", "0000-08-01"}
+
+
+def test_manager_adds_a_one_time_beside_a_monthly_event_on_the_same_day(manager, monkeypatch):
+    manager.user_events["0000-00-01"] = {"text": "Take medication", "recurrence": RECURRENCE_MONTHLY,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("Doctor", RECURRENCE_NONE, False)
+
+    assert asked == []
+    assert set(manager.user_events) == {"0000-00-01", "1405-08-01"}
+
+
+def test_manager_asks_before_replacing_the_same_recurrence_on_the_same_day(manager, monkeypatch):
+    """Adding the same mode again IS the same logical event, so the stored text is
+    offered for replacement instead of a second copy being stacked."""
+    manager.user_events["1405-08-01"] = {"text": "قدیمی", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("تازه", RECURRENCE_NONE, False)
+
+    assert asked == ["1405-08-01"]
     assert list(manager.user_events) == ["1405-08-01"]
+    assert manager.user_events["1405-08-01"]["text"] == "تازه"
+
+
+def test_manager_re_adding_a_monthly_replaces_it_on_its_own_anchor(manager, monkeypatch):
+    """The add editor can land on a clamped occurrence (a day-31 monthly shown on
+    the 30th). That is still the day-31 event being re-added, so it is replaced
+    where it lives rather than walked onto a new anchor."""
+    manager.user_events["0000-00-31"] = {"text": "قدیمی", "recurrence": RECURRENCE_MONTHLY,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    manager._editing_key = None
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 7, 30)
+
+    manager._on_edit_saved("تازه", RECURRENCE_MONTHLY, False)
+
+    assert asked == ["0000-00-31"]
+    assert list(manager.user_events) == ["0000-00-31"]
+    assert manager.user_events["0000-00-31"]["text"] == "تازه"
 
 
 def test_manager_declining_the_replace_keeps_the_stored_event(manager, monkeypatch):
@@ -238,7 +319,7 @@ def test_manager_declining_the_replace_keeps_the_stored_event(manager, monkeypat
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
-    manager._on_edit_saved("یک‌بار", RECURRENCE_NONE, False)
+    manager._on_edit_saved("سالانه تازه", RECURRENCE_YEARLY, False)
 
     assert list(manager.user_events) == ["0000-08-01"]
 
