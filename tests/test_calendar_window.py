@@ -262,14 +262,78 @@ def test_show_event_input_opens_overlay_for_new_event(calendar):
     assert calendar.overlay_blocker.isVisible()
 
 
-def test_show_event_input_prefills_existing_event(calendar):
+def test_the_add_editor_is_blank_even_on_an_event_day(calendar):
+    """«افزودن رویداد» must create, not edit: it opens empty so a second,
+    different event can join whatever the date already holds."""
     jdate = jdatetime.date(1404, 5, 10)
-    calendar.user_events = {"1404-05-10": {"text": "existing", "recurrence": "none",
-                                            "remove_after_finish": True}}
+    calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
     calendar._show_event_input_widget(jdate)
     editor = calendar.event_input_widget
+
+    assert editor.text_edit.toPlainText() == ""
+    assert calendar._editing_event_key is None
+    assert editor.recurrence() == "none"
+
+
+def test_the_edit_editor_prefills_the_event_it_was_opened_for(calendar):
+    jdate = jdatetime.date(1404, 5, 10)
+    entry = {"text": "existing", "recurrence": "monthly", "remove_after_finish": False}
+    calendar.user_events = {"0000-00-10": entry}
+    calendar._show_event_input_for_specific(jdate, "0000-00-10", entry)
+    editor = calendar.event_input_widget
+
     assert editor.text_edit.toPlainText() == "existing"
-    assert editor.remove_after_finish_checkbox.isChecked()
+    assert editor.recurrence() == "monthly"
+    assert calendar._editing_event_key == "0000-00-10"
+
+
+def test_the_modes_already_used_on_the_date_are_greyed_out(calendar):
+    """A date can hold only one event per mode, so the add editor disables the
+    ones taken instead of silently replacing them after the user fills it in."""
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
+    calendar._show_event_input_widget(jdate)
+    combo = calendar.event_input_widget.recurrence_combo
+
+    enabled = {mode: combo.model().item(index).isEnabled()
+               for index, mode in enumerate(("none", "monthly", "yearly"))}
+
+    assert enabled == {"none": True, "monthly": False, "yearly": True}
+    # The label stays readable - the disabled state is what carries the rule.
+    assert combo.itemText(1) == "ماهانه"
+
+
+def test_the_editor_refuses_to_open_when_every_mode_is_taken(calendar):
+    """All three modes on one date leaves nothing to add, so there is no editor
+    to open with an unusable mode."""
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {
+        "1404-05-10": {"text": "Doctor", "recurrence": "none", "remove_after_finish": False},
+        "0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                       "remove_after_finish": False},
+        "0000-05-10": {"text": "Dentist", "recurrence": "yearly", "remove_after_finish": False},
+    }
+    calendar._show_event_input_widget(jdate)
+
+    assert not calendar.event_input_widget.isVisible()
+    assert calendar.editing_date is None
+
+
+def test_opening_the_edit_editor_clears_the_greyed_out_modes(calendar):
+    """The editor widget is shared; a disabled row left over from an add must not
+    follow the user into an edit, where changing the recurrence is allowed."""
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
+    calendar._show_event_input_widget(jdate)
+    calendar._hide_event_input_widget()
+    entry = calendar.user_events["0000-00-10"]
+    calendar._show_event_input_for_specific(jdate, "0000-00-10", entry)
+
+    combo = calendar.event_input_widget.recurrence_combo
+    assert all(combo.model().item(index).isEnabled() for index in range(3))
 
 
 def test_show_event_input_ignored_when_already_open(calendar, monkeypatch):
@@ -299,6 +363,211 @@ def test_canceled_event_only_closes(calendar):
     calendar._handle_event_canceled()
     assert received == []
     assert calendar.editing_date is None
+
+
+# --- key-scoped edits (a day can hold several events) ------------------------------
+
+
+def _capture_updates(calendar):
+    """Collect the key-scoped edit signal and the generic one, side by side."""
+    keyed, generic = [], []
+    calendar.event_updated_by_key.connect(
+        lambda *args: keyed.append(args))
+    calendar.event_added.connect(lambda *args: generic.append(args))
+    return keyed, generic
+
+
+def _two_events_on_one_date(calendar):
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {
+        "1404-05-10": {"text": "Doctor", "recurrence": "none", "remove_after_finish": True},
+        "0000-00-10": {"text": "Pay bills", "recurrence": "monthly", "remove_after_finish": False},
+    }
+    return jdate
+
+
+def test_specific_edit_saves_against_the_selected_key(calendar):
+    """The per-event menu edits ONE of the day's events: the save must name that
+    key instead of falling back to the date-level add."""
+    jdate = _two_events_on_one_date(calendar)
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "0000-00-10", calendar.user_events["0000-00-10"])
+
+    calendar._handle_event_saved("Pay bills later", "monthly", False)
+
+    assert keyed == [("0000-00-10", jdate, "Pay bills later", "monthly", False, "")]
+    assert generic == []
+    assert calendar._editing_event_key is None      # the key dies with the editor
+
+
+def test_single_event_day_edits_that_event_by_key(calendar):
+    """The single-event «ویرایش رویداد» row edits that event by key: switching
+    the recurrence must replace it, not add a second copy."""
+    jdate = jdatetime.date(1404, 5, 10)
+    entry = {"text": "Doctor", "recurrence": "none", "remove_after_finish": False}
+    calendar.user_events = {"1404-05-10": entry}
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", entry)
+    assert calendar._editing_event_key == "1404-05-10"
+
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    assert keyed == [("1404-05-10", jdate, "Doctor", "monthly", False, "")]
+    assert generic == []
+
+
+def test_a_day_with_several_events_keeps_the_date_level_path(calendar):
+    """«افزودن رویداد» stays date-level however many events the date holds: it
+    creates a new key rather than editing one of them."""
+    jdate = _two_events_on_one_date(calendar)
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_widget(jdate)
+    assert calendar._editing_event_key is None
+
+    calendar._handle_event_saved("new", "none", False)
+
+    assert keyed == []
+    assert generic == [(jdate, "new", "none", False)]
+
+
+def test_new_event_still_saves_date_level(calendar):
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {}
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_widget(jdate)
+
+    calendar._handle_event_saved("brand new", "none", False)
+
+    assert keyed == []
+    assert generic == [(jdate, "brand new", "none", False)]
+
+
+def test_adding_to_a_recurring_date_emits_a_new_date_level_event(calendar):
+    """The point of the separate add row: a one-time event joins the recurring
+    one instead of editing it, so the save carries no key."""
+    jdate = jdatetime.date(1404, 5, 10)
+    calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_widget(jdate)
+
+    calendar._handle_event_saved("Doctor appointment", "none", False)
+
+    assert keyed == []
+    assert generic == [(jdate, "Doctor appointment", "none", False)]
+
+
+def test_edit_onto_an_occupied_key_asks_before_touching_the_store(calendar):
+    """Changing the recurrence can land the event on a key another event owns.
+    Overwriting it would silently destroy that event, so nothing is emitted yet."""
+    jdate = _two_events_on_one_date(calendar)
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", calendar.user_events["1404-05-10"])
+
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    assert keyed == [] and generic == []
+    assert calendar._merge_overlay.isVisible()
+    assert calendar.overlay_blocker.isVisible()
+    assert calendar._pending_merge == ("1404-05-10", jdate, "0000-00-10",
+                                       "Doctor", "monthly", False)
+    assert not calendar.event_input_widget.isVisible()
+
+
+def test_confirmed_merge_saves_against_the_occupied_key(calendar):
+    jdate = _two_events_on_one_date(calendar)
+    keyed, _ = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", calendar.user_events["1404-05-10"])
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    calendar._merge_overlay.confirm_button.click()
+
+    assert keyed == [("1404-05-10", jdate, "Doctor", "monthly", False, "0000-00-10")]
+    assert not calendar._merge_overlay.isVisible()
+    assert not calendar.overlay_blocker.isVisible()
+    assert calendar._pending_merge is None
+
+
+def test_cancelled_merge_changes_nothing(calendar):
+    jdate = _two_events_on_one_date(calendar)
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", calendar.user_events["1404-05-10"])
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    calendar._merge_overlay.cancel_button.click()
+
+    assert keyed == [] and generic == []
+    assert calendar.user_events == {
+        "1404-05-10": {"text": "Doctor", "recurrence": "none", "remove_after_finish": True},
+        "0000-00-10": {"text": "Pay bills", "recurrence": "monthly", "remove_after_finish": False},
+    }
+    assert not calendar._merge_overlay.isVisible()
+    assert calendar.overlay_blocker.isHidden()
+
+
+def test_merge_ask_previews_the_event_that_would_be_kept(calendar):
+    """The question is the description line, the kept event's text is the box -
+    the same split the delete card uses."""
+    jdate = _two_events_on_one_date(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", calendar.user_events["1404-05-10"])
+
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    overlay = calendar._merge_overlay
+    assert overlay.message_label.text() == ("رویدادی با تکرار ماهانه از قبل روی این تاریخ "
+                                          "وجود دارد؛ ادغام شود؟")
+    assert overlay.detail_label.text() == "Pay bills"
+    assert overlay.parent() is calendar
+    assert not overlay.isWindow()
+
+
+def test_unchanged_recurrence_never_asks_even_with_another_event_on_the_date(calendar):
+    """The target key is the edited event's own key while the recurrence stands, so
+    the other event on the date cannot be mistaken for a collision."""
+    jdate = _two_events_on_one_date(calendar)
+    keyed, _ = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "0000-00-10", calendar.user_events["0000-00-10"])
+
+    calendar._handle_event_saved("Pay bills", "monthly", False)
+
+    assert keyed == [("0000-00-10", jdate, "Pay bills", "monthly", False, "")]
+    assert not calendar._merge_overlay.isVisible()
+
+
+def test_hiding_the_calendar_drops_a_pending_merge(calendar):
+    """A hidden calendar must not answer a merge later, exactly like the delete ask."""
+    jdate = _two_events_on_one_date(calendar)
+    keyed, _ = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", calendar.user_events["1404-05-10"])
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    calendar.hide()
+    calendar._merge_overlay.confirm_button.click()
+
+    assert keyed == []
+
+
+def test_merge_can_only_be_answered_once(calendar):
+    jdate = _two_events_on_one_date(calendar)
+    keyed, _ = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10", calendar.user_events["1404-05-10"])
+    calendar._handle_event_saved("Doctor", "monthly", False)
+
+    calendar._merge_overlay.confirm_button.click()
+    calendar._on_merge_choice(calendar._merge_overlay.confirm_button.text())
+
+    assert len(keyed) == 1
+
+
+def test_edited_target_key_mirrors_the_store_rule(calendar):
+    jdate = jdatetime.date(1404, 5, 10)
+    # Same recurrence: the event keeps its own key even on a clamped occurrence.
+    assert calendar._edited_target_key(jdate, "0000-00-31", "monthly") == "0000-00-31"
+    # A changed recurrence is re-derived from the occurrence shown.
+    assert calendar._edited_target_key(jdate, "1404-05-10", "monthly") == "0000-00-10"
+    assert calendar._edited_target_key(jdate, "1404-05-10", "yearly") == "0000-05-10"
+    # A new event has no key yet, so there is no target to reason about.
+    assert calendar._edited_target_key(jdate, None, "monthly") is None
 
 
 def test_remove_event_requires_confirmation(calendar):

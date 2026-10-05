@@ -163,6 +163,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.event_removed.connect(self.remove_user_event)
         if hasattr(self.calendar_widget, "event_removed_by_key"):
             self.calendar_widget.event_removed_by_key.connect(self.remove_user_event_by_key)
+        if hasattr(self.calendar_widget, "event_updated_by_key"):
+            self.calendar_widget.event_updated_by_key.connect(self.update_user_event_by_key)
 
         QTimer.singleShot(1000, self._prewarm_calendar)
 
@@ -770,13 +772,36 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def add_user_event(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
                        remove_after_finish: bool = False):
-        """Add (or replace) the event shown for ``jdate`` (one event per date).
+        """Add an event on ``jdate``; an event of the same recurrence is replaced.
 
-        All store rules and the transactional save live in the EventService;
-        this wrapper only refreshes the UI on success.
+        Keyed, not date-scoped: a date may show several events with different
+        recurrences, and adding one never removes the others. All store rules and
+        the transactional save live in the EventService; this wrapper only
+        refreshes the UI on success.
         """
         if self._events.add(jdate, text, recurrence, remove_after_finish):
             self._refresh_after_events_changed()
+
+    def update_user_event_by_key(self, key: str, jdate: jdatetime.date, text: str,
+                                 recurrence: str = RECURRENCE_NONE,
+                                 remove_after_finish: bool = False,
+                                 merge_into: str = ""):
+        """Edit the event stored under ``key``, leaving every other event alone.
+
+        The by-key path exists because a day can hold several events with
+        different keys, and editing one of them must not touch the rest. A
+        non-empty ``merge_into`` carries the key the user confirmed folding this
+        edit into, for the case where the new recurrence would otherwise land on
+        an event that already exists. The store's own save transaction decides
+        the outcome, so there is no second (fallible) path to roll back.
+        """
+        if self._events.update_key(key, jdate, text, recurrence, remove_after_finish,
+                                   merge_into or None):
+            self._refresh_after_events_changed()
+        else:
+            # Unknown/expired key, or a refused overwrite: nothing was written,
+            # so there is nothing to refresh.
+            logger.debug(f"update_user_event_by_key: no store entry for {key!r}.")
 
     def remove_user_event_by_key(self, key: str):
         """Remove one store entry by its key and refresh every surface.

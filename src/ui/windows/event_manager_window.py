@@ -14,9 +14,10 @@ after every mutation it emits ``events_changed`` so the tray icon and the
 calendar popup refresh.
 
 Editing rules:
-- One event per calendar date (same rule as the calendar editor): saving an
-  event onto a date that already holds another event replaces that event
-  (with a confirmation).
+- The manager is its OWN replacement flow: saving an event onto a date that
+  already holds another event replaces that event, after a confirmation naming
+  it. The calendar's day editor is keyed instead and edits one event at a time,
+  so this stricter date-level rule is deliberately not shared with it.
 - The date of an existing event can be changed from the edit overlay: the
   date selector opens prefilled with the event's anchor (for recurring
   events with their next occurrence), and saving re-anchors the store key

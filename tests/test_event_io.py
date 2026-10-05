@@ -494,3 +494,38 @@ def test_load_clean_file_resets_trusted_flag(store_path):
     assert set(events) == {"1405-05-05"}
     assert event_io.last_load_trusted() is True
     assert event_io.save_user_events({}) is True  # empty save allowed again
+
+# --- which recurrence modes are still free on a date -------------------------------
+
+
+def test_recurrences_on_date_reports_the_modes_the_day_is_taken_by():
+    events = {
+        "1404-05-02": {"text": "Doctor", "recurrence": "none"},
+        "0000-00-02": {"text": "Take medication", "recurrence": "monthly"},
+    }
+    assert event_io.recurrences_on_date(events, jdatetime.date(1404, 5, 2)) == {"none", "monthly"}
+    # A different day of the month is untouched by that monthly event.
+    assert event_io.recurrences_on_date(events, jdatetime.date(1404, 5, 3)) == set()
+
+
+def test_recurrences_on_date_follows_a_clamped_occurrence():
+    """A day-31 monthly event is shown on the 30th too, and that date already
+holds an event of that mode - adding another would replace its anchor."""
+    events = {"0000-00-31": {"text": "Monthly", "recurrence": "monthly"}}
+    assert event_io.recurrences_on_date(events, jdatetime.date(1404, 7, 30)) == {"monthly"}
+    # A 31-day month shows the anchor on its own day, not on the 30th.
+    assert event_io.recurrences_on_date(events, jdatetime.date(1404, 6, 30)) == set()
+
+
+def test_free_recurrences_on_date_shrinks_as_modes_are_taken():
+    events = {
+        "1404-05-02": {"text": "Doctor", "recurrence": "none"},
+        "0000-00-02": {"text": "Take medication", "recurrence": "monthly"},
+    }
+    jdate = jdatetime.date(1404, 5, 2)
+    assert event_io.free_recurrences_on_date(events, jdate) == {"yearly"}
+
+    events["0000-05-02"] = {"text": "Dentist", "recurrence": "yearly"}
+    # One event per mode per date: with all three there is nothing left to add,
+    # which is what the day's add row reports by being absent.
+    assert event_io.free_recurrences_on_date(events, jdate) == set()
