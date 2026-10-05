@@ -31,6 +31,7 @@ from typing import Callable, Dict, List, Optional
 import jdatetime
 
 from utils.event_io import (
+    RECURRENCE_MODES,
     RECURRENCE_NONE,
     ImportPlan,
     build_import_plan,
@@ -112,9 +113,16 @@ class EventService:
         occurrence — a day-31 monthly event is shown on the 30th, 30 Esfand on
         the 29th of a non-leap year — and re-deriving the key from it would walk
         the event's anchor one step further away on every save.
+
+        Recurrence is validated HERE, not only in the UI: an arbitrary value
+        used to fall through key generation as a one-time key while still being
+        stored as its own recurrence — a key/entry mismatch.
         """
         if not jdate:
             return False
+        if recurrence not in RECURRENCE_MODES:
+            logger.warning(f"Unsupported recurrence {recurrence!r}; storing the event as one-time.")
+            recurrence = RECURRENCE_NONE
         if not text or not text.strip():
             logger.warning("Ignoring attempt to add a user event with empty text.")
             return False

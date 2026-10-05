@@ -226,3 +226,24 @@ def test_apply_import_removes_shadowed_existing(service, monkeypatch):
     imported = {"0000-08-01": _entry("imported yearly", RECURRENCE_YEARLY)}
     assert service.apply_import(service.plan_import(imported)) is True
     assert service.events == {"0000-08-01": _entry("imported yearly", RECURRENCE_YEARLY)}
+
+
+# --- service-level recurrence validation ---------------------------------------
+
+
+def test_add_rejects_unsupported_recurrence_value(service):
+    """'weekly' is not a recurrence mode: it used to fall through key
+    generation as a one-time key while the ENTRY said 'weekly' - an
+    inconsistent key/entry pair the calendar and manager disagreed on."""
+    service.add(jdatetime.date(1405, 4, 4), "gym", "weekly", False)
+    assert set(service.events) == {"1405-04-04"}     # one-time key
+    entry = service.events["1405-04-04"]
+    assert entry["recurrence"] == RECURRENCE_NONE    # entry normalized too
+    assert entry["remove_after_finish"] is False
+
+
+def test_add_still_accepts_every_valid_recurrence(service):
+    service.add(jdatetime.date(1405, 4, 4), "once", RECURRENCE_NONE, False)
+    service.add(jdatetime.date(1405, 4, 5), "yearly", RECURRENCE_YEARLY, False)
+    service.add(jdatetime.date(1405, 4, 6), "monthly", RECURRENCE_MONTHLY, False)
+    assert set(service.events) == {"1405-04-04", "0000-04-05", "0000-00-06"}
