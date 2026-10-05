@@ -1136,9 +1136,24 @@ def test_confirm_dialog_notify_without_detail_keeps_the_box_hidden(qtbot, monkey
 
 # --- update checker uses the themed dialogs ---
 
+def _answer_update_popup(monkeypatch, choice):
+    """Answer the update popup without entering its modal loop.
+
+    The popup is built by hand and ends with ``exec_centered`` so a manual check
+    landing mid-popup can RAISE it; patching ``ConfirmDialog.choose`` would leave
+    that real modal unowned and block the test forever, so the seam is the
+    present-tail itself.
+    """
+    def fake_exec_centered(self, parent=None):
+        self.choice = choice
+        return 0
+
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", fake_exec_centered)
+
+
 def test_update_popup_download_choice_starts_download(tray, monkeypatch):
     picked = {}
-    monkeypatch.setattr(ConfirmDialog, "choose", lambda *a, **k: "دانلود")
+    _answer_update_popup(monkeypatch, "دانلود")
     monkeypatch.setattr(tray, "_download_update",
                         lambda version, url, sha: picked.update(version=version))
     tray._show_update_popup("1.4.1", "http://example.com/setup.exe", "abc")
@@ -1146,13 +1161,13 @@ def test_update_popup_download_choice_starts_download(tray, monkeypatch):
 
 
 def test_update_popup_ignore_choice_records_version(tray, monkeypatch):
-    monkeypatch.setattr(ConfirmDialog, "choose", lambda *a, **k: "نادیده گرفتن")
+    _answer_update_popup(monkeypatch, "نادیده گرفتن")
     tray._show_update_popup("1.4.1", "http://example.com/setup.exe", "abc")
     assert tray.settings.value(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY) == "1.4.1"
 
 
 def test_update_popup_remind_choice_does_nothing(tray, monkeypatch):
-    monkeypatch.setattr(ConfirmDialog, "choose", lambda *a, **k: "بعداً یادآوری کن")
+    _answer_update_popup(monkeypatch, "یادآوری بعداً")
     picked = {}
     monkeypatch.setattr(tray, "_download_update", lambda *a: picked.update(any=True))
     tray._show_update_popup("1.4.1", "http://example.com/setup.exe", "abc")

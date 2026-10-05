@@ -11,9 +11,14 @@ import pytest
 from PyQt6.QtNetwork import QNetworkReply
 
 from config import APP_CONFIG
-from core.update_checker import (HOLIDAYS_URL_ENV, NETWORK_TIMEOUT_MS,
-                                 UpdateChecker, digest_hex, is_newer_version,
-                                 should_notify)
+from core.update_checker import (APP_STATE_CURRENT, APP_STATE_FAILED,
+                                 APP_STATE_SKIPPED, APP_STATE_UNAVAILABLE,
+                                 APP_STATE_UPDATE_FOUND,
+                                 HOLIDAYS_STATE_CURRENT, HOLIDAYS_STATE_FAILED,
+                                 HOLIDAYS_STATE_UPDATED, HOLIDAYS_URL_ENV,
+                                 NETWORK_TIMEOUT_MS, UpdateChecker, digest_hex,
+                                 is_newer_version, is_prerelease_tag,
+                                 is_safe_download_url, should_notify)
 
 # --- pure helpers (kept from the original suite) ------------------------------
 
@@ -37,6 +42,45 @@ def test_is_newer_version_garbage_is_false():
     assert not is_newer_version('junk', '1.0.0')
     assert not is_newer_version('1.x.y', '1.0.0')
     assert not is_newer_version('1.4.0', 'oops')
+
+
+def test_is_newer_version_compares_prerelease_suffix_by_base():
+    """A suffixed tag must be comparable, not silently refused - int('0-beta')
+    used to raise, and the whole tag then read as "up to date"."""
+    assert is_newer_version('1.5.0-beta', '1.4.0')
+    assert not is_newer_version('1.4.0-rc1', '1.4.0')   # same base, not newer
+    assert is_newer_version('2.0-beta', '1.9.9')        # the numeric base decides
+
+
+def test_is_prerelease_tag_rules():
+    assert is_prerelease_tag('1.5.0-beta')
+    assert is_prerelease_tag('v2.0-rc1')
+    assert not is_prerelease_tag('1.5.0')
+    assert not is_prerelease_tag('v1.4.0')
+
+
+def test_is_prerelease_payload_prefers_the_github_flag():
+    """The payload's own ``prerelease`` flag decides when present: a name-based
+    rule alone would blackball a STABLE tag like ``1.4.1-hotfix`` forever. The
+    suffix check stays only as the fallback for payloads without the field."""
+    from core.update_checker import is_prerelease_payload
+    assert not is_prerelease_payload({"prerelease": False}, "1.4.1-hotfix")
+    assert is_prerelease_payload({"prerelease": True}, "1.5.0")
+    assert not is_prerelease_payload({"prerelease": False}, "2.0.0")
+    assert is_prerelease_payload({}, "1.5.0-beta")
+    assert not is_prerelease_payload({}, "1.5.0")
+    assert is_prerelease_payload({"prerelease": None}, "1.5.0-beta")
+
+
+def test_is_safe_download_url_pins_github_https():
+    assert is_safe_download_url(
+        'https://github.com/ShamsiTray/ShamsiTray/releases/download/v1.5.0/ShamsiTraySetup-1.5.0.exe')
+    assert is_safe_download_url('https://objects.githubusercontent.com/x/ShamsiTraySetup.exe')
+    assert not is_safe_download_url('http://github.com/ShamsiTray/ShamsiTray/releases/download/x.exe')
+    assert not is_safe_download_url('https://example.invalid/installer.exe')
+    assert not is_safe_download_url('https://evil-github.com/installer.exe')  # suffix is dot-anchored
+    assert not is_safe_download_url('')
+    assert not is_safe_download_url('not a url at all')
 
 
 def test_digest_hex_parses_github_format():
@@ -106,14 +150,20 @@ def http_server():
     server.server_close()
 
 
-def _release_payload(tag="v99.0.0", asset=True):
+def _release_payload(tag="v99.0.0", asset=True, prerelease=None):
     payload = {"tag_name": tag}
     if asset:
         payload["assets"] = [{
             "name": f"ShamsiTraySetup-{tag.lstrip('v')}.exe",
-            "browser_download_url": "http://example.invalid/installer.exe",
+            # Offers from other hosts/schemes are refused at the offer boundary,
+            # so the stub payload has to carry a pinned-safe URL.
+            "browser_download_url": (
+                "https://github.com/ShamsiTray/ShamsiTray/releases/download/"
+                f"{tag}/ShamsiTraySetup-{tag.lstrip('v')}.exe"),
             "digest": "sha256:" + "ab" * 32,
         }]
+    if prerelease is not None:
+        payload["prerelease"] = prerelease
     return json.dumps(payload).encode()
 
 
@@ -130,12 +180,14 @@ def checker(qtbot):
 
 
 def _collect(checker):
-    got = {"app": [], "holidays": 0, "none": 0, "failed": [], "concluded": []}
+    got = {"app": [], "holidays": 0, "none": 0, "failed": [], "concluded": [],
+           "rounds": []}
     checker.app_update_available.connect(lambda v, u, s: got["app"].append((v, u, s)))
     checker.holidays_updated.connect(lambda: got.__setitem__("holidays", got["holidays"] + 1))
     checker.no_updates.connect(lambda: got.__setitem__("none", got["none"] + 1))
     checker.check_failed.connect(lambda r: got["failed"].append(r))
     checker.check_concluded.connect(lambda f: got["concluded"].append(f))
+    checker.round_finished.connect(lambda a, h: got["rounds"].append((a, h)))
     return got
 
 
@@ -156,12 +208,14 @@ def test_check_reports_app_update_and_holiday_update(http_server, checker, qtbot
     assert len(got["app"]) == 1
     version, url, sha = got["app"][0]
     assert version == "99.0.0"
-    assert url == "http://example.invalid/installer.exe"
+    assert url == ("https://github.com/ShamsiTray/ShamsiTray/releases/download/"
+                   "v99.0.0/ShamsiTraySetup-99.0.0.exe")
     assert sha == "ab" * 32
     assert got["holidays"] == 1
     assert got["none"] == 0
     assert got["failed"] == []
     assert got["concluded"] == [False]  # success conclusion for retry logic
+    assert got["rounds"] == [(APP_STATE_UPDATE_FOUND, HOLIDAYS_STATE_UPDATED)]
     # The store was atomically replaced with the remote data.
     assert APP_CONFIG.HOLIDAYS_STORE_PATH.exists()
 
@@ -213,6 +267,7 @@ def test_check_up_to_date_emits_no_updates(http_server, checker, qtbot, monkeypa
     assert got["none"] == 1
     assert got["app"] == [] and got["holidays"] == 0
     assert got["concluded"] == [False]
+    assert got["rounds"] == [(APP_STATE_CURRENT, HOLIDAYS_STATE_CURRENT)]
 
 
 def test_check_unversioned_remote_is_refused_not_applied(http_server, checker, qtbot, monkeypatch, user_data):
@@ -235,8 +290,12 @@ def test_check_unversioned_remote_is_refused_not_applied(http_server, checker, q
     assert not APP_CONFIG.HOLIDAYS_STORE_PATH.exists()   # store untouched
     # App check was clean (up to date) and stays the round's verdict:
     assert got["failed"] == []                           # no check_failed
-    assert got["none"] == 1                              # "no updates" fired
+    # With the holiday fetch FAILED, "app and holiday file are up to date" must
+    # NOT fire - it used to, which told the user everything was current while
+    # the holiday half had failed.
+    assert got["none"] == 0
     assert got["concluded"] == [False]                   # no 10-min retry loop
+    assert got["rounds"] == [(APP_STATE_CURRENT, HOLIDAYS_STATE_FAILED)]
 
 
 def test_check_holiday_only_update_still_concludes_clean(http_server, checker, qtbot, monkeypatch, user_data):
@@ -281,7 +340,10 @@ def test_check_bad_json_counts_as_failed(http_server, checker, qtbot, monkeypatc
     assert got["concluded"] == [True]
 
 
-def test_check_release_without_installer_asset_skips_offer(http_server, checker, qtbot, monkeypatch, user_data):
+def test_check_release_without_installer_asset_is_unavailable(http_server, checker, qtbot, monkeypatch, user_data):
+    """A newer release with no installer asset is UNAVAILABLE, not "current": a
+    manual check must not say «بروز است» while a newer release sits on the
+    server, and no clean "last checked" is stamped."""
     handler, base = http_server
     handler.routes["/api"] = (200, {}, _release_payload("99.0.0", asset=False))
     handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
@@ -293,8 +355,9 @@ def test_check_release_without_installer_asset_skips_offer(http_server, checker,
     stale_checker.check()
     qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
     assert got["app"] == []            # no installer -> no offer
-    assert got["none"] == 1            # but the round was clean
-    assert got["concluded"] == [False]
+    assert got["none"] == 0            # and NOT a clean "no updates" answer
+    assert got["concluded"] == [True]  # no clean stamp: re-checked later
+    assert got["rounds"] == [(APP_STATE_UNAVAILABLE, HOLIDAYS_STATE_CURRENT)]
 
 
 def test_check_release_without_valid_digest_skips_offer(http_server, checker, qtbot, monkeypatch, user_data):
@@ -320,6 +383,11 @@ def test_check_release_without_valid_digest_skips_offer(http_server, checker, qt
         checker.check()
         qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
         assert got["app"] == [], f"digest {digest!r} must not be offered"
+        # The offer is unavailable, not a clean "up to date" (the holidays half
+        # of the tuple varies: the first loop iteration applies the remote file,
+        # later ones see it as current).
+        assert got["rounds"][0][0] == APP_STATE_UNAVAILABLE
+        assert got["concluded"] == [True]
 
 
 def test_is_valid_sha256_rules():
@@ -546,3 +614,224 @@ def test_operation_canceled_error_name_exists():
     # The cancel path maps this exact enum; a rename would silently change
     # the download_failed payload the controller matches on.
     assert QNetworkReply.NetworkError.OperationCanceledError is not None
+
+
+# --- the round's own verdict signal ----------------------------------------------------------------
+
+
+def test_stable_hotfix_tag_with_prerelease_false_is_offered(http_server, checker, qtbot, monkeypatch, user_data):
+    """A stable release with a hyphenated tag (``1.4.1-hotfix``) must not be
+    ignored forever - GitHub's flag says it is not a pre-release."""
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload(tag="v99.0.0-hotfix", prerelease=False))
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+    got = _collect(checker)
+    checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert len(got["app"]) == 1
+    assert got["app"][0][0] == "99.0.0-hotfix"
+    assert got["rounds"] == [(APP_STATE_UPDATE_FOUND, HOLIDAYS_STATE_UPDATED)]
+
+
+def test_payload_flagged_prerelease_is_skipped_even_with_plain_tag(http_server, checker, qtbot, monkeypatch, user_data):
+    """The flag also flags releases a name-based rule would miss."""
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload(tag="v99.0.0", prerelease=True))
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+    got = _collect(checker)
+    checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["app"] == []
+    assert got["rounds"] == [(APP_STATE_CURRENT, HOLIDAYS_STATE_UPDATED)]
+
+
+def test_prerelease_tag_is_skipped_not_misread_as_up_to_date(http_server, checker, qtbot, monkeypatch, user_data, caplog):
+    """'v99.0.0-beta' used to parse as garbage and log "App is up to date". Now
+    it is explicitly recognized as a pre-release and skipped."""
+    import logging
+
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload(tag="v99.0.0-beta"))
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+    stale_checker = UpdateChecker(current_data_version=990002)
+
+    got = _collect(stale_checker)
+    with caplog.at_level(logging.INFO):
+        stale_checker.check()
+        qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["app"] == []                                   # never offered
+    assert any("pre-release" in r.message for r in caplog.records)
+    assert got["rounds"] == [(APP_STATE_CURRENT, HOLIDAYS_STATE_CURRENT)]
+
+
+def test_unsafe_download_url_is_never_offered(http_server, checker, qtbot, monkeypatch, user_data):
+    """A http / non-GitHub browser_download_url is refused at the offer boundary
+    instead of being handed to the download dialog."""
+    handler, base = http_server
+    for url in ("http://example.invalid/installer.exe",
+                "https://example.invalid/installer.exe"):
+        obj = json.loads(_release_payload())
+        obj["assets"][0]["browser_download_url"] = url
+        handler.routes["/api"] = (200, {}, json.dumps(obj).encode())
+        handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+        monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+        monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+        stale_checker = UpdateChecker(current_data_version=990002)
+
+        got = _collect(stale_checker)
+        stale_checker.check()
+        qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+        assert got["app"] == [], f"{url} must not be offered"
+        assert got["rounds"] == [(APP_STATE_UNAVAILABLE, HOLIDAYS_STATE_CURRENT)]
+        assert got["none"] == 0
+
+
+# --- the round matrix, driven through real rounds ------------------------------------------------
+
+
+def test_round_matrix_app_failed_holidays_updated(http_server, checker, qtbot, monkeypatch, user_data):
+    """app failed | holidays updated: «فایل تعطیلات به‌روزرسانی شد، اما بررسی برنامه
+    ناموفق بود.» - the app verdict stays failed (retry logic untouched)."""
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, b"this is not json{")
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(5))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+    got = _collect(checker)
+    checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["rounds"] == [(APP_STATE_FAILED, HOLIDAYS_STATE_UPDATED)]
+    assert got["concluded"] == [True]  # app verdict still drives the retry
+
+
+def test_round_matrix_app_failed_holidays_failed(http_server, checker, qtbot, monkeypatch, user_data):
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, b"not json{")
+    handler.routes["/holidays.json"] = (200, {}, b"nor this]")
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+    got = _collect(checker)
+    checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["rounds"] == [(APP_STATE_FAILED, HOLIDAYS_STATE_FAILED)]
+    assert got["failed"] == ["network"]
+
+
+def test_round_matrix_holiday_only_update_current_app(http_server, checker, qtbot, monkeypatch, user_data):
+    """current | updated: the holiday data applies, the app popup stays away, and
+    the round verdict names both facts."""
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload("1.0.0"))
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(5))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+    got = _collect(checker)
+    checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["rounds"] == [(APP_STATE_CURRENT, HOLIDAYS_STATE_UPDATED)]
+    assert got["holidays"] == 1
+
+
+def test_round_matrix_update_found_holidays_current(http_server, checker, qtbot, monkeypatch, user_data):
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload())
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(990001))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+    stale_checker = UpdateChecker(current_data_version=990002)
+
+    got = _collect(stale_checker)
+    stale_checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert got["rounds"] == [(APP_STATE_UPDATE_FOUND, HOLIDAYS_STATE_CURRENT)]
+
+
+# --- quiet holidays-only rounds --------------------------------------------------------------------
+
+
+def test_check_holidays_round_is_quiet_and_never_concludes(http_server, checker, qtbot, monkeypatch, user_data):
+    """A holidays-only retry refreshes data and reports round_finished
+    ('skipped' app verdict) but never emits the app signals or check_concluded,
+    so 'last checked' and the retry machinery stay untouched."""
+    handler, base = http_server
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(5))
+    monkeypatch.delenv(HOLIDAYS_URL_ENV, raising=False)
+    monkeypatch.setattr(APP_CONFIG, "HOLIDAYS_UPDATE_URL", f"{base}/holidays.json")
+
+    got = _collect(checker)
+    assert checker.check_holidays() is True
+    qtbot.waitUntil(lambda: bool(got["rounds"]), timeout=10000)
+    assert got["rounds"] == [(APP_STATE_SKIPPED, HOLIDAYS_STATE_UPDATED)]
+    assert got["holidays"] == 1
+    assert got["concluded"] == []          # no app verdict
+    assert got["failed"] == [] and got["app"] == [] and got["none"] == 0
+
+
+def test_check_holidays_failure_reports_failed_state(http_server, checker, qtbot, monkeypatch, user_data):
+    handler, base = http_server
+    handler.routes["/holidays.json"] = (200, {}, b"broken{")
+    monkeypatch.delenv(HOLIDAYS_URL_ENV, raising=False)
+    monkeypatch.setattr(APP_CONFIG, "HOLIDAYS_UPDATE_URL", f"{base}/holidays.json")
+
+    got = _collect(checker)
+    checker.check_holidays()
+    qtbot.waitUntil(lambda: bool(got["rounds"]), timeout=10000)
+    assert got["rounds"] == [(APP_STATE_SKIPPED, HOLIDAYS_STATE_FAILED)]
+    assert got["concluded"] == []
+
+
+def test_check_holidays_is_noop_while_a_round_is_pending(http_server, checker, qtbot, monkeypatch, user_data):
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload("1.0.0"))
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(0))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")
+
+    checker.check()
+    assert checker.check_holidays() is False
+    qtbot.waitUntil(lambda: checker._pending == 0, timeout=10000)
+
+
+def test_round_kind_reports_which_kind_is_in_flight(http_server, checker, qtbot, monkeypatch, user_data):
+    """The controller reads this to decide whether a manual press during a
+    quiet refresh should QUEUE a full check instead of marking that refresh
+    manual - a skipped round must never message, or the press is swallowed."""
+    handler, base = http_server
+    handler.routes["/holidays.json"] = (200, {}, _holidays_payload(5))
+    monkeypatch.delenv(HOLIDAYS_URL_ENV, raising=False)
+    monkeypatch.setattr(APP_CONFIG, "HOLIDAYS_UPDATE_URL", f"{base}/holidays.json")
+
+    checker.check_holidays()
+    assert checker.round_kind == "holidays"
+    qtbot.waitUntil(lambda: checker._pending == 0, timeout=10000)
+
+
+def test_env_override_ignored_in_frozen_build(http_server, checker, qtbot, monkeypatch, user_data):
+    """SHAMSITRAY_HOLIDAYS_URL is a development hook; a frozen (installed) build
+    must ignore it and use the config URL."""
+    import core.update_checker as update_checker_module
+
+    handler, base = http_server
+    handler.routes["/api"] = (200, {}, _release_payload("1.0.0"))
+    handler.routes["/gh-holidays"] = (200, {}, _holidays_payload(0))
+    monkeypatch.setattr(APP_CONFIG, "APP_RELEASES_API_URL", f"{base}/api")
+    monkeypatch.setenv(HOLIDAYS_URL_ENV, f"{base}/holidays.json")  # decoy
+    monkeypatch.setattr(APP_CONFIG, "HOLIDAYS_UPDATE_URL", f"{base}/gh-holidays")
+    monkeypatch.setattr(update_checker_module.sys, "frozen", True, raising=False)
+
+    got = _collect(checker)
+    checker.check()
+    qtbot.waitUntil(lambda: bool(got["concluded"]), timeout=10000)
+    assert handler.hits.get("/holidays.json", 0) == 0   # the decoy was never hit
+    assert handler.hits["/gh-holidays"] == 1

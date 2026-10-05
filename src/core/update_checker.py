@@ -24,6 +24,8 @@ import json
 import logging
 import os
 import re
+import sys
+import urllib.parse
 from typing import Optional, Tuple
 
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
@@ -42,25 +44,113 @@ DAY_MS = 24 * 60 * 60 * 1000
 
 # Test hook: point the holiday check at a local server (e.g.
 # `python -m http.server` serving a hand-made holidays.json) without touching
-# config.py. Set before launch; read on every check.
+# config.py. Set before launch; read on every check. Development-only: frozen
+# (installed) builds ignore it, so an environment variable can never redirect
+# the update traffic of a user's machine.
 HOLIDAYS_URL_ENV = "SHAMSITRAY_HOLIDAYS_URL"
+
+# Round-state vocabulary for the round_finished(app, holidays) signal.
+# App: "update_found" / "current" / "unavailable" / "failed" / "skipped"
+# (holidays-only round). "unavailable" = a newer release EXISTS but cannot be
+# offered safely (no installer asset, no valid sha256 digest, untrusted URL) -
+# reporting that as "current" would tell a manual check «بروز است» while a
+# newer release sits on the server.
+# Holidays: "updated" / "current" / "failed".
+APP_STATE_UPDATE_FOUND = "update_found"
+APP_STATE_CURRENT = "current"
+APP_STATE_UNAVAILABLE = "unavailable"
+APP_STATE_FAILED = "failed"
+APP_STATE_SKIPPED = "skipped"
+HOLIDAYS_STATE_UPDATED = "updated"
+HOLIDAYS_STATE_CURRENT = "current"
+HOLIDAYS_STATE_FAILED = "failed"
+
+# Download offers are pinned to GitHub over TLS: the releases API response is
+# trusted for the URL only as far as its host is the project's.
+SAFE_DOWNLOAD_SCHEME = "https"
+SAFE_DOWNLOAD_HOST_SUFFIXES = ("github.com", "githubusercontent.com")
+
+
+def _version_base_parts(value: str) -> Optional[Tuple[int, ...]]:
+    """Numeric dot parts of a version tag, ignoring any pre-release suffix.
+
+    ``1.4.0`` -> (1, 4, 0), ``v2.0`` -> (2, 0), ``1.5.0-beta`` -> (1, 5, 0),
+    ``junk`` -> None. The suffix split is what makes a pre-release tag
+    comparable at all: ``int('0-beta')`` raised and the whole tag was silently
+    refused, which reads as "up to date" in the log.
+    """
+    text = str(value).strip().lstrip('vV ')
+    # A pre-release suffix follows the first '-': 1.5.0-beta, 2.0-rc1.
+    base = text.split('-', 1)[0].strip()
+    if not base:
+        return None
+    try:
+        return tuple(int(p) for p in base.split('.'))
+    except ValueError:
+        return None
+
+
+def is_prerelease_tag(tag: str) -> bool:
+    """True when a release tag carries a pre-release suffix (``1.5.0-beta``).
+
+    The NAME-BASED fallback of ``is_prerelease_payload``, used only when the
+    release payload carries no ``prerelease`` field of its own. Policy:
+    pre-releases are never offered as updates - the caller skips them with a
+    clear log line instead of the old silent refusal, which looked exactly
+    like "the app is up to date".
+    """
+    text = str(tag).strip().lstrip('vV ')
+    return '-' in text
+
+
+def is_prerelease_payload(payload: dict, tag: str) -> bool:
+    """Whether the release the payload describes is a pre-release.
+
+    GitHub's own ``prerelease`` flag decides when present - a name-based rule
+    alone would blackball a STABLE tag like ``1.4.1-hotfix`` forever (and the
+    ``/releases/latest`` endpoint never returns pre-releases or drafts, so the
+    flag is authoritative in practice). The tag-suffix check remains only as
+    the fallback for payloads without the field (hand-made API responses).
+    """
+    field = payload.get('prerelease')
+    if field is None:
+        return is_prerelease_tag(tag)
+    return bool(field)
 
 
 def is_newer_version(latest: str, current: str) -> bool:
-    """True when `latest` is strictly newer than `current` (dot-separated integers)."""
-    def parts(value: str) -> Optional[Tuple[int, ...]]:
-        try:
-            return tuple(int(p) for p in str(value).strip().lstrip('vV ').split('.'))
-        except ValueError:
-            return None
+    """True when `latest` is strictly newer than `current` (dot-separated integers).
 
-    latest_parts, current_parts = parts(latest), parts(current)
+    A pre-release suffix on the tag is ignored for the comparison (the tag's
+    base version decides); offering pre-releases is the caller's policy via
+    ``is_prerelease_tag``.
+    """
+    latest_parts = _version_base_parts(latest)
+    current_parts = _version_base_parts(current)
     if latest_parts is None or current_parts is None:
         return False
     width = max(len(latest_parts), len(current_parts))
     latest_parts += (0,) * (width - len(latest_parts))
     current_parts += (0,) * (width - len(current_parts))
     return latest_parts > current_parts
+
+
+def is_safe_download_url(url: str) -> bool:
+    """True for https URLs hosted by GitHub.
+
+    ``browser_download_url`` comes from the same API response as the digest, so
+    pinning the host adds no tamper resistance against the response itself - it
+    guarantees the offer can never point anywhere BUT the project's release
+    infrastructure, whatever a compromised or broken API response claims.
+    """
+    try:
+        parsed = urllib.parse.urlparse(str(url))
+    except ValueError:
+        return False
+    if parsed.scheme.lower() != SAFE_DOWNLOAD_SCHEME:
+        return False
+    host = (parsed.hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in SAFE_DOWNLOAD_HOST_SUFFIXES)
 
 
 def digest_hex(digest_field: str) -> Optional[str]:
@@ -105,9 +195,14 @@ def should_notify(latest_version: str, ignored_version: Optional[str]) -> bool:
 class UpdateChecker(QObject):
     app_update_available = pyqtSignal(str, str, str)  # version, installer_url, sha256_hex
     holidays_updated = pyqtSignal()
-    no_updates = pyqtSignal()
+    no_updates = pyqtSignal()  # app current AND holidays current: nothing changed, nothing failed
     check_failed = pyqtSignal(str)
     check_concluded = pyqtSignal(bool)  # True when the APP check failed (retry verdict)
+    # One signal carrying the WHOLE round's verdict: (app, holidays) using the
+    # APP_STATE_* / HOLIDAYS_STATE_* constants. The controller builds its
+    # manual-check message from here, so the two halves of a round can never be
+    # reported separately or falsely.
+    round_finished = pyqtSignal(str, str)
     download_progress = pyqtSignal(int, int)  # received bytes, total bytes (-1 if unknown)
     installer_downloaded = pyqtSignal(str)  # local file path
     download_failed = pyqtSignal(str)
@@ -117,13 +212,40 @@ class UpdateChecker(QObject):
         self._current_data_version = current_data_version
         self._manager = QNetworkAccessManager(self)
         self._pending = 0
+        self._round_kind = "full"  # "full" = app + holidays, "holidays" = quiet refresh
         self._app_found: Optional[Tuple[str, str, str]] = None
         self._app_failed = False
+        self._app_unavailable = False
         self._holidays_applied = False
         self._holidays_failed = False
         self._download_reply: Optional[QNetworkReply] = None
 
     # --- checks ---
+
+    @property
+    def round_kind(self) -> str:
+        """What the current (or last configured) round asks: "full" or "holidays".
+
+        Read by the controller when a manual check lands on a busy checker, so a
+        press during a quiet holidays-only refresh can QUEUE a full check instead
+        of marking that refresh manual - a skipped round must never message, so
+        marking it would swallow the press. Meaningful only while a round is in
+        flight (``check()`` returned False); between rounds it simply carries the
+        last round's kind.
+        """
+        return self._round_kind
+
+    def _holidays_url(self) -> str:
+        """Holiday endpoint, honouring the test override only outside a build.
+
+        The env hook is a development aid: a frozen (installed) build ignores
+        it, so an environment variable can never redirect the update traffic of
+        a user's machine.
+        """
+        override = ""
+        if not getattr(sys, 'frozen', False):
+            override = os.environ.get(HOLIDAYS_URL_ENV, "").strip()
+        return override or APP_CONFIG.HOLIDAYS_UPDATE_URL
 
     def check(self) -> bool:
         """Fire both update checks asynchronously; results arrive via signals.
@@ -135,13 +257,33 @@ class UpdateChecker(QObject):
         """
         if self._pending:
             return False
+        self._round_kind = "full"
         self._app_found = None
         self._app_failed = False
+        self._app_unavailable = False
         self._holidays_applied = False
         self._holidays_failed = False
-        holidays_url = os.environ.get(HOLIDAYS_URL_ENV, "").strip() or APP_CONFIG.HOLIDAYS_UPDATE_URL
         self._get(APP_CONFIG.APP_RELEASES_API_URL, self._on_app_reply)
-        self._get(holidays_url, self._on_holidays_reply)
+        self._get(self._holidays_url(), self._on_holidays_reply)
+        return True
+
+    def check_holidays(self) -> bool:
+        """Quiet holidays-only refresh: no app check, no app verdict.
+
+        A failed holiday fetch must not wait 24h for the next full round, but
+        retrying the FULL round would re-pop the app popup after "remind later"
+        and stamp "last checked" on a round that never asked the app question.
+        This refetches just the holiday file; it emits holidays_updated on
+        success (the normal refresh path) and round_finished("skipped", ...) -
+        never check_concluded, so the app verdict and its stamping stay
+        untouched. Returns True when started.
+        """
+        if self._pending:
+            return False
+        self._round_kind = "holidays"
+        self._holidays_applied = False
+        self._holidays_failed = False
+        self._get(self._holidays_url(), self._on_holidays_reply)
         return True
 
     def cancel_download(self):
@@ -179,6 +321,13 @@ class UpdateChecker(QObject):
                 pass
             try:
                 handler(reply)
+            except Exception:
+                # The handler's own finally-block emits Qt signals (the conclude
+                # path emits several); an exception raised by a slot could
+                # otherwise escape back into Qt's C++ dispatch, which PyQt
+                # answers with qFatal. Contain it: the pending bookkeeping
+                # already ran inside the handler.
+                logger.exception("Update reply handler raised; containing the error.")
             finally:
                 reply.deleteLater()
 
@@ -195,6 +344,19 @@ class UpdateChecker(QObject):
             self._conclude()
 
     def _conclude(self):
+        holidays_state = (HOLIDAYS_STATE_UPDATED if self._holidays_applied
+                          else HOLIDAYS_STATE_FAILED if self._holidays_failed
+                          else HOLIDAYS_STATE_CURRENT)
+        if self._round_kind == "holidays":
+            # Quiet refresh: only the holiday outcome exists to report.
+            if self._holidays_applied:
+                self.holidays_updated.emit()
+            self.round_finished.emit(APP_STATE_SKIPPED, holidays_state)
+            return
+        app_state = (APP_STATE_UPDATE_FOUND if self._app_found
+                     else APP_STATE_FAILED if self._app_failed
+                     else APP_STATE_UNAVAILABLE if self._app_unavailable
+                     else APP_STATE_CURRENT)
         if self._app_found:
             self.app_update_available.emit(*self._app_found)
         if self._holidays_applied:
@@ -202,16 +364,29 @@ class UpdateChecker(QObject):
         if self._app_found is None:
             if self._app_failed:
                 self.check_failed.emit("network")
-            elif not self._holidays_applied:
+            elif self._app_unavailable:
+                # The skip paths already logged WHY the release cannot be
+                # offered; it must not read as "no updates".
+                pass
+            elif holidays_state == HOLIDAYS_STATE_CURRENT:
+                # "No updates" must mean the holidays are CURRENT, not merely
+                # "didn't change": a failed holiday fetch used to be announced
+                # as "app and holiday file are up to date".
                 self.no_updates.emit()
+        # One end-of-round signal carrying the WHOLE verdict, so the controller
+        # can message a manual check without reporting the two halves separately
+        # (or falsely).
+        self.round_finished.emit(app_state, holidays_state)
         # Definitive end of this round, success or not: lets the controller
         # stamp "last checked" only for real answers and retry the rest.
         #
         # The verdict tracks the APP check only. The holiday refresh has its own
-        # signals and log line, and a failed holiday download must not mark the
+        # state and log line, and a failed holiday download must not mark the
         # whole round failed - that would retry the app update every 10 minutes
-        # and bring the popup back after "remind later".
-        self.check_concluded.emit(self._app_failed)
+        # and bring the popup back after "remind later". An UNAVAILABLE round
+        # counts as failed here: no clean stamp, so the release is re-checked
+        # instead of waiting out the 24h gate.
+        self.check_concluded.emit(self._app_failed or self._app_unavailable)
 
     def _on_app_reply(self, reply: QNetworkReply):
         try:
@@ -223,22 +398,40 @@ class UpdateChecker(QObject):
             payload_text = bytes(reply.readAll()).decode('utf-8') if reply.isOpen() else ''
             payload = json.loads(payload_text)
             tag = str(payload.get('tag_name', '')).strip()
+            if is_prerelease_payload(payload, tag):
+                # Policy: pre-releases are never offered. The old parser choked
+                # on the suffix and logged the silent refusal as "App is up to
+                # date (latest release: 1.5.0-beta)".
+                logger.info(f"Ignoring pre-release {tag!r}; only stable releases are offered.")
+                return
             if not is_newer_version(tag, APP_CONFIG.APP_VERSION):
                 logger.info(f"App is up to date (latest release: {tag or 'unknown'}).")
                 return
             asset = self._find_installer_asset(payload)
             if asset is None:
-                logger.warning(f"Release {tag} has no setup installer asset; skipping the app update offer.")
+                # A newer release exists but cannot be offered: the round must
+                # report "unavailable", not "current".
+                self._app_unavailable = True
+                logger.warning(f"Release {tag} has no setup installer asset; the app update offer is unavailable.")
                 return
             sha256 = digest_hex(str(asset.get('digest', '')))
             if not is_valid_sha256(sha256):
                 # A release without a verifiable digest is never offered: an
                 # empty digest would compare equal and skip the download's final
                 # sha256 check, accepting the installer unverified.
-                logger.warning(f"Release {tag} installer has no valid sha256 digest; skipping the app update offer.")
+                self._app_unavailable = True
+                logger.warning(f"Release {tag} installer has no valid sha256 digest; the app update offer is unavailable.")
+                return
+            download_url = str(asset['browser_download_url'])
+            if not is_safe_download_url(download_url):
+                # The offer is pinned to GitHub over https. The digest protects
+                # against corruption, not a tampered response - an unexpected
+                # host/scheme is refused outright.
+                self._app_unavailable = True
+                logger.warning(f"Release {tag} installer URL is not a trusted GitHub https URL; the app update offer is unavailable.")
                 return
             version = tag.lstrip('vV ')
-            self._app_found = (version, asset['browser_download_url'], sha256)
+            self._app_found = (version, download_url, sha256)
             logger.info(f"App update available: {version}")
         except Exception as e:
             self._app_failed = True
@@ -281,7 +474,9 @@ class UpdateChecker(QObject):
             if remote_version <= self._current_data_version:
                 logger.info(f"Holiday data is up to date (remote version {remote_version}).")
                 return
-            if not holiday_io.replace_store(payload):
+            # The payload was already fully validated above: hand that result
+            # to replace_store so it is parsed exactly once.
+            if not holiday_io.replace_store(payload, validated=validated):
                 self._holidays_failed = True
                 return
             self._current_data_version = remote_version
@@ -375,24 +570,29 @@ class UpdateChecker(QObject):
             self.download_failed.emit(message)
 
         def on_ready_read():
-            watchdog.start()  # data flowed: restart the inactivity window
             try:
-                # Consume whatever arrived now; readAll() is only ever called
-                # on the open transport inside this handler.
-                data = bytes(reply.readAll())
-                if data:
-                    hasher.update(data)
-                    file_handle.write(data)
-            except OSError as e:
-                # Disk full / AV scanning the .part: an exception escaping a Qt
-                # slot hard-aborts the process (qFatal), so I/O failures are
-                # converted into the normal download_failed flow here.
-                if not settled[0]:
-                    settled[0] = True
-                    watchdog.stop()
-                    reply.abort()
-                    release_reply()
-                    _fail(str(e))
+                watchdog.start()  # data flowed: restart the inactivity window
+                try:
+                    # Consume whatever arrived now; readAll() is only ever called
+                    # on the open transport inside this handler.
+                    data = bytes(reply.readAll())
+                    if data:
+                        hasher.update(data)
+                        file_handle.write(data)
+                except OSError as e:
+                    # Disk full / AV scanning the .part: an exception escaping a Qt
+                    # slot hard-aborts the process (qFatal), so I/O failures are
+                    # converted into the normal download_failed flow here.
+                    if not settled[0]:
+                        settled[0] = True
+                        watchdog.stop()
+                        reply.abort()
+                        release_reply()
+                        _fail(str(e))
+            except Exception:
+                # Same qFatal rule as the finished handler: whatever a connected
+                # slot raised, it must not escape back into Qt's dispatch.
+                logger.exception("Installer download read handler raised; containing the error.")
 
         def release_reply():
             if self._download_reply is reply:
@@ -411,9 +611,13 @@ class UpdateChecker(QObject):
             if settled[0]:
                 return
             settled[0] = True
-            reply.abort()
-            release_reply()
-            _fail(f"no data for {DOWNLOAD_INACTIVITY_TIMEOUT_MS // 1000}s; connection stalled")
+            try:
+                reply.abort()
+                release_reply()
+                _fail(f"no data for {DOWNLOAD_INACTIVITY_TIMEOUT_MS // 1000}s; connection stalled")
+            except Exception:
+                # _fail emits a Qt signal: a raising slot must not escape into Qt.
+                logger.exception("Installer download watchdog handler raised; containing the error.")
 
         def on_finished():
             # One-shot by construction: disconnect both handlers, then decide.
@@ -429,26 +633,31 @@ class UpdateChecker(QObject):
                 return
             settled[0] = True
             try:
-                error = reply.error()
-                if error != QNetworkReply.NetworkError.NoError:
-                    raise RuntimeError(
-                        "canceled" if error == QNetworkReply.NetworkError.OperationCanceledError
-                        else self._error_text(reply))
-                if reply.bytesAvailable():
-                    tail = bytes(reply.readAll())
-                    hasher.update(tail)
-                    file_handle.write(tail)
-                file_handle.close()
-                file_handle = None
-                if expected_sha256 and hasher.hexdigest() != expected_sha256.lower():
-                    raise RuntimeError("Downloaded installer failed the sha256 check; it was not saved.")
-                os.replace(part_path, destination_path)
-                logger.info(f"Installer saved to {destination_path} (sha256 verified).")
-                self.installer_downloaded.emit(destination_path)
-            except Exception as e:
-                _discard_part()
-                logger.error(f"Installer download failed: {e}")
-                self.download_failed.emit(str(e))
+                try:
+                    error = reply.error()
+                    if error != QNetworkReply.NetworkError.NoError:
+                        raise RuntimeError(
+                            "canceled" if error == QNetworkReply.NetworkError.OperationCanceledError
+                            else self._error_text(reply))
+                    if reply.bytesAvailable():
+                        tail = bytes(reply.readAll())
+                        hasher.update(tail)
+                        file_handle.write(tail)
+                    file_handle.close()
+                    file_handle = None
+                    if expected_sha256 and hasher.hexdigest() != expected_sha256.lower():
+                        raise RuntimeError("Downloaded installer failed the sha256 check; it was not saved.")
+                    os.replace(part_path, destination_path)
+                    logger.info(f"Installer saved to {destination_path} (sha256 verified).")
+                    self.installer_downloaded.emit(destination_path)
+                except Exception as e:
+                    _discard_part()
+                    logger.error(f"Installer download failed: {e}")
+                    self.download_failed.emit(str(e))
+            except Exception:
+                # installer_downloaded/download_failed land in application slots;
+                # an exception raised there must never escape into Qt (qFatal).
+                logger.exception("Installer download completion handler raised; containing the error.")
 
         watchdog.timeout.connect(on_watchdog_timeout)
         watchdog.start()

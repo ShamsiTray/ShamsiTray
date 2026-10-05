@@ -113,6 +113,8 @@ def test_failed_auto_check_schedules_retry(tray, monkeypatch):
                         lambda ms, cb: scheduled.append((ms, cb)))
     tray._manual_update_check = False
     tray._auto_check_retries = 0
+    tray._on_round_finished(controller_module.APP_STATE_FAILED,
+                            controller_module.HOLIDAYS_STATE_CURRENT)
     tray._on_check_concluded(True)
     assert tray._auto_check_retries == 1
     assert scheduled and scheduled[0][0] == AUTO_CHECK_RETRY_DELAY_MS
@@ -123,8 +125,12 @@ def test_failed_manual_check_does_not_retry(tray, monkeypatch):
     scheduled = []
     monkeypatch.setattr(controller_module.QTimer, "singleShot",
                         lambda ms, cb: scheduled.append((ms, cb)))
+    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: None))  # modal guard
     tray._manual_update_check = True
-    tray._on_check_concluded(True)
+    tray._on_round_finished(controller_module.APP_STATE_FAILED,
+                            controller_module.HOLIDAYS_STATE_CURRENT)
+    tray._on_check_concluded(True)  # reads the snapshot, not the live flag
     assert tray._auto_check_retries == 0
     assert scheduled == []
 
@@ -190,12 +196,16 @@ def test_check_failed_quiet_while_update_popup_is_open(tray, monkeypatch):
     notified = []
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: notified.append(a)))
+    # The offline dialog now lives in the round matrix, so drive the round
+    # itself under each guard the old _on_check_failed code honoured.
     tray._manual_update_check = True  # would normally notify
     tray._update_dialog_open = True
-    tray._on_check_failed("network")
+    tray._on_round_finished(controller_module.APP_STATE_FAILED,
+                            controller_module.HOLIDAYS_STATE_FAILED)
     tray._update_dialog_open = False
     tray._update_popup_pending = True
-    tray._on_check_failed("network")
+    tray._on_round_finished(controller_module.APP_STATE_FAILED,
+                            controller_module.HOLIDAYS_STATE_FAILED)
     tray._update_popup_pending = False
     assert notified == []
 
@@ -209,9 +219,18 @@ def test_update_popup_dialog_open_guard(tray, monkeypatch):
     assert chosen == []  # no second dialog while one is open
 
 
+def _answer_update_popup(tray, monkeypatch, choice):
+    """Build the popup's dialog path without a modal loop: exec_centered is the
+    shared present-tail the popup ends with."""
+    def fake_exec_centered(self, parent=None):
+        self.choice = choice
+        return 0
+
+    monkeypatch.setattr(controller_module.ConfirmDialog, "exec_centered", fake_exec_centered)
+
+
 def test_update_popup_download_choice(tray, monkeypatch):
-    monkeypatch.setattr(controller_module.ConfirmDialog, "choose",
-                        staticmethod(lambda *a, **k: "دانلود"))
+    _answer_update_popup(tray, monkeypatch, "دانلود")
     download_calls, _ = _spy(tray, "_download_update")
     tray._update_dialog_open = False
     tray._show_update_popup("9.9.9", "http://x", "sha")
@@ -219,19 +238,33 @@ def test_update_popup_download_choice(tray, monkeypatch):
 
 
 def test_update_popup_ignore_choice_persists(tray, monkeypatch):
-    monkeypatch.setattr(controller_module.ConfirmDialog, "choose",
-                        staticmethod(lambda *a, **k: "نادیده گرفتن"))
+    _answer_update_popup(tray, monkeypatch, "نادیده گرفتن")
     tray._show_update_popup("9.9.9", "http://x", "")
     assert tray.settings.value(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY) == "9.9.9"
 
 
 def test_update_popup_dismissed_does_nothing(tray, monkeypatch):
-    monkeypatch.setattr(controller_module.ConfirmDialog, "choose",
-                        staticmethod(lambda *a, **k: None))
+    _answer_update_popup(tray, monkeypatch, None)
     download_calls, _ = _spy(tray, "_download_update")
     tray._show_update_popup("9.9.9", "http://x", "")
     assert download_calls == []
     assert tray.settings.value(APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY) is None
+
+
+def test_update_popup_keeps_a_reference_while_it_runs(tray, monkeypatch):
+    """The reference is what lets a manual arrival RAISE the open popup instead
+    of dropping the result silently; it is cleared in the finally block."""
+    captured = {}
+
+    def fake_exec_centered(self, parent=None):
+        captured["dialog"] = tray._active_update_popup
+        self.choice = None
+        return 0
+
+    monkeypatch.setattr(controller_module.ConfirmDialog, "exec_centered", fake_exec_centered)
+    tray._show_update_popup("9.9.9", "http://x", "")
+    assert captured["dialog"] is not None
+    assert tray._active_update_popup is None  # released after the round
 
 
 def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
@@ -343,33 +376,142 @@ def test_holidays_updated_refreshes_calendar_and_tray(tray, monkeypatch):
     assert tray.holidays_cache  # re-resolved from the (seeded) store
 
 
-def test_no_updates_manual_notifies(tray, monkeypatch):
-    tray._manual_update_check = True
+def _notify_recorder(monkeypatch):
     notified = []
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
-                        staticmethod(lambda *a, **k: notified.append(a)))
-    tray._on_no_updates()
+                        staticmethod(lambda *a, **k: notified.append((a, k))))
+    return notified
+
+
+def _notice(notified):
+    """First notify() body: (parent, title, message, **kw)."""
+    return notified[0][0][2]
+
+
+def _drive_round(tray, app_state, holidays_state, manual=True):
+    """End one round exactly as the checker does: round_finished, then the
+    conclusion signal."""
+    tray._manual_update_check = manual
+    tray._on_round_finished(app_state, holidays_state)
+    tray._on_check_concluded(app_state in (controller_module.APP_STATE_FAILED,
+                                           controller_module.APP_STATE_UNAVAILABLE))
+
+
+def test_manual_round_current_updated_notifies_holiday_refresh(tray, monkeypatch):
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_CURRENT,
+                 controller_module.HOLIDAYS_STATE_UPDATED)
     assert len(notified) == 1
+    assert "فایل تعطیلات به‌روزرسانی شد." in _notice(notified)
+
+
+def test_manual_round_current_current_reports_both_current(tray, monkeypatch):
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_CURRENT,
+                 controller_module.HOLIDAYS_STATE_CURRENT)
+    assert len(notified) == 1
+    assert "برنامه و فایل تعطیلات بروز است." in _notice(notified)
+
+
+def test_manual_round_current_failed_says_holiday_check_failed(tray, monkeypatch):
+    """The false "up to date": a failed holiday fetch must not be reported as
+    the app AND holiday file being current."""
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_CURRENT,
+                 controller_module.HOLIDAYS_STATE_FAILED)
+    assert len(notified) == 1
+    assert "بررسی فایل تعطیلات ناموفق بود" in _notice(notified)
+
+
+def test_manual_round_unavailable_says_download_impossible(tray, monkeypatch):
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_UNAVAILABLE,
+                 controller_module.HOLIDAYS_STATE_CURRENT)
+    assert len(notified) == 1
+    assert "دانلود امن آن ممکن نیست" in _notice(notified)
+    assert notified[0][1].get("danger") is True
+
+
+def test_manual_round_failed_updated_reports_both_halves(tray, monkeypatch):
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_FAILED,
+                 controller_module.HOLIDAYS_STATE_UPDATED)
+    assert len(notified) == 1
+    assert "فایل تعطیلات به‌روزرسانی شد، اما بررسی برنامه ناموفق بود." in _notice(notified)
+
+
+def test_manual_round_failed_failed_keeps_the_offline_dialog(tray, monkeypatch):
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_FAILED,
+                 controller_module.HOLIDAYS_STATE_FAILED)
+    assert len(notified) == 1
+    assert "اینترنت را بررسی کنید" in _notice(notified)
+
+
+def test_automatic_round_is_silent_whatever_happens(tray, monkeypatch):
+    notified = _notify_recorder(monkeypatch)
+    for holidays in (controller_module.HOLIDAYS_STATE_UPDATED,
+                     controller_module.HOLIDAYS_STATE_CURRENT,
+                     controller_module.HOLIDAYS_STATE_FAILED):
+        _drive_round(tray, controller_module.APP_STATE_CURRENT, holidays, manual=False)
+    assert notified == []
+
+
+def test_update_found_round_defers_to_the_popup(tray, monkeypatch):
+    """The popup itself carries the report - the round must not message twice."""
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_UPDATE_FOUND,
+                 controller_module.HOLIDAYS_STATE_UPDATED)
+    assert notified == []
+
+
+def test_skipped_round_never_messages(tray, monkeypatch):
+    """A quiet holidays-only refresh is background traffic: no report, ever."""
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_SKIPPED,
+                 controller_module.HOLIDAYS_STATE_FAILED)
+    assert notified == []
+
+
+def test_manual_press_behind_a_quiet_refresh_is_queued_then_runs(tray, monkeypatch):
+    """Pressing «بررسی بروزرسانی» during the holidays-only refresh must not be
+    swallowed: the full check starts (and is flagged manual) the moment the
+    refresh concludes."""
+    monkeypatch.setattr(type(tray.update_checker), "round_kind",
+                        property(lambda self: "holidays"))
+    monkeypatch.setattr(tray.update_checker, "check", lambda: False)
+    tray._manual_update_check = False
+    tray._check_for_updates(manual=True)
+    assert tray._manual_update_check is False       # never marked manual
+    assert tray._queued_full_check_after_holidays is True
+    # The busy round is over: the queued press now starts a full round.
+    monkeypatch.setattr(type(tray.update_checker), "round_kind",
+                        property(lambda self: "full"))
+    monkeypatch.setattr(tray.update_checker, "check", lambda: True)
+    tray._on_round_finished(controller_module.APP_STATE_SKIPPED,
+                            controller_module.HOLIDAYS_STATE_CURRENT)
+    assert tray._queued_full_check_after_holidays is False
+    assert tray._manual_update_check is True        # the queued press is honoured
+
+
+def test_press_during_a_full_round_marks_that_round_manual(tray, monkeypatch):
+    """The first minute after launch used to be a dead click: the scheduled
+    round was running, so the press did nothing and the button looked broken."""
+    monkeypatch.setattr(type(tray.update_checker), "round_kind",
+                        property(lambda self: "full"))
+    monkeypatch.setattr(tray.update_checker, "check", lambda: False)
+    tray._manual_update_check = False
+    tray._check_for_updates(manual=True)
+    assert tray._manual_update_check is True
 
 
 def test_no_updates_auto_is_silent(tray, monkeypatch):
-    tray._manual_update_check = False
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: pytest.fail("must not notify")))
     tray._on_no_updates()
 
 
-def test_check_failed_manual_notifies(tray, monkeypatch):
-    tray._manual_update_check = True
-    notified = []
-    monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
-                        staticmethod(lambda *a, **k: notified.append(a)))
-    tray._on_check_failed("network")
-    assert len(notified) == 1
-
-
 def test_check_failed_auto_is_silent(tray, monkeypatch):
-    tray._manual_update_check = False
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: pytest.fail("must not notify")))
     tray._on_check_failed("network")
@@ -1200,13 +1342,15 @@ def test_interactive_save_failure_notifies(tray, monkeypatch):
 # --- UPD-6 / UPD-9 controller wiring ------------------------------------------------------
 
 
-def test_manual_check_flag_not_set_when_check_is_noop(tray, monkeypatch):
-    """UPD-6: a manual check arriving during an in-flight auto round must not
-    re-flag that round as manual."""
+def test_noop_press_does_not_start_a_second_round(tray, monkeypatch):
+    """The press lands on a busy checker: no second round starts (the _pending
+    guard), but the press is still honoured by marking/queueing - see
+    test_press_during_a_full_round_marks_that_round_manual."""
     monkeypatch.setattr(tray.update_checker, "check", lambda: False)
     tray._manual_update_check = False
+    started, _ = _spy(tray.update_checker, "check")
     tray._check_for_updates(manual=True)
-    assert tray._manual_update_check is False
+    assert started == [((), {})]  # check() was called once, and refused
 
 
 def test_download_update_reuses_verified_existing_installer(tray, monkeypatch, tmp_path):
