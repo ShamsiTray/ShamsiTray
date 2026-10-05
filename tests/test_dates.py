@@ -11,11 +11,16 @@ from utils.date_utils import (
     describe_date_distance,
     format_distance_breakdown,
     format_distance_total,
+    format_gregorian_long,
+    format_gregorian_numeric,
+    format_jalali_long,
+    format_jalali_numeric,
     from_persian_digits,
     gregorian_month_name,
     is_gregorian_leap_year,
     is_jalali_leap_year,
     ms_until_midnight,
+    normalize_search_text,
     persian_month_name,
     persian_weekday_name,
     to_persian_digits,
@@ -187,13 +192,11 @@ def test_ms_until_midnight_never_negative():
 # --- numeric copy formats (کپی تاریخ submenu) ---
 
 def test_format_jalali_numeric_zero_pads():
-    from utils.date_utils import format_jalali_numeric
     assert format_jalali_numeric(jdatetime.date(1405, 7, 1)) == "1405/07/01"
     assert format_jalali_numeric(jdatetime.date(1200, 12, 29)) == "1200/12/29"
 
 
 def test_format_gregorian_numeric_zero_pads_and_converts():
-    from utils.date_utils import format_gregorian_numeric
     assert format_gregorian_numeric(jdatetime.date(1405, 7, 1)) == "2026/09/23"
     gdate = jdatetime.date(1404, 5, 2).togregorian()
     assert format_gregorian_numeric(jdatetime.date(1404, 5, 2)) == \
@@ -384,6 +387,81 @@ def test_distance_breakdown_skips_empty_units():
                                       today=jdatetime.date(1404, 1, 1))
     assert (distance.years, distance.months, distance.days) == (2, 0, 5)
     assert format_distance_breakdown(distance) == "۲ سال و ۵ روز مانده"
+
+
+# --- search normalization ---
+
+
+def test_normalize_search_text_covers_every_digit_family():
+    assert normalize_search_text("۱۲") == "12"
+    assert normalize_search_text("١٢") == "12"  # Arabic-Indic, U+0660 block
+    assert normalize_search_text("12") == "12"
+
+
+def test_normalize_search_text_folds_arabic_letters_and_zwnj():
+    assert normalize_search_text("علي") == normalize_search_text("علی")
+    assert normalize_search_text("كتاب") == normalize_search_text("کتاب")
+    assert normalize_search_text("می\u200cشود") == normalize_search_text("میشود")
+
+
+def test_normalize_search_text_is_case_insensitive():
+    assert normalize_search_text("Meeting") == normalize_search_text("meeting")
+
+
+def test_normalize_search_text_adds_the_arabic_digit_range():
+    """from_persian_digits covers the Persian set only; the search needed the
+    Arabic-Indic range as well, which is why it has its own table."""
+    assert from_persian_digits("١٢") == "١٢"
+    assert normalize_search_text("١٢") == "12"
+
+
+# --- long-form date formatting ---
+
+
+def test_gregorian_long_uses_app_tables_not_the_process_locale():
+    """The names must not come from strftime('%A'/'%B').
+
+    Those follow the process locale, so the same call produced Persian names on
+    a Persian Windows install and English ones elsewhere - the copy entry's text
+    changed with the machine's language settings."""
+    assert format_gregorian_long(datetime.date(2025, 10, 21)) == "Tuesday ۲۱ October ۲۰۲۵"
+
+
+def test_gregorian_long_latin_digits_variant():
+    assert (format_gregorian_long(datetime.date(2025, 10, 21), persian_digits=False)
+            == "Tuesday 21 October 2025")
+
+
+def test_gregorian_long_matches_the_weekday_table():
+    """Every weekday lands on its own name - the table is Monday-first, the
+    one indexing trap this format is exposed to."""
+    monday = datetime.date(2025, 10, 20)
+    for offset, name in enumerate(["Monday", "Tuesday", "Wednesday", "Thursday",
+                                    "Friday", "Saturday", "Sunday"]):
+        assert format_gregorian_long(monday + datetime.timedelta(days=offset),
+                                     persian_digits=False).startswith(name)
+
+
+def test_jalali_and_gregorian_long_agree_on_one_day():
+    """The two long formats describe the same instant - the rows are read side
+    by side and copied together."""
+    j_date = jdatetime.date(1404, 8, 29)
+    assert format_jalali_long(j_date, persian_digits=False) == "پنج\u200cشنبه 29 آبان 1404"
+    assert (format_gregorian_long(j_date.togregorian(), persian_digits=False)
+            == "Thursday 20 November 2025")
+
+
+def test_both_full_copy_payload_pairs_the_two_long_forms():
+    """The «هر دو کامل» payload is the two long lines, newline separated."""
+    j_date = jdatetime.date(1404, 8, 29)
+    payload = (f"{format_jalali_long(j_date, persian_digits=False)}\n"
+               f"{format_gregorian_long(j_date.togregorian(), persian_digits=False)}")
+    assert payload == "پنج\u200cشنبه 29 آبان 1404\nThursday 20 November 2025"
+
+
+def test_long_forms_reject_out_of_range_month():
+    with pytest.raises(ValueError):
+        format_gregorian_long(datetime.date(2025, 13, 1))
 
 
 def test_distance_is_immutable():

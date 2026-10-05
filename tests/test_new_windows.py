@@ -109,6 +109,51 @@ def test_manager_search_filters_by_text(manager):
     assert rows == 1
 
 
+def test_manager_search_normalizes_digits_and_arabic_letters(manager):
+    """A query pasted from elsewhere must match the STORED Persian text.
+
+    Matching normalized only the query with .lower() made «١٢» and «علي»
+    match nothing at all, which reads to the user as a missing event."""
+    manager.controller.user_events["1404-05-05"] = {
+        "text": "کتاب علی", "recurrence": "none", "remove_after_finish": False}
+
+    manager.search_input.setText("كتاب علي")   # Arabic kaf + Arabic yeh
+    assert manager.rows_layout.count() - 1 == 1
+
+    manager.search_input.setText("کتاب")         # Persian spelling
+    assert manager.rows_layout.count() - 1 == 1
+
+
+def test_manager_search_matches_arabic_indic_digits_in_event_text(manager):
+    manager.controller.user_events["1404-05-05"] = {
+        "text": "جلسه ۱۲ نفره", "recurrence": "none", "remove_after_finish": False}
+    manager.search_input.setText("١٢")            # Arabic-Indic twelve
+    assert manager.rows_layout.count() - 1 == 1
+
+
+def test_manager_search_also_matches_the_date_label(manager):
+    """Typing a year or a month name must find an event whose numeric label
+    spells neither («۱۴۰۵/۰۸/۰۱» names no month)."""
+    manager.controller.user_events["1404-05-05"] = {
+        "text": "مراسم", "recurrence": "none", "remove_after_finish": False}
+    manager.search_input.setText("مرداد")
+    assert manager.rows_layout.count() - 1 == 1
+
+    manager.search_input.setText("1404")
+    assert manager.rows_layout.count() - 1 == 1
+
+
+def test_manager_count_label_counts_the_hidden_past_filter(manager):
+    """Hiding the past IS a narrowing filter, so the counter must not claim
+    the full total while expired rows are off screen."""
+    manager.controller.add_user_event(
+        jdatetime.date.today() - datetime.timedelta(days=1), "گذشته", "none", False)
+    manager.controller.add_user_event(jdatetime.date.today(), "امروز", "none", False)
+    manager.past_checkbox.setChecked(False)
+    assert manager.rows_layout.count() - 1 == 1
+    assert "۱" in manager.count_label.text() and "۲" in manager.count_label.text()
+
+
 def test_manager_filters_by_type(manager):
     manager.controller.user_events["0000-05-05"] = {"text": "سالانه", "recurrence": "yearly", "remove_after_finish": False}
     manager.controller.user_events["1404-05-05"] = {"text": "یک‌بار", "recurrence": "none", "remove_after_finish": False}

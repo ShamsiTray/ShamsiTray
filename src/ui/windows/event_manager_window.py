@@ -43,7 +43,8 @@ from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.event_input import EventInputWidget, recurrence_label
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
-from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
+from utils.date_utils import (days_in_jalali_month, normalize_search_text,
+                              persian_month_name, to_persian_digits)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
                             keys_share_visible_date, make_event_key,
@@ -342,7 +343,10 @@ class EventManagerWindow(BaseFramelessWindow):
 
     def refresh_list(self):
         """Rebuild the event rows from the live store, applying search + filters."""
-        search_text = self.search_input.text().strip().lower()
+        # Both sides of the comparison are normalized: pasting Arabic-Indic digits or
+        # typing Arabic yeh/kaf must find the stored Persian text instead of
+        # silently matching nothing.
+        search_text = normalize_search_text(self.search_input.text().strip())
         selected_month = self.month_combo.currentData()
         selected_type = self.type_combo.currentData()
         while self.rows_layout.count() > 1:
@@ -375,8 +379,16 @@ class EventManagerWindow(BaseFramelessWindow):
                 anchor = _event_anchor_month(key)
                 if anchor is not None and anchor != selected_month:
                     continue
-            if search_text and search_text not in str(entry.get("text", "")).lower():
-                continue
+            if search_text:
+                # The haystack carries the displayed label PLUS the anchor
+                # month's name, so typing «مهر» or a year finds an event whose
+                # numeric label (۱۴۰۵/۰۸/۰۱) names no month.
+                text_haystack = normalize_search_text(str(entry.get("text", "")))
+                date_haystack = normalize_search_text(_event_date_label(key))
+                if parsed is not None and parsed[1] is not None:
+                    date_haystack += " " + normalize_search_text(persian_month_name(parsed[1]))
+                if search_text not in text_haystack and search_text not in date_haystack:
+                    continue
             if is_expired and not show_past and selected_type != _TYPE_PAST:
                 continue
             row = EventRow(key, entry, is_expired)
@@ -386,7 +398,14 @@ class EventManagerWindow(BaseFramelessWindow):
             shown += 1
 
         total = len(self.user_events)
-        filtered = bool(search_text) or selected_month != _MONTH_ANY or selected_type is not None
+        # An unchecked show-past filter DOES hide rows, so it counts as narrowing -
+        # except under the «گذشته» type filter, where the checkbox is
+        # irrelevant and never hides anything. Without that exception the
+        # counter read «۲ رویداد» while one row was on screen.
+        filtered = (bool(search_text)
+                    or selected_month != _MONTH_ANY
+                    or selected_type is not None
+                    or (not show_past and selected_type != _TYPE_PAST))
         if total and filtered:
             # While a filter narrows the list, show "X of Y" so the counter
             # cannot contradict the rows below it.
