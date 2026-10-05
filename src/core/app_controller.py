@@ -204,6 +204,18 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.warning(f"Could not detect Windows theme, defaulting to dark: {e}")
             return APP_CONFIG.Theme.DARK
 
+    def _theme_choice(self) -> str:
+        """The stored appearance preference: "system", "light" or "dark".
+
+        A missing key reads as "system" (follow Windows) - the behaviour a
+        fresh install has always had - and an unknown value falls back to
+        "system" instead of breaking theme resolution. Read live like the
+        other preference gates: the tray menu writes the key behind this
+        method's back.
+        """
+        saved = self.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
+        return saved if saved in APP_CONFIG.THEME_CHOICES else APP_CONFIG.Theme.SYSTEM
+
     def _load_settings(self):
         # contains(), not a value() default: a missing preference is not an
         # explicit "off" (see AUTOSTART_FIRST_RUN_DEFAULT).
@@ -216,13 +228,13 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.always_on_top = self.settings.value(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, True, type=bool)
         self.calendar_widget.set_always_on_top(self.always_on_top)
 
-        saved_theme = self.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
-        if saved_theme:
-            self.current_theme = saved_theme
-            logger.info(f"Loaded user-preferred theme: {self.current_theme}")
-        else:
+        choice = self._theme_choice()
+        if choice == APP_CONFIG.Theme.SYSTEM:
             self.current_theme = self._get_windows_theme()
-            logger.info(f"No user theme preference found. Detected system theme: {self.current_theme}")
+            logger.info(f"No pinned theme; following the system theme: {self.current_theme}")
+        else:
+            self.current_theme = choice
+            logger.info(f"Loaded user-preferred theme: {self.current_theme}")
 
     def _apply_theme(self):
         APP_CONFIG.set_theme(self.current_theme)
@@ -244,7 +256,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._time_change_timer = QTimer(self)
         self._time_change_timer.setSingleShot(True)
         self._time_change_timer.timeout.connect(self._handle_system_time_change)
-        self.event_filter = TimeChangeEventFilter(self._on_system_time_change)
+        # Windows theme changes (WM_SETTINGCHANGE / ImmersiveColorSet) get the
+        # same coalescing treatment - they can also arrive as bursts.
+        self._theme_change_timer = QTimer(self)
+        self._theme_change_timer.setSingleShot(True)
+        self._theme_change_timer.timeout.connect(self._handle_system_theme_change)
+        self.event_filter = TimeChangeEventFilter(
+            self._on_system_time_change,
+            on_setting_change_callback=self._on_system_setting_change)
         QCoreApplication.instance().installNativeEventFilter(self.event_filter)
         self.schedule_next_midnight_check()
 
@@ -298,6 +317,31 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.calendar_widget.go_to_today()
         self.update_tray_icon(force=True)
         self.schedule_next_midnight_check()
+
+    def _on_system_setting_change(self, section: str):
+        """A WM_SETTINGCHANGE arrived: debounce by section."""
+        if section == "ImmersiveColorSet":
+            self._theme_change_timer.start(TIME_CHANGE_COALESCE_MS)
+
+    def _handle_system_theme_change(self):
+        """Re-read the Windows theme after a light/dark switch.
+
+        The theme used to be detected once at startup and never followed
+        Windows again. This applies while the stored preference is "system"
+        (or absent) - an explicit "light"/"dark" choice always wins, and the
+        tray menu's theme row is what sets either.
+        """
+        if self._theme_choice() != APP_CONFIG.Theme.SYSTEM:
+            return
+        if not sys.platform == 'win32':
+            return
+        detected = self._get_windows_theme()
+        if detected == self.current_theme:
+            return
+        logger.info(f"Windows theme changed to {detected}; the theme "
+                    f"preference is \"system\", following it.")
+        self.current_theme = detected
+        self._apply_theme()
 
     # --- Update checks ---
 
@@ -892,9 +936,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(action)
 
     def _add_theme_toggle_action(self, menu):
+        """The theme row: one click advances system → light → dark → system,
+        and the row reads back the current preference, so «هماهنگ با سیستم» is
+        reachable again after any pin."""
         action = QWidgetAction(self)
-        widget = ThemeToggleActionWidget(lambda: self.current_theme, parent=menu)
-        widget.triggered.connect(self._toggle_theme)
+        widget = ThemeToggleActionWidget(lambda: self._theme_choice(), parent=menu)
+        widget.triggered.connect(self._cycle_theme_choice)
         action.setDefaultWidget(widget)
         menu.addAction(action)
 
@@ -1015,10 +1062,21 @@ class SystemTrayIcon(QSystemTrayIcon):
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self.calendar_widget.hide()
 
-    def _toggle_theme(self):
-        self.current_theme = APP_CONFIG.Theme.LIGHT if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.Theme.DARK
-        self.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, self.current_theme)
-        logger.info(f"Theme toggled to: {self.current_theme}")
+    def _cycle_theme_choice(self):
+        """Cycle the appearance preference: system → light → dark → system.
+
+        The old toggle saved light/dark permanently with no way back to
+        following Windows, so «هماهنگ با سیستم» worked only until the first
+        press. Every stop of the cycle is persisted explicitly - including
+        "system", which re-detects Windows now and keeps following it via
+        ``_handle_system_theme_change``.
+        """
+        order = APP_CONFIG.THEME_CHOICES
+        next_choice = order[(order.index(self._theme_choice()) + 1) % len(order)]
+        self.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, next_choice)
+        self.current_theme = (self._get_windows_theme()
+                              if next_choice == APP_CONFIG.Theme.SYSTEM else next_choice)
+        logger.info(f"Theme preference set to {next_choice}.")
         self._apply_theme()
 
     def _set_startup_registry(self, enable: bool) -> bool:

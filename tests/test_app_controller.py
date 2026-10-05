@@ -12,7 +12,8 @@ import core.app_controller as controller_module
 import core.event_service as event_service_module
 from config import APP_CONFIG
 from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_MS,
-                                 DEBUG_DATA_VERSION_ENV, SystemTrayIcon)
+                                 DEBUG_DATA_VERSION_ENV, SystemTrayIcon,
+                                 TIME_CHANGE_COALESCE_MS)
 from ui.widgets.checkbox import IconCheckboxActionWidget
 
 
@@ -678,14 +679,116 @@ def test_minute_timer_exists(tray):
 # --- theme & startup settings -----------------------------------------------------------
 
 
-def test_toggle_theme_flips_and_persists(tray):
-    original = tray.current_theme
-    tray._toggle_theme()
-    flipped = tray.current_theme
-    assert flipped != original
-    assert tray.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY) == flipped
-    tray._toggle_theme()  # back
+def test_theme_cycle_advances_and_persists(tray, monkeypatch):
+    """The theme row advances the persisted three-valued choice; two presses
+    land on the opposite pin, a third returns to following the system
+    (re-detected, not stuck on the old pin)."""
+    monkeypatch.setattr(tray, "_get_windows_theme",
+                        lambda: APP_CONFIG.Theme.DARK, raising=True)
+    monkeypatch.setattr(tray, "_apply_theme", lambda: None)
+    key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
+    original = tray.current_theme  # detected system theme (dark off-Windows)
+
+    tray._cycle_theme_choice()   # system -> light
+    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert tray.settings.value(key) == APP_CONFIG.Theme.LIGHT
+    tray._cycle_theme_choice()   # light -> dark
+    assert tray.current_theme == APP_CONFIG.Theme.DARK
+    assert tray.settings.value(key) == APP_CONFIG.Theme.DARK
+    tray._cycle_theme_choice()   # dark -> system (re-detected: dark)
     assert tray.current_theme == original
+    assert tray.settings.value(key) == APP_CONFIG.Theme.SYSTEM
+
+
+def test_theme_cycle_persists_every_stop_and_returns_to_system(tray, monkeypatch):
+    """The row cycles system → light → dark → system, saving each stop
+    explicitly - «هماهنگ با سیستم» is reachable again after any pin."""
+    monkeypatch.setattr(tray, "_get_windows_theme",
+                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
+
+    tray._cycle_theme_choice()
+    assert tray.settings.value(key) == APP_CONFIG.Theme.LIGHT
+    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert tray._theme_choice() == APP_CONFIG.Theme.LIGHT
+    tray._cycle_theme_choice()
+    assert tray.settings.value(key) == APP_CONFIG.Theme.DARK
+    assert tray.current_theme == APP_CONFIG.Theme.DARK
+    tray._cycle_theme_choice()
+    # Back on "system": the choice is persisted explicitly and the theme is
+    # re-detected (LIGHT here), not stuck on the last pin.
+    assert tray.settings.value(key) == APP_CONFIG.Theme.SYSTEM
+    assert tray._theme_choice() == APP_CONFIG.Theme.SYSTEM
+    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert len(applied) == 3
+
+
+def test_theme_follows_system_when_no_preference_saved(tray, monkeypatch):
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+    monkeypatch.setattr(tray, "_get_windows_theme",
+                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    tray.current_theme = APP_CONFIG.Theme.DARK
+    # Fresh boot: no Appearance/ThemeChoice saved yet.
+    assert not tray.settings.contains(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY)
+
+    tray._handle_system_theme_change()
+
+    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert applied == [1]
+
+
+def test_theme_follow_ignores_saved_user_choice(tray, monkeypatch):
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+    monkeypatch.setattr(tray, "_get_windows_theme",
+                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    tray.current_theme = APP_CONFIG.Theme.DARK
+    tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.DARK)
+
+    tray._handle_system_theme_change()
+
+    assert tray.current_theme == APP_CONFIG.Theme.DARK
+    assert applied == []
+
+
+def test_theme_follow_ignores_same_theme(tray, monkeypatch):
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+    monkeypatch.setattr(tray, "_get_windows_theme",
+                        lambda: APP_CONFIG.Theme.DARK, raising=True)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    tray.current_theme = APP_CONFIG.Theme.DARK
+    tray.settings._data.pop(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
+
+    tray._handle_system_theme_change()
+
+    assert applied == []
+
+
+def test_setting_change_debounces_only_the_theme_broadcast(tray, monkeypatch):
+    started = []
+    monkeypatch.setattr(tray._theme_change_timer, "start",
+                        lambda ms: started.append(ms), raising=True)
+    tray._on_system_setting_change("Environment")
+    assert started == []
+    tray._on_system_setting_change("ImmersiveColorSet")
+    assert started == [TIME_CHANGE_COALESCE_MS]
+
+
+def test_saved_theme_preference_wins_over_cycle_detection(tray):
+    """A user pinned by the old two-way toggle keeps the pin on boot."""
+    tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.DARK)
+    assert tray._theme_choice() == APP_CONFIG.Theme.DARK
+
+
+def test_unknown_saved_theme_value_falls_back_to_system(tray):
+    tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, "sepia")
+    assert tray._theme_choice() == APP_CONFIG.Theme.SYSTEM
 
 
 def test_toggle_open_at_boot_persists_setting(tray, fake_startup_registry, monkeypatch):
