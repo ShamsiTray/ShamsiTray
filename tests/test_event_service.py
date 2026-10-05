@@ -98,23 +98,170 @@ def test_resaving_a_yearly_event_keeps_its_anchor(service, monkeypatch):
     assert list(service.events) == ["0000-12-30"]
 
 
-def test_switching_a_recurring_event_to_one_time_uses_the_shown_date(service, monkeypatch):
+def test_adding_a_one_time_event_keeps_a_recurring_one_on_that_date(service, monkeypatch):
+    """Adding is keyed, not date-scoped: a one-time event added on a date that
+    already shows a yearly one takes its own key instead of replacing it."""
     monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
     service.events["0000-12-30"] = _entry("سی ام اسفند", RECURRENCE_YEARLY)
 
     assert service.add(jdatetime.date(1404, 12, 29), "یک‌بار", RECURRENCE_NONE) is True
 
-    assert list(service.events) == ["1404-12-29"]
+    assert service.events == {"1404-12-29": _entry("یک‌بار"),
+                              "0000-12-30": _entry("سی ام اسفند", RECURRENCE_YEARLY)}
 
 
-def test_add_replaces_every_event_matching_the_date(service, monkeypatch):
+def test_add_replaces_only_the_same_recurrence_variant(service, monkeypatch):
     monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
     # A one-time and a yearly event both visible on 1405/08/01.
     service.events["1405-08-01"] = _entry("one-time")
     service.events["0000-08-01"] = _entry("yearly", RECURRENCE_YEARLY)
     assert service.add(jdatetime.date(1405, 8, 1), "new one") is True
-    # One event per visible date: both previous variants are gone.
-    assert service.events == {"1405-08-01": _entry("new one")}
+    # Only the one-time event is the logical target; the yearly one is a
+    # different event that happens to fall on the same date.
+    assert service.events == {"1405-08-01": _entry("new one"),
+                              "0000-08-01": _entry("yearly", RECURRENCE_YEARLY)}
+
+
+@pytest.mark.parametrize("first,second", [
+    (RECURRENCE_NONE, RECURRENCE_YEARLY),
+    (RECURRENCE_NONE, RECURRENCE_MONTHLY),
+    (RECURRENCE_YEARLY, RECURRENCE_MONTHLY),
+])
+def test_two_recurrences_can_coexist_on_one_visible_date(service, monkeypatch, first, second):
+    """Events of different recurrences are different logical events: adding the
+    second one must never delete the first."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    day = jdatetime.date(1405, 8, 1)
+    assert service.add(day, "first", first) is True
+    assert service.add(day, "second", second) is True
+
+    assert len(service.events) == 2
+    assert set(service.events.keys()) == set(service.keys_matching_date(day))
+    assert {entry["text"] for entry in service.events.values()} == {"first", "second"}
+
+
+def test_adding_the_same_recurrence_twice_replaces_the_single_key(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    day = jdatetime.date(1405, 8, 1)
+    assert service.add(day, "first", RECURRENCE_MONTHLY) is True
+    assert service.add(day, "second", RECURRENCE_MONTHLY) is True
+    assert service.events == {"0000-00-01": _entry("second", RECURRENCE_MONTHLY)}
+
+
+# --- key-scoped edit ---------------------------------------------------------------
+
+
+def test_update_key_edits_only_the_selected_event(service, monkeypatch):
+    """The calendar's per-event menu edits ONE of the events visible on a date;
+    the other one must come out untouched."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["1405-08-01"] = _entry("one-time", remove_after_finish=True)
+    service.events["0000-08-01"] = _entry("yearly", RECURRENCE_YEARLY)
+    day = jdatetime.date(1405, 8, 1)
+
+    assert service.update_key("0000-08-01", day, "yearly edited", RECURRENCE_YEARLY) is True
+
+    assert service.events == {"1405-08-01": _entry("one-time", remove_after_finish=True),
+                              "0000-08-01": _entry("yearly edited", RECURRENCE_YEARLY)}
+
+
+def test_update_key_keeps_the_key_when_the_recurrence_is_unchanged(service, monkeypatch):
+    """Same anchor rule as add(): day 31 exists in only half the months, so an
+    edit of the clamped 30th the user was shown must not move the anchor."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["0000-00-31"] = _entry("پایان ماه", RECURRENCE_MONTHLY)
+
+    assert service.update_key("0000-00-31", jdatetime.date(1404, 7, 30),
+                              "پایان ماه ویرایش", RECURRENCE_MONTHLY) is True
+
+    assert list(service.events) == ["0000-00-31"]
+    assert service.events["0000-00-31"]["text"] == "پایان ماه ویرایش"
+
+
+def test_update_key_rekeys_only_itself_on_a_recurrence_change(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["1405-08-01"] = _entry("one-time", remove_after_finish=True)
+    service.events["0000-08-01"] = _entry("yearly", RECURRENCE_YEARLY)
+    day = jdatetime.date(1405, 8, 1)
+
+    assert service.update_key("1405-08-01", day, "now monthly", RECURRENCE_MONTHLY) is True
+
+    assert service.events == {"0000-00-01": _entry("now monthly", RECURRENCE_MONTHLY),
+                              "0000-08-01": _entry("yearly", RECURRENCE_YEARLY)}
+
+
+def test_update_key_switching_to_one_time_uses_the_shown_date(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["0000-12-30"] = _entry("سی ام اسفند", RECURRENCE_YEARLY)
+
+    assert service.update_key("0000-12-30", jdatetime.date(1404, 12, 29),
+                              "یک‌بار", RECURRENCE_NONE) is True
+
+    assert service.events == {"1404-12-29": _entry("یک‌بار")}
+
+
+def test_update_key_refuses_to_overwrite_an_occupied_key(service, monkeypatch):
+    """An edit must never silently destroy a different event: the caller has to
+    ask the user and pass merge_into."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["1405-08-01"] = _entry("one-time")
+    service.events["0000-00-01"] = _entry("monthly", RECURRENCE_MONTHLY)
+    day = jdatetime.date(1405, 8, 1)
+
+    assert service.update_key("1405-08-01", day, "now monthly", RECURRENCE_MONTHLY) is False
+
+    assert service.events == {"1405-08-01": _entry("one-time"),
+                              "0000-00-01": _entry("monthly", RECURRENCE_MONTHLY)}
+
+
+def test_update_key_merging_folds_the_text_into_the_target(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["1405-08-01"] = _entry("Doctor", remove_after_finish=True)
+    service.events["0000-00-01"] = _entry("Pay bills", RECURRENCE_MONTHLY)
+    day = jdatetime.date(1405, 8, 1)
+
+    assert service.update_key("1405-08-01", day, "Doctor", RECURRENCE_MONTHLY,
+                              merge_into="0000-00-01") is True
+
+    assert service.events == {"0000-00-01": _entry("Pay bills\nDoctor", RECURRENCE_MONTHLY)}
+
+
+def test_update_key_merging_never_duplicates_an_identical_line(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["1405-08-01"] = _entry("Doctor")
+    service.events["0000-00-01"] = _entry("Pay bills\nDoctor", RECURRENCE_MONTHLY)
+    day = jdatetime.date(1405, 8, 1)
+
+    assert service.update_key("1405-08-01", day, "Doctor", RECURRENCE_MONTHLY,
+                              merge_into="0000-00-01") is True
+
+    assert service.events["0000-00-01"]["text"] == "Pay bills\nDoctor"
+
+
+def test_update_key_ignores_unknown_key_and_empty_text(service, monkeypatch):
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["1405-08-01"] = _entry("one-time")
+    day = jdatetime.date(1405, 8, 1)
+
+    assert service.update_key("0000-01-01", day, "ghost") is False
+    assert service.update_key("1405-08-01", day, "   ") is False
+    assert service.update_key("1405-08-01", None, "no date") is False
+    assert service.events == {"1405-08-01": _entry("one-time")}
+
+
+def test_update_key_rolls_back_on_save_failure(service, failing_save):
+    """One save per edit: a failed write restores the whole store in place, so a
+    re-key or a merge can never half-apply."""
+    service.events["1405-08-01"] = _entry("one-time")
+    service.events["0000-00-01"] = _entry("monthly", RECURRENCE_MONTHLY)
+    live_reference = service.events
+    snapshot = dict(service.events)
+
+    assert service.update_key("1405-08-01", jdatetime.date(1405, 8, 1), "Doctor",
+                              RECURRENCE_MONTHLY, merge_into="0000-00-01") is False
+
+    assert live_reference is service.events, "dict identity must survive a rollback"
+    assert live_reference == snapshot
 
 
 def test_add_rejects_empty_text_and_none_date(service):

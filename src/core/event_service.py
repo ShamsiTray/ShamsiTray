@@ -5,7 +5,7 @@ Event Service (EVT-6)
 Single owner of the user-event store: the in-memory mapping, every path that
 mutates it, and every path that persists it. The controller and the event
 manager *request* operations from here and handle only application/UI state
-(refreshes, dialogs) — the business rules (one event per visible date,
+(refreshes, dialogs) — the business rules (which key an edit lands on,
 recurrence/expiry semantics, transactional saves) live in one place, so the
 store, the calendar and the disk cannot disagree.
 
@@ -46,6 +46,21 @@ from utils.event_io import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_text(existing: str, text: str) -> str:
+    """Fold ``text`` into ``existing`` as a new line, never duplicating a line.
+
+    A blank ``existing`` (the target key is gone by the time the merge runs) just
+    yields the edited text, so a merge degrades into the plain edit rather than
+    writing an empty event.
+    """
+    incoming = text.strip()
+    if not existing:
+        return incoming
+    if any(line.strip() == incoming for line in existing.splitlines()):
+        return existing
+    return f"{existing}\n{incoming}"
 
 
 class EventService:
@@ -108,19 +123,31 @@ class EventService:
 
     # --- mutations --------------------------------------------------------------
 
+    def _target_key(self, jdate: jdatetime.date, recurrence: str) -> str:
+        """The key an event with ``recurrence`` takes when added on ``jdate``.
+
+        Reusing an existing key of the SAME recurrence keeps a re-added
+        recurring event on its own anchor: ``jdate`` can be a clamped occurrence
+        — a day-31 monthly event is shown on the 30th, 30 Esfand on the 29th of
+        a non-leap year — and re-deriving the key from it would walk the
+        event's anchor one step further away on every save.
+
+        Any other recurrence is a different logical event, so it gets its own
+        key: a date may carry a one-time and a monthly event at once, which is
+        what the calendar's per-event menus exist for.
+        """
+        anchor = next((key for key in keys_matching_date(self.events, jdate)
+                       if recurrence_of_key(key) == recurrence), None)
+        return anchor or make_event_key(jdate, recurrence)
+
     def add(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
             remove_after_finish: bool = False) -> bool:
-        """Add (or replace) the event shown for ``jdate``.
+        """Add the event for ``jdate``, replacing the same-recurrence one if any.
 
-        One event per date: whatever previously matched this date (one-time,
-        yearly or monthly) is replaced. Recurring events ignore the auto-delete
-        flag because they repeat forever.
-
-        Replacing an event that is already in the store keeps its stored key
-        while the recurrence is unchanged. ``jdate`` can be a clamped
-        occurrence — a day-31 monthly event is shown on the 30th, 30 Esfand on
-        the 29th of a non-leap year — and re-deriving the key from it would walk
-        the event's anchor one step further away on every save.
+        Keyed, not date-scoped: an existing event of the SAME recurrence is
+        replaced (so re-adding is still an edit, never a duplicate), while
+        events of other recurrences stay where they are. Recurring events ignore
+        the auto-delete flag because they repeat forever.
 
         Recurrence is validated HERE, not only in the UI: an arbitrary value
         used to fall through key generation as a one-time key while still being
@@ -135,16 +162,66 @@ class EventService:
             logger.warning("Ignoring attempt to add a user event with empty text.")
             return False
         snapshot = dict(self.events)
-        matching = keys_matching_date(self.events, jdate)
-        anchor = next((key for key in matching if recurrence_of_key(key) == recurrence), None)
-        for key in matching:
-            del self.events[key]
+        target_key = self._target_key(jdate, recurrence)
         if recurrence != RECURRENCE_NONE:
             remove_after_finish = False
-        self.events[anchor or make_event_key(jdate, recurrence)] = {
+        self.events[target_key] = {
             "text": text,
             "recurrence": recurrence,
             "remove_after_finish": remove_after_finish,
+        }
+        return self._commit(snapshot)
+
+    def update_key(self, key: str, jdate: jdatetime.date, text: str,
+                   recurrence: str = RECURRENCE_NONE, remove_after_finish: bool = False,
+                   merge_into: Optional[str] = None) -> bool:
+        """Edit the entry stored at ``key``, leaving every other event alone.
+
+        The key-scoped sibling of :meth:`add`, for editing ONE of the events
+        visible on a date. ``jdate`` is the occurrence the user was looking at.
+
+        The target key is ``key`` itself while the recurrence is unchanged:
+        ``jdate`` can be a clamped occurrence — a day-31 monthly event is shown
+        on the 30th, 30 Esfand on the 29th of a non-leap year — and re-deriving
+        the key would walk the anchor one step further away on every edit.
+
+        A changed recurrence is a different logical event, so the entry moves to
+        that recurrence's key on ``jdate`` and only ``key`` is removed. If that
+        target is already occupied the edit is REFUSED rather than overwriting
+        whoever lives there: an edit must never silently destroy another event.
+        The caller asks the user first and passes ``merge_into`` to go ahead.
+
+        ``merge_into`` folds the edited text into the entry at that key as a new
+        line (skipped when the text is already one of its lines) instead of
+        replacing it, so merging never loses either event's text.
+        """
+        if key not in self.events:
+            logger.debug(f"Ignoring edit of unknown event key {key!r}.")
+            return False
+        if not jdate:
+            return False
+        if not text or not text.strip():
+            logger.warning("Ignoring attempt to save a user event with empty text.")
+            return False
+        if recurrence not in RECURRENCE_MODES:
+            logger.warning(f"Unsupported recurrence {recurrence!r}; storing the event as one-time.")
+            recurrence = RECURRENCE_NONE
+        target_key = merge_into or (
+            key if recurrence_of_key(key) == recurrence else make_event_key(jdate, recurrence))
+        if merge_into is None and target_key != key and target_key in self.events:
+            logger.warning(
+                f"Refusing to edit {key!r} onto the occupied key {target_key!r}; "
+                "pass merge_into to fold the events together.")
+            return False
+        snapshot = dict(self.events)
+        if merge_into:
+            text = _merge_text(self.events.get(merge_into, {}).get("text", ""), text)
+        if target_key != key:
+            del self.events[key]
+        self.events[target_key] = {
+            "text": text,
+            "recurrence": recurrence,
+            "remove_after_finish": remove_after_finish if recurrence == RECURRENCE_NONE else False,
         }
         return self._commit(snapshot)
 

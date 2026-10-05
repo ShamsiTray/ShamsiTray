@@ -103,15 +103,22 @@ def test_add_replace_and_remove_event_flow(tray):
     key = today.strftime("%Y-%m-%d")
     assert tray.user_events[key]["text"] == "first"
 
-    # Adding again replaces the event for that date.
-    tray.add_user_event(today, "second", "yearly", True)
-    assert tray.user_events["0000-%02d-%02d" % (today.month, today.day)]["text"] == "second"
-    assert key not in tray.user_events                      # one-time anchor gone
-    stored = tray.user_events["0000-%02d-%02d" % (today.month, today.day)]
-    assert stored["remove_after_finish"] is False           # recurring can't auto-delete
+    # Adding the same recurrence again replaces that event...
+    tray.add_user_event(today, "second", "none", True)
+    assert tray.user_events[key]["text"] == "second"
+    assert len(tray.user_events) == 1
 
+    # ...while a different recurrence is a second, coexisting event on the date.
+    tray.add_user_event(today, "third", "yearly", True)
+    yearly_key = "0000-%02d-%02d" % (today.month, today.day)
+    assert tray.user_events[key]["text"] == "second"
+    assert tray.user_events[yearly_key]["text"] == "third"
+    assert tray.user_events[yearly_key]["remove_after_finish"] is False  # recurring can't auto-delete
+
+    # Removing by date still clears every variant it covers.
     tray.remove_user_event(today)
-    assert "0000-%02d-%02d" % (today.month, today.day) not in tray.user_events
+    assert key not in tray.user_events
+    assert yearly_key not in tray.user_events
 
 
 def test_import_merges_and_cleans(tray, tmp_path):
