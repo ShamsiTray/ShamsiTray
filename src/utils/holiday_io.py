@@ -139,35 +139,66 @@ def validate_payload(payload: bytes) -> Optional[Tuple[dict, int]]:
     return parsed, version
 
 
+def _has_usable_entries(data: Dict[int, Dict[Tuple[int, int], List[str]]]) -> bool:
+    """True when at least one year carries at least one parsed holiday.
+
+    ``parse_holidays`` keeps a year key even when every entry under it was
+    skipped, so ``{1405: {}}`` is a truthy mapping with ZERO usable holidays.
+    Resolution must treat that like an empty store instead of letting it block
+    the bundled fallback forever.
+    """
+    return any(entries for entries in data.values())
+
+
 def resolve_holidays_store() -> Dict[int, Dict[Tuple[int, int], List[str]]]:
     """Resolve the holiday data source: the AppData store first, the bundled asset
     as seed (store missing) and fallback (store corrupt/empty).
 
     A store that exists but yields nothing is repaired from the bundled file, so
     the fallback does not have to re-recover on every single launch.
+
+    A store OLDER than the bundled file is upgraded from it: the installer seeds
+    with ``onlyifdoesntexist``, so an upgrade that ships newer holiday data
+    otherwise never reaches an existing install until the GitHub update fires -
+    and never at all when GitHub is unreachable or blocked. An unversioned store
+    reads as version 0, so any versioned bundled file wins.
     """
     store = APP_CONFIG.HOLIDAYS_STORE_PATH
     bundled = APP_CONFIG.HOLIDAYS_FILE_PATH
 
     if store.exists():
         data = load_holidays_file(store)
-        if data:
+        if data and _has_usable_entries(data):
+            if bundled.exists():
+                bundled_version = read_version(bundled)
+                store_version = read_version(store)
+                if bundled_version > store_version:
+                    logger.info(
+                        f"Bundled holiday data (v{bundled_version}) is newer than the "
+                        f"store (v{store_version}); upgrading the store.")
+                    _upgrade_store_from_bundled(store, bundled)
+                    upgraded = load_holidays_file(store)
+                    if upgraded and _has_usable_entries(upgraded):
+                        return upgraded
+                    # The on-disk upgrade failed (permissions, AV lock): the old
+                    # store still parsed, so keep serving it rather than nothing.
+                    logger.warning("Store upgrade did not land; keeping the current store data.")
             return data
-        logger.warning("AppData holiday store is empty or unreadable; repairing it from the bundled file.")
+        logger.warning("AppData holiday store is empty or unusable; repairing it from the bundled file.")
         if bundled.exists():
             data = load_holidays_file(bundled)
-            if data:
+            if data and _has_usable_entries(data):
                 _repair_store_from_bundled(store, bundled)
                 return data
     elif bundled.exists():
         _seed_store_from_bundled(store, bundled)
         data = load_holidays_file(store)
-        if data:
+        if data and _has_usable_entries(data):
             return data
 
     if bundled.exists():
         data = load_holidays_file(bundled)
-        if data:
+        if data and _has_usable_entries(data):
             return data
     logger.error("No usable holiday data found; continuing without holidays.")
     return {}
@@ -184,6 +215,56 @@ def _seed_store_from_bundled(store, bundled) -> None:
         logger.error(f"Could not seed the AppData holiday store: {e}")
 
 
+def _upgrade_store_from_bundled(store, bundled) -> None:
+    """Replace a VALID but older store with newer bundled data (atomically).
+
+    Same mechanics as the corrupt-store repair - old file backed up as
+    ``holidays.json.bak`` first, then a tmp copy renamed into place - but for
+    the upgrade path. A failure leaves the (older, still working) store in
+    place; the caller keeps serving its parsed data either way.
+    """
+    _replace_store_file_from_bundled(
+        store, bundled,
+        backup_log=f"Older holiday store preserved as {store.with_suffix('.json.bak').name}.",
+        success_log="Upgraded the AppData holiday store from the newer bundled file.",
+        failure_log="Could not upgrade the AppData holiday store")
+
+
+def _replace_store_file_from_bundled(store, bundled, *, backup_log: str, success_log: str, failure_log: str) -> None:
+    """Shared atomic swap: back the current store up, copy bundled over it.
+
+    The store being replaced may have been AHEAD of the bundled data (updated
+    via a live holiday download) before some unrelated failure, and silently
+    regressing the user to older data with the evidence destroyed is worse than
+    keeping a backup around - hence the .bak. A failure here leaves the original
+    store in place.
+    """
+    tmp = None
+    try:
+        if not APP_CONFIG.ensure_user_data_dirs():
+            return
+        backup = store.with_suffix('.json.bak')
+        try:
+            os.replace(store, backup)
+            logger.warning(backup_log)
+        except OSError as e:
+            logger.error(f"Could not back up the holiday store: {e}")
+        tmp = store.with_suffix('.json.tmp')
+        shutil.copyfile(bundled, tmp)
+        os.replace(tmp, store)
+        tmp = None  # renamed into place: nothing left to clean up
+        logger.info(success_log)
+    except OSError as e:
+        logger.error(f"{failure_log}: {e}")
+        # Same debris rule as replace_store: a failed copy/replace must not
+        # strand the .tmp side file next to the store.
+        if tmp is not None and tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 def _repair_store_from_bundled(store, bundled) -> None:
     """Replace a corrupt/unreadable AppData store with the bundled data (atomically).
 
@@ -195,37 +276,28 @@ def _repair_store_from_bundled(store, bundled) -> None:
     failure here leaves the broken store in place — the caller already has the
     bundled data, so the app still works either way.
     """
-    try:
-        if not APP_CONFIG.ensure_user_data_dirs():
-            return
-        backup = store.with_suffix('.json.bak')
-        try:
-            os.replace(store, backup)
-            logger.warning(f"Corrupt holiday store preserved as {backup.name}.")
-        except OSError as e:
-            logger.error(f"Could not back up the corrupt holiday store: {e}")
-        tmp = store.with_suffix('.json.tmp')
-        shutil.copyfile(bundled, tmp)
-        os.replace(tmp, store)
-        logger.info("Repaired the AppData holiday store from the bundled file.")
-    except OSError as e:
-        logger.error(f"Could not repair the AppData holiday store: {e}")
-        # Same debris rule as replace_store: a failed copy/replace must not
-        # strand the .tmp side file next to the (still corrupt) store.
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except (OSError, NameError):
-            pass
+    _replace_store_file_from_bundled(
+        store, bundled,
+        backup_log=f"Corrupt holiday store preserved as {store.with_suffix('.json.bak').name}.",
+        success_log="Repaired the AppData holiday store from the bundled file.",
+        failure_log="Could not repair the AppData holiday store")
 
 
-def replace_store(payload: bytes) -> bool:
-    """Validate a downloaded holidays payload and atomically replace the AppData store."""
-    try:
-        parsed = json.loads(payload.decode('utf-8'))
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        logger.error(f"Downloaded holiday payload is not valid JSON: {e}")
-        return False
+def replace_store(payload: bytes, validated: Optional[Tuple[dict, int]] = None) -> bool:
+    """Validate a downloaded holidays payload and atomically replace the AppData store.
+
+    ``validated`` accepts the tuple ``validate_payload`` already returned for
+    this exact payload, so the update path parses it once instead of twice.
+    When omitted, the payload is validated here as before.
+    """
+    if validated is None:
+        try:
+            parsed = json.loads(payload.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.error(f"Downloaded holiday payload is not valid JSON: {e}")
+            return False
+    else:
+        parsed = validated[0]
     data, skipped = parse_holidays(parsed.get('holidays') if isinstance(parsed, dict) else None)
     if not data:
         logger.error("Downloaded holiday payload has no valid entries; keeping the current store.")

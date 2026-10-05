@@ -194,3 +194,117 @@ def test_repair_store_cleans_tmp_when_replace_fails(paths, monkeypatch):
     holiday_io._repair_store_from_bundled(store, bundled)
     assert not store.with_suffix('.json.tmp').exists()
 
+
+# --- store upgrade from a newer bundled file ---------------------------------------
+
+
+def test_resolve_upgrades_a_store_older_than_the_bundled_file(paths):
+    """The installer seeds with onlyifdoesntexist, so an upgrade that ships
+    newer holiday data never reached an existing install until the GitHub
+    update fired - and never at all when GitHub was unreachable."""
+    store, bundled = paths
+    store.write_text(json.dumps(bundled_payload(version=1)), encoding='utf-8')
+    bundled.write_text(json.dumps(
+        {'version': 4, 'holidays': {'1405': {'1-1': 'Fresh'}}}), encoding='utf-8')
+    data = holiday_io.resolve_holidays_store()
+    assert data == {1405: {(1, 1): ['Fresh']}}
+    assert holiday_io.read_version(store) == 4
+
+
+def test_resolve_does_not_downgrade_a_store_ahead_of_the_bundled_file(paths):
+    store, bundled = paths
+    store.write_text(json.dumps(
+        {'version': 9, 'holidays': {'1405': {'1-1': 'Live'}}}), encoding='utf-8')
+    bundled.write_text(json.dumps(
+        {'version': 2, 'holidays': {'1404': {'1-1': 'Old'}}}), encoding='utf-8')
+    assert holiday_io.resolve_holidays_store() == {1405: {(1, 1): ['Live']}}
+    assert holiday_io.read_version(store) == 9
+
+
+def test_resolve_upgrade_failure_keeps_serving_the_old_store(paths, monkeypatch, caplog):
+    """A swap that cannot land (permissions, AV lock) must not cost the user
+    their holidays - the older store still parses."""
+    store, bundled = paths
+    store.write_text(json.dumps(bundled_payload(version=1)), encoding='utf-8')
+    bundled.write_text(json.dumps(
+        {'version': 4, 'holidays': {'1405': {'1-1': 'Fresh'}}}), encoding='utf-8')
+
+    def boom(src, dst):
+        raise OSError("access denied")
+
+    monkeypatch.setattr(holiday_io.os, 'replace', boom)
+    with caplog.at_level(logging.WARNING):
+        data = holiday_io.resolve_holidays_store()
+    assert data == {1403: {(1, 1): ['Nowruz'], (2, 2): ['a', 'b']}}
+    assert any('Could not upgrade the AppData holiday store' in r.message
+               for r in caplog.records)
+    assert not store.with_suffix('.json.tmp').exists()
+
+
+def test_resolve_repairs_a_store_whose_entries_all_were_skipped(paths):
+    """parse_holidays keeps the YEAR key when every entry under it was skipped,
+    so {1405: {}} is truthy with zero usable holidays - it must not count as a
+    working store and block the bundled fallback forever."""
+    store, bundled = paths
+    store.write_text(json.dumps(
+        {'version': 3, 'holidays': {'1405': {'99-99': 'nonsense'}}}), encoding='utf-8')
+    bundled.write_text(json.dumps(
+        {'version': 3, 'holidays': {'1405': {'1-1': 'Nowruz'}}}), encoding='utf-8')
+    data = holiday_io.resolve_holidays_store()
+    assert data == {1405: {(1, 1): ['Nowruz']}}
+
+
+def test_resolve_unversioned_store_is_upgraded_from_versioned_bundled(paths):
+    """An unversioned store reads as version 0, so a versioned bundled file
+    wins - a seeded store missing its version field cannot block upgrades."""
+    store, bundled = paths
+    store.write_text(json.dumps({'holidays': {'1403': {'1-1': 'Old'}}}), encoding='utf-8')
+    bundled.write_text(json.dumps(bundled_payload(version=140500)), encoding='utf-8')
+    data = holiday_io.resolve_holidays_store()
+    assert holiday_io.read_version(store) == 140500
+    assert data[1403][(1, 1)] == ['Nowruz']
+
+
+def test_resolve_falls_back_when_store_year_maps_are_empty(paths):
+    """Year keys that hold no entries at all parse truthy but carry no
+    holidays - they must not block the bundled fallback either."""
+    store, bundled = paths
+    store.write_text(json.dumps({
+        'version': 900,
+        'holidays': {'1404': {}, '1405': {}},
+    }), encoding='utf-8')
+    bundled.write_text(json.dumps(bundled_payload(version=1)), encoding='utf-8')
+    data = holiday_io.resolve_holidays_store()
+    assert data == {1403: {(1, 1): ['Nowruz'], (2, 2): ['a', 'b']}}
+
+
+def test_resolve_keeps_store_equal_to_bundled_version(paths):
+    """Equal versions mean nothing to gain from the bundled file: the store is
+    served as is, with no rewrite (and so no backup) behind the user's back."""
+    store, bundled = paths
+    store.write_text(json.dumps(bundled_payload(version=140500)), encoding='utf-8')
+    bundled.write_text(json.dumps(bundled_payload(version=140500)), encoding='utf-8')
+    holiday_io.resolve_holidays_store()
+    assert holiday_io.read_version(store) == 140500
+    assert not store.with_suffix('.json.bak').exists()
+
+
+def test_replace_store_accepts_the_already_validated_payload(paths):
+    """validate_payload already parsed the exact bytes; the update path hands
+    that result over so the payload is not parsed a second time."""
+    store, _ = paths
+    payload = json.dumps({'version': 6, 'holidays': {'1404': {'1-1': 'X'}}}).encode('utf-8')
+    validated = holiday_io.validate_payload(payload)
+    assert validated is not None
+    assert holiday_io.replace_store(payload, validated=validated)
+    assert holiday_io.read_version(store) == 6
+
+
+def test_replace_store_validated_argument_is_not_trusted_blind(paths):
+    """A caller must not be able to install entries validation rejected."""
+    store, _ = paths
+    payload = json.dumps({'version': 7, 'holidays': {'x': 'y'}}).encode('utf-8')
+    assert holiday_io.validate_payload(payload) is None
+    assert not holiday_io.replace_store(payload, validated=({'holidays': {'x': 'y'}}, 7))
+    assert not store.exists()
+
