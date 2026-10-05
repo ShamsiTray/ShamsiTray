@@ -77,7 +77,9 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
     # FramelessDragMixin supplies the mouse-event routing: blank-card presses
     # start a drag, buttons consume their own events.
 
-    def _center_over_parent(self, parent):
+    def center_over_parent(self, parent):
+        """Center over ``parent`` (or the screen when there is no visible one),
+        clamped to the screen so a dialog near an edge stays fully on it."""
         if parent is not None and parent.isVisible():
             center = parent.geometry().center()
             self.move(center.x() - self.width() // 2,
@@ -107,6 +109,20 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
 
     # --- ready-made flows -------------------------------------------------------
 
+    def exec_centered(self, parent=None):
+        """The shared tail of every dialog flow: size, center, run modally.
+
+        Callers that must keep a reference to the dialog itself (the update
+        popup raises it when a manual check lands while it is up) build it by
+        hand and end with this method instead of duplicating the tail; the
+        ready-made flows below go through it too, so a change to how dialogs
+        are presented cannot diverge between them. Returns the QDialog exec()
+        result code.
+        """
+        self.adjustSize()
+        self.center_over_parent(parent)
+        return self.exec()
+
     @staticmethod
     def ask(parent, title: str, message: str, *, detail: str = "",
             confirm_text: str = "تایید", cancel_text: str = "انصراف", danger: bool = True,
@@ -115,9 +131,7 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
         dialog = ConfirmDialog(parent, title, message, detail=detail,
                                confirm_text=confirm_text, cancel_text=cancel_text,
                                danger=danger, glyph=glyph, width=width)
-        dialog.adjustSize()
-        dialog._center_over_parent(parent)
-        return dialog.exec() == QDialog.DialogCode.Accepted
+        return dialog.exec_centered(parent) == QDialog.DialogCode.Accepted
 
     @staticmethod
     def choose(parent, title: str, message: str, *,
@@ -127,9 +141,7 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
         """Run an N-way ask and return the clicked action's text (None = dismissed)."""
         dialog = ConfirmDialog(parent, title, message, danger=danger, detail=detail,
                                glyph=glyph, actions=actions, width=width)
-        dialog.adjustSize()
-        dialog._center_over_parent(parent)
-        dialog.exec()
+        dialog.exec_centered(parent)
         return dialog.choice
 
     @staticmethod
