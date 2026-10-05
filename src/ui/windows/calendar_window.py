@@ -21,7 +21,7 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               format_distance_breakdown, format_distance_total,
                               persian_month_name, persian_weekday_name,
                               to_persian_digits)
-from utils.event_io import RECURRENCE_NONE, events_for_date
+from utils.event_io import RECURRENCE_NONE, events_for_date, events_on_date
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
@@ -366,8 +366,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
         palette = APP_CONFIG.get_current_palette()
         style = DayStyle(text_color=palette['TEXT_COLOR'], hover_background_color=palette['HOVER_BG'])
 
-        user_event_text, _, _ = self.get_user_event_for_date(jdate)
-        is_user_event = bool(user_event_text)
+        # Every event occurring on the day, not just the one the grid highlights: the
+        # tooltip is where a user reads what is scheduled, so listing only the
+        # priority winner hid a monthly event behind a one-time one on the same
+        # date. The single winner still drives the cell's colour and indicator.
+        day_events = events_on_date(self.user_events, jdate)
+        is_user_event = bool(day_events)
         is_today = (jdate == self.current_date)
         is_selected = (jdate == self.selected_date)
         is_friday = jdate.weekday() == 6
@@ -381,8 +385,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
         if holiday_reasons:
             html_reasons = "<br>".join(escape(r) for r in holiday_reasons)
             tooltip_parts.append(f'<span style="white-space: nowrap; color:{palette["HOLIDAY_COLOR"]};">{html_reasons}</span>')
-        if is_user_event:
-            html_event_text = escape(user_event_text).replace('\n', '<br>')
+        for _key, entry in day_events:
+            html_event_text = escape(str(entry.get("text", ""))).replace('\n', '<br>')
             tooltip_parts.append(f'<span style="color:{palette["ACCENT_COLOR"]};">{html_event_text}</span>')
         if tooltip_parts:
             style.tooltip = f"<qt>{'<br>'.join(tooltip_parts)}</qt>"
