@@ -59,6 +59,41 @@ def format_gregorian_numeric(jdate: jdatetime.date) -> str:
     gdate = jdate.togregorian()
     return f"{gdate.year}/{gdate.month:02d}/{gdate.day:02d}"
 
+# --- free-text search normalization ---------------------------------------------
+#
+# A Persian keyboard layout does not stop users pasting text from elsewhere, and
+# a search that fails on «علي» vs «علی» reads as "the event is gone". Both sides
+# of the comparison go through this map, so the spellings converge on one form
+# instead of the query having to match the stored text exactly.
+
+_ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"  # U+0660 - U+0669
+
+_SEARCH_NORMALIZE_MAP = {
+    # Persian digits -> Latin
+    **{ord(p): str(e) for e, p in enumerate(APP_CONFIG.PERSIAN_DIGITS)},
+    # Arabic-Indic digits -> Latin (from_persian_digits covers the Persian set
+    # only, which is why the search needs its own table)
+    **{ord(p): str(e) for e, p in enumerate(_ARABIC_INDIC_DIGITS)},
+    # Arabic yeh/kaf -> the Persian letters that are actually stored
+    ord("ي"): "ی",
+    ord("ك"): "ک",
+    # ZWNJ: «می‌شود» must match «میشود»
+    0x200C: None,  # None = dropped by translate
+}
+
+
+def normalize_search_text(text: str) -> str:
+    """Normalize free-text search input on BOTH sides of a comparison.
+
+    Persian and Arabic-Indic digits become Latin, Arabic yeh/kaf become the
+    Persian letters, the zero-width non-joiner is dropped, and the result is
+    lowercased - so «کتاب علي», «کتاب علی» and «کتاب علی» all match each other,
+    and 12 / ۱۲ / ١٢ each find «جلسه ۱۲ نفره».
+    """
+    s = str(text) if not isinstance(text, str) else text
+    return s.translate(_SEARCH_NORMALIZE_MAP).lower()
+
+
 def is_gregorian_leap_year(year: int) -> bool:
     """Return True if a Gregorian year is a leap year."""
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
