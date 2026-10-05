@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
 import jdatetime
-from PyQt6.QtCore import QCoreApplication, QTimer, QUrl
+from PyQt6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl
 from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
 from PyQt6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QWidgetAction
 
@@ -31,7 +31,20 @@ from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, T
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.download_dialog import DownloadUpdateDialog
-from core.update_checker import DAY_MS, UpdateChecker, file_sha256, should_notify
+from core.update_checker import (
+    APP_STATE_CURRENT,
+    APP_STATE_FAILED,
+    APP_STATE_SKIPPED,
+    APP_STATE_UNAVAILABLE,
+    APP_STATE_UPDATE_FOUND,
+    DAY_MS,
+    HOLIDAYS_STATE_CURRENT,
+    HOLIDAYS_STATE_FAILED,
+    HOLIDAYS_STATE_UPDATED,
+    UpdateChecker,
+    file_sha256,
+    should_notify,
+)
 from utils.date_utils import ms_until_midnight, persian_month_name, persian_weekday_name, to_persian_digits
 from utils.event_io import (
     RECURRENCE_NONE,
@@ -58,6 +71,16 @@ logger = setup_logging(__name__)
 # session (reset on any clean check).
 AUTO_CHECK_RETRY_DELAY_MS = 10 * 60 * 1000
 AUTO_CHECK_MAX_RETRIES = 3
+
+# The 24h gate is enforced by _auto_check_updates itself; this recurring timer is
+# what makes the gate REACHED again: the old singleShot ran once per session, so
+# a machine that sleeps instead of rebooting never checked again after launch.
+AUTO_CHECK_REARM_INTERVAL_MS = 60 * 60 * 1000
+
+# A failed HOLIDAY fetch is retried quietly on its own cadence, separate from the
+# app verdict: it must never re-pop the update popup or stamp "last checked".
+HOLIDAY_RETRY_DELAY_MS = 10 * 60 * 1000
+HOLIDAY_RETRY_MAX_ATTEMPTS = 3
 
 # Windows broadcasts WM_TIMECHANGE to every top-level window, and the time
 # service can emit a burst of them while re-syncing. Coalescing them makes a
@@ -108,6 +131,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         # without touching the real HKCU hive.
         self.startup_registry = startup_registry if startup_registry is not None else StartupRegistry()
         self.holidays_cache = resolve_holidays_store()
+        # The bundled data covers a limited year range, and a missing current
+        # year is a silent cliff - Fridays still render red while official
+        # holidays quietly vanish. Say so in the log.
+        _current_year = jdatetime.date.today().year
+        if not self.holidays_cache.get(_current_year):
+            logger.warning(
+                f"No holiday data for the current Jalali year {_current_year}; "
+                f"official holidays will be missing until the holiday data is updated.")
         # The event store is owned by the EventService: every mutation and every
         # save goes through it, so the calendar, the tray and the disk can never
         # disagree. ``user_events`` below is a live view of ``self._events.events``.
@@ -272,15 +303,35 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _setup_update_checker(self):
         self._manual_update_check = False
+        # Round bookkeeping consumed by the popup and the end-of-round message:
+        # set in _on_round_finished (which always fires before the deferred
+        # popup opens), so the popup knows whether the round was manual and
+        # whether holidays were refreshed during it.
+        self._round_was_manual = False
+        self._round_holidays_state = HOLIDAYS_STATE_CURRENT
+        # A manual press that lands during the quiet holidays-only refresh
+        # cannot mark THAT round manual (a skipped round never messages), so the
+        # full check is queued here and released by _on_round_finished when the
+        # refresh concludes.
+        self._queued_full_check_after_holidays = False
         self._update_dialog_open = False
+        # The open update popup itself, so a manual check that lands while it is
+        # up can RAISE it instead of dropping the result silently.
+        self._active_update_popup = None
         # True between the scheduling of a deferred popup and the popup actually
         # opening; closes the one-tick window in which a second
         # app_update_available could schedule a duplicate dialog.
         self._update_popup_pending = False
         self._download_dialog = None
         self._auto_check_retries = 0
+        # Quiet holiday-refetch retries; reset whenever a holiday fetch succeeds.
+        self._holiday_retries = 0
         data_version = read_version(APP_CONFIG.HOLIDAYS_STORE_PATH)
-        debug_version = os.environ.get(DEBUG_DATA_VERSION_ENV, "").strip()
+        # The debug override is a development/test hook: frozen (installed)
+        # builds ignore it.
+        debug_version = ""
+        if not getattr(sys, 'frozen', False):
+            debug_version = os.environ.get(DEBUG_DATA_VERSION_ENV, "").strip()
         if debug_version:
             try:
                 data_version = int(debug_version)
@@ -292,14 +343,26 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.update_checker.holidays_updated.connect(self._on_holidays_updated)
         self.update_checker.no_updates.connect(self._on_no_updates)
         self.update_checker.check_failed.connect(self._on_check_failed)
+        self.update_checker.round_finished.connect(self._on_round_finished)
         self.update_checker.check_concluded.connect(self._on_check_concluded)
         self.update_checker.download_progress.connect(self._on_download_progress)
         self.update_checker.installer_downloaded.connect(self._on_installer_downloaded)
         self.update_checker.download_failed.connect(self._on_download_failed)
         QTimer.singleShot(30000, self._auto_check_updates)
+        # Re-arm the auto check hourly. The method still enforces the enabled
+        # flag and the 24h gate itself, and check() refuses to overlap a running
+        # round, so the timer only ever re-ASKS the gate.
+        self._auto_check_timer = QTimer(self)
+        self._auto_check_timer.setInterval(AUTO_CHECK_REARM_INTERVAL_MS)
+        self._auto_check_timer.timeout.connect(self._auto_check_updates)
+        self._auto_check_timer.start()
+
+    def _auto_check_enabled(self) -> bool:
+        """The Updates/CheckEnabled preference; default ON when never set."""
+        return self.settings.value(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, True, type=bool)
 
     def _auto_check_updates(self):
-        if not self.settings.value(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, True, type=bool):
+        if not self._auto_check_enabled():
             return
         last_check_ms = self.settings.value(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, 0, type=int) or 0
         now_ms = int(datetime.datetime.now().timestamp() * 1000)
@@ -316,6 +379,22 @@ class SystemTrayIcon(QSystemTrayIcon):
         if started:
             self._manual_update_check = manual
             logger.info(f"Checking for updates ({'manual' if manual else 'automatic'}).")
+        elif manual:
+            # A manual press during a running round used to be a dead click (the
+            # button "looked broken" in the first minute after launch, while the
+            # scheduled auto check was in flight). Mark the running round as
+            # manual instead, so it reports to the user when it concludes -
+            # UNLESS the busy round is the quiet holidays-only refresh, which
+            # must never message: there the full check is queued and starts the
+            # moment the refresh concludes.
+            if self.update_checker.round_kind == "holidays":
+                self._queued_full_check_after_holidays = True
+                logger.info("Manual update check requested during the quiet "
+                            "holiday refresh; a full check will run when it concludes.")
+            else:
+                self._manual_update_check = True
+                logger.info("Manual update check requested while a round is already "
+                            "running; the running round will report to the user.")
 
     def _on_check_concluded(self, failed: bool):
         """End of one check round: stamp success, schedule retries on failure."""
@@ -324,7 +403,13 @@ class SystemTrayIcon(QSystemTrayIcon):
             now_ms = int(datetime.datetime.now().timestamp() * 1000)
             self.settings.setValue(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, now_ms)
             return
-        if not self._manual_update_check and self._auto_check_retries < AUTO_CHECK_MAX_RETRIES:
+        # Manual-ness is read from the round snapshot, not the live flag: the
+        # checker emits round_finished BEFORE check_concluded, and
+        # _on_round_finished has already consumed _manual_update_check into
+        # _round_was_manual by the time this runs - the live flag is always
+        # False here, so a failed MANUAL round used to be retried like a silent
+        # automatic one.
+        if not self._round_was_manual and self._auto_check_retries < AUTO_CHECK_MAX_RETRIES:
             self._auto_check_retries += 1
             logger.warning(
                 f"Automatic update check failed; retry "
@@ -341,6 +426,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         # emit check_concluded after this signal, and a modal dialog in between
         # blocks that conclusion while a concurrent check resets the round state.
         if self._update_dialog_open or self._update_popup_pending:
+            if self._manual_update_check and self._active_update_popup is not None:
+                # A manual result arriving while the popup is already up must
+                # not vanish - bring the popup forward. (The popup is showing
+                # the same /releases/latest answer in every realistic race;
+                # re-offering a second modal would stack.)
+                logger.info("Manual update offer arrived while the popup is already open; raising it.")
+                self._active_update_popup.raise_()
+                self._active_update_popup.activateWindow()
             return
         self._update_popup_pending = True
         QTimer.singleShot(0, lambda: self._show_update_popup(version, installer_url, sha256))
@@ -354,15 +447,28 @@ class SystemTrayIcon(QSystemTrayIcon):
             # Themed three-way ask (the stock QMessageBox ignored the palette):
             # download = accent, ignore = red (it silences this version),
             # remind later = quiet ghost. Rotate glyph marks it as an update.
-            choice = ConfirmDialog.choose(
+            # Detail line for a manual round that also refreshed the holiday
+            # file, so the popup covers the whole round.
+            detail = ("فایل تعطیلات نیز به‌روزرسانی شد."
+                      if self._round_was_manual and self._round_holidays_state == HOLIDAYS_STATE_UPDATED
+                      else "")
+            # Built directly (not via ConfirmDialog.choose) so the reference is
+            # retained and a manual arrival can raise the open popup.
+            dialog = ConfirmDialog(
                 QApplication.activeWindow(), "بروزرسانی جدید",
                 f"نسخه جدید {APP_CONFIG.APP_NAME} ({version}) موجود است.",
-                glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
+                detail=detail, glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
                 actions=[("دانلود", "accent"),
                          ("نادیده گرفتن", "danger"),
                          ("بعداً یادآوری کن", "ghost")])
+            self._active_update_popup = dialog
+            # The shared present-tail; the reference above is what lets a
+            # manual arrival raise the open popup while it runs.
+            dialog.exec_centered(QApplication.activeWindow())
+            choice = dialog.choice
         finally:
             self._update_dialog_open = False
+            self._active_update_popup = None
         if choice == "دانلود":
             self._download_update(version, installer_url, sha256)
         elif choice == "نادیده گرفتن":
@@ -451,26 +557,150 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.update_tray_icon(force=True)
 
     def _on_no_updates(self):
-        logger.info("No updates available.")
-        if self._manual_update_check:
-            ConfirmDialog.notify(
-                QApplication.activeWindow(), "بررسی بروزرسانی",
-                "برنامه و فایل تعطیلات بروز است.",
-                glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+        # Manual-check messages live in _on_round_finished, so one end-of-round
+        # handler can cover every app/holidays combination - this signal used to
+        # announce "app and holiday file are up to date" even when the holiday
+        # fetch had failed.
+        logger.info("No updates available (app and holiday data current).")
 
     def _on_check_failed(self, reason: str):
+        # Only bookkeeping here: the offline dialog moved to _on_round_finished
+        # so the holiday outcome can choose the right wording.
         logger.warning(f"Update check failed: {reason}")
-        # A failure arriving while the update popup is already up must never
-        # stack a second dialog on top of the user's decision: "remind later"
-        # would otherwise appear to summon an unrelated offline error.
-        if self._update_dialog_open or self._update_popup_pending:
+
+    def _on_round_finished(self, app_state: str, holidays_state: str):
+        """End-of-round reporting.
+
+        Automatic rounds stay quiet and only log. Manual rounds get exactly ONE
+        message covering both outcomes, from the matrix:
+
+        | app          | holidays | message                                        |
+        |--------------|----------|------------------------------------------------|
+        | current      | updated  | holiday file refreshed                         |
+        | current      | current  | both up to date                                |
+        | current      | failed   | app current, holiday check failed              |
+        | unavailable  | any      | newer release exists, safe download impossible |
+        | failed       | updated  | holidays refreshed, app check failed           |
+        | failed       | other    | existing offline dialog                        |
+        | update found | any      | the update popup (+ line if holidays new)      |
+
+        A failed holiday fetch also arms the quiet holidays-only retry for
+        automatic rounds while the auto-check toggle is on - it never touches the
+        app verdict.
+        """
+        self._round_was_manual = self._manual_update_check
+        self._manual_update_check = False  # consumed: the round is over
+        self._round_holidays_state = holidays_state
+
+        if app_state == APP_STATE_SKIPPED:
+            # A quiet holidays-only refresh (the retry path): never message.
+            self._handle_holidays_round_bookkeeping(holidays_state)
+            # A manual press that arrived DURING this refresh queued a full
+            # check - release it now, with the manual flag set, so it reports
+            # to the user like any manual round.
+            if self._queued_full_check_after_holidays:
+                self._queued_full_check_after_holidays = False
+                logger.info("Running the full update check queued behind the holiday refresh.")
+                self._check_for_updates(manual=True)
             return
-        if self._manual_update_check:
+
+        if holidays_state == HOLIDAYS_STATE_UPDATED:
+            self._holiday_retries = 0
+        else:
+            self._handle_holidays_round_bookkeeping(holidays_state)
+
+        if not self._round_was_manual:
+            return
+        if app_state == APP_STATE_UPDATE_FOUND:
+            # The deferred popup carries the report (and the extra holiday line).
+            return
+        if app_state == APP_STATE_UNAVAILABLE:
+            # A newer release EXISTS but cannot be offered safely (no installer
+            # asset, no valid sha256 digest, untrusted URL). Answering «بروز
+            # است» would be false; the release needs fixing upstream, and no
+            # clean "last checked" is stamped so it is re-checked instead of
+            # waiting out the 24h gate.
             ConfirmDialog.notify(
                 QApplication.activeWindow(), "بررسی بروزرسانی",
-                "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
-                danger=True,
-                glyph=APP_CONFIG.FAS.FA_WIFI)
+                "نسخه جدید موجود است اما دانلود امن آن ممکن نیست.",
+                danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
+            return
+        if app_state == APP_STATE_CURRENT:
+            if holidays_state == HOLIDAYS_STATE_UPDATED:
+                ConfirmDialog.notify(
+                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    "فایل تعطیلات به‌روزرسانی شد.",
+                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+            elif holidays_state == HOLIDAYS_STATE_CURRENT:
+                ConfirmDialog.notify(
+                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    "برنامه و فایل تعطیلات بروز است.",
+                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+            else:
+                ConfirmDialog.notify(
+                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    "برنامه بروز است؛ بررسی فایل تعطیلات ناموفق بود.",
+                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+        elif app_state == APP_STATE_FAILED:
+            if holidays_state == HOLIDAYS_STATE_UPDATED:
+                ConfirmDialog.notify(
+                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    "فایل تعطیلات به‌روزرسانی شد، اما بررسی برنامه ناموفق بود.",
+                    danger=True, glyph=APP_CONFIG.FAS.FA_WIFI)
+            else:
+                # A failure arriving while the update popup is already up must
+                # never stack a second dialog on top of the user's decision.
+                if self._update_dialog_open or self._update_popup_pending:
+                    return
+                ConfirmDialog.notify(
+                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
+                    danger=True,
+                    glyph=APP_CONFIG.FAS.FA_WIFI)
+
+    def _handle_holidays_round_bookkeeping(self, holidays_state: str):
+        """Retry bookkeeping for the quiet holiday fetch.
+
+        A quiet retry is BACKGROUND network traffic, so it is armed only after
+        an AUTOMATIC round while the auto-check toggle is on. A manual round
+        already reported the failure to the user (they can press again), and a
+        user who switched «بررسی خودکار بروزرسانی» off opted out of background
+        checks entirely. Skipped rounds are themselves automatic retry rounds,
+        so they can re-arm the next attempt up to the session cap.
+        """
+        if holidays_state != HOLIDAYS_STATE_FAILED:
+            self._holiday_retries = 0
+            return
+        if self._round_was_manual:
+            return
+        if not self._auto_check_enabled():
+            logger.info("Holiday refresh failed; quiet retry suppressed "
+                        "(automatic checks are disabled).")
+            return
+        if self._holiday_retries >= HOLIDAY_RETRY_MAX_ATTEMPTS:
+            logger.warning(
+                f"Holiday refresh failed; retry cap "
+                f"({HOLIDAY_RETRY_MAX_ATTEMPTS}) reached for this session.")
+            return
+        self._holiday_retries += 1
+        delay_min = HOLIDAY_RETRY_DELAY_MS // 60000
+        logger.warning(
+            f"Holiday refresh failed; quiet retry "
+            f"{self._holiday_retries}/{HOLIDAY_RETRY_MAX_ATTEMPTS} in {delay_min} minutes.")
+        QTimer.singleShot(HOLIDAY_RETRY_DELAY_MS, self._retry_holiday_check)
+
+    def _retry_holiday_check(self):
+        """The quiet holidays-only refetch; reports via round_finished(skipped).
+
+        The toggle is re-checked here too, so a retry armed before the user
+        switched «بررسی خودکار بروزرسانی» off is dropped instead of firing
+        background traffic anyway.
+        """
+        if not self._auto_check_enabled():
+            logger.info("Holiday retry dropped: automatic checks are disabled.")
+            return
+        if not self.update_checker.check_holidays():
+            logger.info("Holiday retry skipped: another check round is in flight.")
 
     @staticmethod
     def _build_global_stylesheet() -> str:
@@ -504,17 +734,19 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self._events.add(jdate, text, recurrence, remove_after_finish):
             self._refresh_after_events_changed()
 
-    def remove_user_event_by_key(self, key: str, save: bool = True):
-        """Remove a single event by its store key."""
-        if self._events.delete_key(key) if hasattr(self._events, "delete_key") else False:
+    def remove_user_event_by_key(self, key: str):
+        """Remove one store entry by its key and refresh every surface.
+
+        The by-key path exists because a day can hold several events with
+        DIFFERENT keys: deleting by date would take the whole day's set with
+        the one the user pointed at. The store's own save transaction decides
+        the outcome, so there is no second (fallible) path to roll back.
+        """
+        if self._events.delete_key(key):
             self._refresh_after_events_changed()
-            return
-        # fallback
-        if key and key in self._events.events:
-            snapshot = dict(self._events.events)
-            del self._events.events[key]
-            if self._events._commit(snapshot) if hasattr(self._events, "_commit") else True:
-                self._refresh_after_events_changed()
+        else:
+            # Unknown/expired key: nothing was written, so nothing to refresh.
+            logger.debug(f"remove_user_event_by_key: no store entry for {key!r}.")
 
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
         """Remove every event variant matching ``jdate`` (specific, yearly, monthly)."""
@@ -636,6 +868,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.add_divider()
         self._add_menu_action(menu, "مشاهده تعطیلات", lambda: self._close_menu_then(self._open_holiday_viewer))
         menu.add_divider()
+        self._add_auto_check_action(menu)
+        menu.add_divider()
         self._add_menu_action(menu, "بررسی بروزرسانی", lambda: self._close_menu_then(lambda: self._check_for_updates(manual=True)))
         menu.add_divider()
         self._add_menu_action(menu, "خروج", QApplication.quit)
@@ -685,6 +919,26 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.settings.setValue(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, checked)
         self.calendar_widget.set_always_on_top(checked)
         logger.info(f"Calendar always-on-top {'enabled' if checked else 'disabled'}.")
+
+    def _add_auto_check_action(self, menu):
+        """The tray toggle for the automatic update check.
+
+        ``Updates/CheckEnabled`` was only ever read, so the feature had no UI;
+        the row sits right above the manual «بررسی بروزرسانی» action it
+        complements. Like the other checkbox rows, the widget keeps the menu
+        open on click and paints its own new state.
+        """
+        action = QWidgetAction(self)
+        widget = IconCheckboxActionWidget("بررسی خودکار بروزرسانی", self._auto_check_enabled(), parent=menu)
+        widget.toggled.connect(self._toggle_auto_update_check)
+        action.setDefaultWidget(widget)
+        menu.addAction(action)
+
+    def _toggle_auto_update_check(self, checked: bool):
+        self.settings.setValue(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, checked)
+        logger.info(f"Automatic update check {'enabled' if checked else 'disabled'}.")
+        # No timer stop/start: the recurring auto-check timer consults this
+        # setting on every firing, so the next hourly tick simply obeys it.
 
     def on_tray_icon_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -752,7 +1006,13 @@ class SystemTrayIcon(QSystemTrayIcon):
             return
         self.calendar_widget.move(-10000, -10000)
         self.calendar_widget.show()
-        QApplication.processEvents()
+        # A bare processEvents() dispatches USER INPUT too, so a tray click
+        # landing inside this tick saw the (hidden, off-screen) calendar as
+        # visible and only hid it again - the first click after launch was
+        # swallowed. Excluding input events keeps the prewarm to paint/layout
+        # delivery; the click is handled after the calendar is hidden and the
+        # toggle logic sees the real state.
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self.calendar_widget.hide()
 
     def _toggle_theme(self):
