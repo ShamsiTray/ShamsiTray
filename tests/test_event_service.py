@@ -225,18 +225,48 @@ def test_update_key_switching_to_one_time_uses_the_shown_date(service, monkeypat
 def test_update_key_refuses_to_overwrite_an_occupied_key(service, monkeypatch):
     """An edit must never silently destroy a different event: the caller has to
     ask the user and pass merge_into."""
-    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    written = []
+    monkeypatch.setattr("core.event_service.save_user_events",
+                        lambda events: written.append(dict(events)) or True)
     service.events["1405-08-01"] = _entry("one-time")
     service.events["0000-00-01"] = _entry("monthly", RECURRENCE_MONTHLY)
     day = jdatetime.date(1405, 8, 1)
+    snapshot = dict(service.events)
 
     assert service.update_key("1405-08-01", day, "now monthly", RECURRENCE_MONTHLY) is False
 
     assert service.events == {"1405-08-01": _entry("one-time"),
                               "0000-00-01": _entry("monthly", RECURRENCE_MONTHLY)}
+    # Refused means refused: the edit must not reach the file either, or the
+    # next boot would resurrect the change the user declined.
+    assert service.events == snapshot
+    assert written == []
+
+
+def test_editing_one_event_leaves_the_other_on_the_date_untouched(service, monkeypatch):
+    """A date can carry several events, told apart by key. Editing one must not
+    disturb another - not its text, not its flags, not its presence."""
+    written = []
+    monkeypatch.setattr("core.event_service.save_user_events",
+                        lambda events: written.append(dict(events)) or True)
+    service.events["1405-08-01"] = _entry("Doctor", remove_after_finish=True)
+    service.events["0000-00-01"] = _entry("Pay bills", RECURRENCE_MONTHLY)
+    monthly_before = dict(service.events["0000-00-01"])
+
+    assert service.update_key("1405-08-01", jdatetime.date(1405, 8, 1),
+                              "Doctor checkup", RECURRENCE_NONE, True) is True
+
+    assert set(service.events) == {"1405-08-01", "0000-00-01"}
+    assert service.events["1405-08-01"] == _entry("Doctor checkup", remove_after_finish=True)
+    assert service.events["0000-00-01"] == monthly_before
+    # Exactly one save for one edit.
+    assert len(written) == 1
 
 
 def test_update_key_merging_folds_the_text_into_the_target(service, monkeypatch):
+    """The three outcomes of a confirmed merge, asserted one by one: the edited
+    key is gone, the event already on the date is the entry that survives, and
+    both texts end up on it."""
     monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
     service.events["1405-08-01"] = _entry("Doctor", remove_after_finish=True)
     service.events["0000-00-01"] = _entry("Pay bills", RECURRENCE_MONTHLY)
@@ -245,7 +275,10 @@ def test_update_key_merging_folds_the_text_into_the_target(service, monkeypatch)
     assert service.update_key("1405-08-01", day, "Doctor", RECURRENCE_MONTHLY,
                               merge_into="0000-00-01") is True
 
-    assert service.events == {"0000-00-01": _entry("Pay bills\nDoctor", RECURRENCE_MONTHLY)}
+    assert "1405-08-01" not in service.events, "the edited key must be gone"
+    assert set(service.events) == {"0000-00-01"}, "the event already there survives"
+    assert service.events["0000-00-01"]["text"] == "Pay bills\nDoctor"
+    assert service.events["0000-00-01"]["recurrence"] == RECURRENCE_MONTHLY
 
 
 def test_update_key_merging_never_duplicates_an_identical_line(service, monkeypatch):

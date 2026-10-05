@@ -1813,6 +1813,36 @@ def test_editing_one_of_two_events_leaves_the_other_alone(tray):
     assert tray.user_events[one_time_key]["text"] == "Doctor"
 
 
+def test_editing_the_one_time_event_leaves_the_monthly_one_alone(tray):
+    """The same edit in the other direction. A one-time event keeps its own key on
+    a recurrence-free edit, so it must not disturb the monthly event sharing the
+    date - the two are separate entries, not one date-level slot."""
+    today, one_time_key, monthly_key = _two_events_today(tray)
+    monthly_before = dict(tray.user_events[monthly_key])
+
+    tray.calendar_widget.event_updated_by_key.emit(one_time_key, today, "Doctor checkup",
+                                                   "none", False, "")
+
+    assert tray.user_events[one_time_key]["text"] == "Doctor checkup"
+    assert tray.user_events[one_time_key]["recurrence"] == "none"
+    assert tray.user_events[monthly_key] == monthly_before
+    assert set(tray.user_events) == {one_time_key, monthly_key}
+
+
+def test_an_unconfirmed_merge_leaves_both_events_alone(tray):
+    """The user said no, so the calendar emits no merge target at all. The edit
+    would land on the monthly event's key, and must be refused rather than
+    silently overwriting it."""
+    today, one_time_key, monthly_key = _two_events_today(tray)
+    before = {key: dict(entry) for key, entry in tray.user_events.items()}
+
+    tray.calendar_widget.event_updated_by_key.emit(one_time_key, today, "Doctor",
+                                                   "monthly", False, "")
+
+    assert tray.user_events == before
+    assert set(tray.user_events) == {one_time_key, monthly_key}
+
+
 def test_deleting_one_of_two_events_leaves_the_other_alone(tray):
     _today, one_time_key, monthly_key = _two_events_today(tray)
 
@@ -1832,6 +1862,36 @@ def test_a_confirmed_merge_lands_as_one_entry(tray):
     assert set(tray.user_events) == {monthly_key}
     assert tray.user_events[monthly_key]["text"] == "Pay bills\nDoctor"
     assert tray.user_events[monthly_key]["recurrence"] == "monthly"
+
+
+def test_a_merge_of_identical_text_never_repeats_the_line(tray):
+    """Both events already carry the same text: the merge must land on that one
+    line, not on the line twice."""
+    today, one_time_key, monthly_key = _two_events_today(tray)
+    tray.user_events[one_time_key]["text"] = "Pay bills"
+
+    tray.calendar_widget.event_updated_by_key.emit(one_time_key, today, "Pay bills",
+                                                   "monthly", False, monthly_key)
+
+    assert set(tray.user_events) == {monthly_key}
+    assert tray.user_events[monthly_key]["text"] == "Pay bills"
+    assert "Pay bills\nPay bills" not in tray.user_events[monthly_key]["text"]
+
+
+def test_a_merge_onto_a_yearly_event_keeps_the_yearly_one(tray):
+    """The other reachable merge: a monthly event moved onto a yearly one on the
+    same date. The event already sitting on the date survives as the entry, with
+    its own recurrence, and the two texts combine."""
+    today, one_time_key, monthly_key = _two_events_today(tray)
+    tray.add_user_event(today, "Dentist", "yearly", False)
+    yearly_key = f"0000-{today.month:02d}-{today.day:02d}"
+
+    tray.calendar_widget.event_updated_by_key.emit(monthly_key, today, "Pay bills + pharmacy",
+                                                   "yearly", False, yearly_key)
+
+    assert set(tray.user_events) == {one_time_key, yearly_key}
+    assert tray.user_events[yearly_key]["text"] == "Dentist\nPay bills + pharmacy"
+    assert tray.user_events[yearly_key]["recurrence"] == "yearly"
 
 
 def test_update_user_event_by_key_is_safe_for_an_unknown_key(tray):
