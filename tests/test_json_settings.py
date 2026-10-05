@@ -87,3 +87,67 @@ def test_setvalue_with_same_value_does_not_rewrite(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", lambda a, b: calls.append(1) or real_replace(a, b))
     s.setValue("A/B", 1)
     assert calls == []
+
+
+# --- failed writes must stay retryable -----------------------------------------
+
+
+def test_same_value_after_failed_write_is_retried_and_persisted(tmp_path, monkeypatch):
+    """The failure sequence that matters: a write fails, the value lives only
+    in memory, the filesystem recovers, the SAME value is set again - and the
+    write must actually happen this time instead of being swallowed by the
+    equal-value early return."""
+    p = tmp_path / "settings.json"
+    s = JsonSettings(p)
+    real_replace = os.replace  # captured before any monkeypatching
+
+    def broken_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", broken_replace)
+    s.setValue("Updates/LastCheckMs", 12345)          # write fails -> dirty
+    assert s.value("Updates/LastCheckMs") == 12345    # in-memory state live
+    assert not p.exists()                             # disk still stale
+
+    # Restore the real os.replace for the retry.
+    monkeypatch.setattr(os, "replace", real_replace)
+    s.setValue("Updates/LastCheckMs", 12345)          # same value: must RETRY
+    assert p.exists(), "a dirty same-value setValue must hit the disk again"
+    fresh = JsonSettings(p)
+    assert fresh.value("Updates/LastCheckMs", 0, type=int) == 12345
+    # The dirty bookkeeping cleared: another same-value write is skipped again.
+    calls = []
+    monkeypatch.setattr(os, "replace", lambda a, b: calls.append(1) or real_replace(a, b))
+    s.setValue("Updates/LastCheckMs", 12345)
+    assert calls == []
+
+
+def test_dirty_key_is_healed_by_a_successful_write_of_any_key(tmp_path, monkeypatch):
+    """One flush rewrites the WHOLE file, so a later success clears every
+    pending dirty key, not just its own."""
+    p = tmp_path / "settings.json"
+    s = JsonSettings(p)
+    s.setValue("A/B", 1)
+    real_replace = os.replace
+
+    monkeypatch.setattr(os, "replace", lambda a, b: (_ for _ in ()).throw(OSError("disk full")))
+    s.setValue("A/B", 2)      # fails -> dirty
+    assert s._dirty
+
+    monkeypatch.setattr(os, "replace", real_replace)
+    s.setValue("C/D", 3)      # different key, write succeeds
+    assert not s._dirty
+    fresh = JsonSettings(p)
+    assert fresh.value("A/B") == 2 and fresh.value("C/D") == 3
+
+
+def test_sync_retries_a_failed_flush(tmp_path, monkeypatch):
+    p = tmp_path / "settings.json"
+    s = JsonSettings(p)
+    real_replace = os.replace
+    monkeypatch.setattr(os, "replace", lambda a, b: (_ for _ in ()).throw(OSError("disk full")))
+    s.setValue("A/B", 7)
+    assert not p.exists()
+    monkeypatch.setattr(os, "replace", real_replace)
+    s.sync()
+    assert JsonSettings(p).value("A/B") == 7
