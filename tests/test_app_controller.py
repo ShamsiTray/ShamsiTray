@@ -12,7 +12,8 @@ import core.app_controller as controller_module
 import core.event_service as event_service_module
 from config import APP_CONFIG
 from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_MS,
-                                 DEBUG_DATA_VERSION_ENV, SystemTrayIcon,
+                                 DEBUG_DATA_VERSION_ENV, HOLIDAY_RETRY_DELAY_MS,
+                                 HOLIDAY_RETRY_MAX_ATTEMPTS, SystemTrayIcon,
                                  TIME_CHANGE_COALESCE_MS)
 from ui.widgets.checkbox import IconCheckboxActionWidget
 
@@ -53,6 +54,31 @@ def test_saved_theme_preference_wins(user_data, monkeypatch, qtbot, fake_startup
     tray = SystemTrayIcon(settings=settings, startup_registry=fake_startup_registry)
     assert tray.current_theme == APP_CONFIG.Theme.LIGHT
     APP_CONFIG.set_theme(APP_CONFIG.Theme.DARK)  # restore global palette
+
+
+def test_boot_warns_when_current_year_has_no_holidays(user_data, monkeypatch, fake_startup_registry):
+    """A missing current Jalali year is a silent data cliff: Fridays still
+    render red while the official holidays quietly vanish, so boot says so."""
+    import logging
+
+    from utils.json_settings import JsonSettings
+
+    monkeypatch.setattr(controller_module, "resolve_holidays_store", lambda: {})
+    records = []
+    capture = logging.Handler()
+    capture.emit = lambda record: records.append(record)
+    controller_logger = logging.getLogger("core.app_controller")
+    old_level = controller_logger.level
+    controller_logger.addHandler(capture)
+    controller_logger.setLevel(logging.WARNING)
+    try:
+        SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH),
+                       startup_registry=fake_startup_registry)
+    finally:
+        controller_logger.removeHandler(capture)
+        controller_logger.setLevel(old_level)
+    assert any("No holiday data for the current Jalali year" in r.getMessage()
+               for r in records)
 
 
 def test_debug_data_version_override(user_data, monkeypatch, qtbot, fake_startup_registry):
@@ -266,6 +292,63 @@ def test_update_popup_keeps_a_reference_while_it_runs(tray, monkeypatch):
     tray._show_update_popup("9.9.9", "http://x", "")
     assert captured["dialog"] is not None
     assert tray._active_update_popup is None  # released after the round
+
+
+def test_manual_offer_while_popup_open_raises_it(tray):
+    """A manual result arriving while the popup is up must not be dropped -
+    the existing dialog is raised instead of re-offered."""
+
+    class FakePopup:
+        def __init__(self):
+            self.raise_calls = 0
+            self.activate_calls = 0
+
+        def raise_(self):
+            self.raise_calls += 1
+
+        def activateWindow(self):
+            self.activate_calls += 1
+
+    existing = FakePopup()
+    tray._active_update_popup = existing
+    tray._update_dialog_open = True
+    tray._manual_update_check = True
+    tray._on_app_update_available("9.9.9", "http://x", "")
+    assert existing.raise_calls == 1
+    assert existing.activate_calls == 1
+    tray._update_dialog_open = False
+    tray._active_update_popup = None
+    tray._manual_update_check = False
+
+
+def _capture_popup_dialog(tray, monkeypatch):
+    """Build the popup without a modal loop; returns the dialog it constructed."""
+    captured = {}
+
+    def fake_exec_centered(self, parent=None):
+        captured["dialog"] = self
+        self.choice = None
+        return 0
+
+    monkeypatch.setattr(controller_module.ConfirmDialog, "exec_centered", fake_exec_centered)
+    tray._show_update_popup("9.9.9", "http://x", "")
+    return captured["dialog"]
+
+
+def test_manual_popup_with_holiday_refresh_carries_extra_line(tray, monkeypatch):
+    """The popup gains one extra line when the same manual round refreshed
+    the holiday file - the report covers the whole round."""
+    tray._round_was_manual = True
+    tray._round_holidays_state = controller_module.HOLIDAYS_STATE_UPDATED
+    dialog = _capture_popup_dialog(tray, monkeypatch)
+    assert dialog.detail_label.text() == "فایل تعطیلات نیز به‌روزرسانی شد."
+
+
+def test_auto_popup_without_holiday_refresh_has_no_extra_line(tray, monkeypatch):
+    tray._round_was_manual = False
+    tray._round_holidays_state = controller_module.HOLIDAYS_STATE_UPDATED
+    dialog = _capture_popup_dialog(tray, monkeypatch)
+    assert dialog.detail_label.text() == ""
 
 
 def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
@@ -516,6 +599,124 @@ def test_check_failed_auto_is_silent(tray, monkeypatch):
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
                         staticmethod(lambda *a, **k: pytest.fail("must not notify")))
     tray._on_check_failed("network")
+
+
+def test_manual_check_flag_not_set_when_check_is_noop(tray, monkeypatch):
+    """An AUTO call landing on a no-op check() must never flag the in-flight
+    round as manual - a silent round would then report like a pressed one."""
+    monkeypatch.setattr(tray.update_checker, "check", lambda: False)
+    tray._manual_update_check = False
+    tray._check_for_updates(manual=False)
+    assert tray._manual_update_check is False
+
+
+# --- quiet holiday retry and round bookkeeping --------------------------------------
+
+
+def _capture_single_shots(monkeypatch):
+    """Record (ms, callback) instead of arming real timers; the rounds under
+    test schedule their retries through QTimer.singleShot."""
+    scheduled = []
+    monkeypatch.setattr(controller_module.QTimer, "singleShot",
+                        lambda ms, cb: scheduled.append((ms, cb)))
+    return scheduled
+
+
+def test_round_finished_holiday_failure_schedules_quiet_retry(tray, monkeypatch):
+    """A failed holiday fetch arms its own quiet retry (holidays only - it
+    never re-runs the app check, re-pops the popup or stamps)."""
+    scheduled = _capture_single_shots(monkeypatch)
+    tray._manual_update_check = False
+    tray._holiday_retries = 0
+    tray._on_round_finished(controller_module.APP_STATE_CURRENT,
+                            controller_module.HOLIDAYS_STATE_FAILED)
+    assert tray._holiday_retries == 1
+    assert scheduled and scheduled[0][0] == HOLIDAY_RETRY_DELAY_MS
+    assert scheduled[0][1] == tray._retry_holiday_check
+
+
+def test_holiday_retry_cap_is_respected(tray, monkeypatch):
+    scheduled = _capture_single_shots(monkeypatch)
+    tray._manual_update_check = False
+    tray._holiday_retries = HOLIDAY_RETRY_MAX_ATTEMPTS
+    tray._on_round_finished(controller_module.APP_STATE_FAILED,
+                            controller_module.HOLIDAYS_STATE_FAILED)
+    assert tray._holiday_retries == HOLIDAY_RETRY_MAX_ATTEMPTS
+    assert scheduled == []
+
+
+def test_holiday_retry_not_armed_after_manual_round(tray, monkeypatch):
+    """The user already saw the «ناموفق بود» message and can press again; no
+    quiet retry runs behind their back."""
+    scheduled = _capture_single_shots(monkeypatch)
+    notified = _notify_recorder(monkeypatch)
+    tray._manual_update_check = True
+    tray._holiday_retries = 0
+    tray._on_round_finished(controller_module.APP_STATE_CURRENT,
+                            controller_module.HOLIDAYS_STATE_FAILED)
+    assert tray._holiday_retries == 0
+    assert scheduled == []
+    assert len(notified) == 1  # the failure was reported as usual
+
+
+def test_holiday_retry_success_resets_counter(tray, monkeypatch):
+    _capture_single_shots(monkeypatch)
+    tray._holiday_retries = 2
+    tray._on_round_finished(controller_module.APP_STATE_SKIPPED,
+                            controller_module.HOLIDAYS_STATE_UPDATED)
+    assert tray._holiday_retries == 0
+
+
+def test_holiday_retry_suppressed_when_auto_check_disabled(tray, monkeypatch):
+    """The quiet retry is background network traffic - a user who switched
+    «بررسی خودکار بروزرسانی» off must not get up to three retries per session
+    behind their back."""
+    scheduled = _capture_single_shots(monkeypatch)
+    tray.settings.setValue(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, False)
+    tray._manual_update_check = False
+    tray._holiday_retries = 0
+    tray._on_round_finished(controller_module.APP_STATE_SKIPPED,
+                            controller_module.HOLIDAYS_STATE_FAILED)
+    assert tray._holiday_retries == 0
+    assert scheduled == []
+
+
+def test_retry_holiday_check_dropped_when_auto_check_disabled(tray, monkeypatch):
+    """A retry armed BEFORE the toggle changed is dropped when it fires,
+    instead of firing background traffic anyway."""
+    tray.settings.setValue(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, False)
+    calls, _ = _spy(tray.update_checker, "check_holidays")
+    tray._retry_holiday_check()
+    assert calls == []
+
+
+def test_retry_holiday_check_starts_a_holidays_only_round(tray):
+    calls, _ = _spy(tray.update_checker, "check_holidays")
+    tray._retry_holiday_check()
+    assert len(calls) == 1
+
+
+def test_skipped_round_without_queued_manual_starts_nothing(tray):
+    """The quiet refresh only releases a queued full check when a manual press
+    actually queued one; ordinary retry rounds end without side effects."""
+    check_calls, _ = _spy(tray.update_checker, "check")
+    tray._on_round_finished(controller_module.APP_STATE_SKIPPED,
+                            controller_module.HOLIDAYS_STATE_UPDATED)
+    assert check_calls == []
+
+
+def test_unavailable_round_never_stamps_last_check(tray, monkeypatch):
+    """An UNAVAILABLE round concludes as failed for bookkeeping: no clean
+    «last checked» stamp, so the release is re-checked instead of waiting out
+    the 24h gate."""
+    scheduled = _capture_single_shots(monkeypatch)
+    tray._auto_check_retries = 0
+    _drive_round(tray, controller_module.APP_STATE_UNAVAILABLE,
+                 controller_module.HOLIDAYS_STATE_CURRENT, manual=False)
+    stamped = tray.settings.value(APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY, 0, type=int)
+    assert stamped == 0
+    assert tray._auto_check_retries == 1  # bounded retry, like a failed round
+    assert scheduled and scheduled[0][0] == AUTO_CHECK_RETRY_DELAY_MS
 
 
 # --- tray icon rendering --------------------------------------------------------------
@@ -778,6 +979,23 @@ def test_setting_change_debounces_only_the_theme_broadcast(tray, monkeypatch):
     assert started == []
     tray._on_system_setting_change("ImmersiveColorSet")
     assert started == [TIME_CHANGE_COALESCE_MS]
+
+
+def test_explicit_system_choice_still_follows_windows(tray, monkeypatch):
+    """An explicit «هماهنگ با سیستم» value keeps following Windows - only a
+    pinned light/dark choice stops the broadcast from applying."""
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+    monkeypatch.setattr(tray, "_get_windows_theme",
+                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    tray.current_theme = APP_CONFIG.Theme.DARK
+    tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.SYSTEM)
+
+    tray._handle_system_theme_change()
+
+    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert applied == [1]
 
 
 def test_saved_theme_preference_wins_over_cycle_detection(tray):
@@ -1179,6 +1397,56 @@ def test_clicking_the_menu_row_unpins_the_calendar(tray):
     assert not tray.calendar_widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
 
 
+# --- auto-update-check toggle row --------------------------------------------------
+
+
+_AUTO_CHECK_ROW_TEXT = "بررسی خودکار بروزرسانی"
+
+
+def _auto_check_widget(tray):
+    menu = tray.contextMenu()
+    return next(w for w in menu.findChildren(IconCheckboxActionWidget)
+                if w.text_label.text() == _AUTO_CHECK_ROW_TEXT)
+
+
+def test_menu_has_the_auto_check_toggle_row(tray):
+    widgets = [w for w in tray.contextMenu().findChildren(IconCheckboxActionWidget)
+               if w.text_label.text() == _AUTO_CHECK_ROW_TEXT]
+    assert len(widgets) == 1
+    assert widgets[0].isChecked() is True  # default when never set
+
+
+def test_menu_auto_check_row_reflects_disabled_preference(tray):
+    tray.settings.setValue(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, False)
+    tray._setup_context_menu()
+    assert _auto_check_widget(tray).isChecked() is False
+
+
+def test_clicking_the_menu_row_disables_auto_check(tray):
+    tray._setup_context_menu()
+    widget = _auto_check_widget(tray)
+    QTest.mouseClick(widget, Qt.MouseButton.LeftButton)
+    assert tray.settings.value(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, True, type=bool) is False
+
+
+def test_auto_check_toggle_persists_check_enabled(tray):
+    assert tray._auto_check_enabled() is True  # default when never set
+    tray._toggle_auto_update_check(False)
+    assert tray.settings.value(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, True, type=bool) is False
+    assert tray._auto_check_enabled() is False
+    tray._toggle_auto_update_check(True)
+    assert tray._auto_check_enabled() is True
+
+
+def test_auto_check_timer_is_recurring_and_hourly(tray):
+    """The daily gate is re-asked by an hourly timer, so a machine that sleeps
+    instead of rebooting still checks again after launch."""
+    timer = tray._auto_check_timer
+    assert timer.isActive()
+    assert not timer.isSingleShot()
+    assert timer.interval() == 60 * 60 * 1000
+
+
 # --- tray activation ------------------------------------------------------------------------
 
 
@@ -1370,6 +1638,14 @@ def test_fit_tooltip_trims_lowest_priority_first(tray):
     fitted = tray._fit_tooltip(lines + ["رویداد:"] + [event_text])
     assert "جشن بزرگ" in fitted  # holiday reasons outrank the event text
     assert event_text not in fitted  # the oversized event text was trimmed
+
+
+def test_fit_tooltip_hard_cuts_when_identity_lines_alone_overflow():
+    """The fallback branch only trimmed the LAST line; if the first three
+    (identity) lines alone exceed the cap the loop could never end."""
+    fat_identity = ["ش" * 200, "ش" * 200, "ش" * 200]
+    fitted = SystemTrayIcon._fit_tooltip(list(fat_identity))
+    assert len(fitted) <= 127
 
 
 # --- persistence-failure handling (EVT-7) -------------------------------------------------

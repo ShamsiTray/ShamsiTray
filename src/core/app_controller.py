@@ -881,13 +881,22 @@ class SystemTrayIcon(QSystemTrayIcon):
         Lines are already built highest-priority-first (weekday, date, holiday
         reasons, then the event text), so dropping from the end sacrifices the
         event before it ever touches the identity lines; if even the identity
-        lines overflow, the last one is ellipsis-trimmed instead.
+        lines overflow, the last one is ellipsis-trimmed instead - and if even
+        THAT cannot shrink the total (pathological first lines), the joined
+        text is hard-cut rather than looping forever: the fallback branch only
+        ever trims the last line, so overflow coming from the earlier lines
+        alone would otherwise never terminate.
         """
         while len("\n".join(lines)) > WINDOWS_TOOLTIP_MAX_CHARS:
             if len(lines) > 3:
                 lines.pop()
             else:
-                lines[-1] = lines[-1][:max(WINDOWS_TOOLTIP_MAX_CHARS - 1, 0)].rstrip() + "…"
+                trimmed = lines[-1][:max(WINDOWS_TOOLTIP_MAX_CHARS - 1, 0)].rstrip() + "…"
+                if trimmed == lines[-1]:
+                    # The last line cannot shrink further and the total still
+                    # overflows: the earlier identity lines are the problem.
+                    return "\n".join(lines)[:WINDOWS_TOOLTIP_MAX_CHARS]
+                lines[-1] = trimmed
         return "\n".join(lines)
 
     def _setup_context_menu(self):
