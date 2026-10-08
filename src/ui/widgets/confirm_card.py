@@ -99,21 +99,26 @@ class ConfirmCard:
         # A surface that carries everything in ``detail`` (the calendar's
         # distance notice) leaves no headline, so the label is hidden rather
         # than reserving its font height as dead air above the box.
+        # The layout must take the label in BEFORE any visibility call: a
+        # parentless QLabel is a top-level window, so setVisible(True) on it
+        # would raise a real native frame at (0,0) for as long as it takes
+        # addWidget to reparent (and hide) it - a visible flash of an empty
+        # framed window on every dialog construction.
         self.message_label = QLabel(message)
         self.message_label.setWordWrap(True)
         self.message_label.setTextFormat(Qt.TextFormat.PlainText)
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.message_label.setVisible(bool(message))
         main_layout.addWidget(self.message_label)
+        self.message_label.setVisible(bool(message))
 
         # Optional preview in its own rounded box, so the event text never blurs
-        # into the question line.
+        # into the question line. Same ordering rule as the message label above.
         self.detail_label = QLabel(detail)
         self.detail_label.setWordWrap(True)
         self.detail_label.setTextFormat(Qt.TextFormat.PlainText)
         self.detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.detail_label.setVisible(bool(detail))
         main_layout.addWidget(self.detail_label)
+        self.detail_label.setVisible(bool(detail))
 
         main_layout.addSpacing(6)
 
@@ -171,6 +176,44 @@ class ConfirmCard:
         height = self.message_label.heightForWidth(inner_width)
         if height > 0:
             self.message_label.setFixedHeight(height)
+
+    def set_message(self, text: str) -> None:
+        """Refill the headline, releasing the height pinned for the old wording.
+
+        The pin is a ``setFixedHeight``; clearing it to 0 before re-measuring
+        keeps the previous wording's height from surviving into the new one.
+        """
+        self.message_label.setFixedHeight(0)
+        self.message_label.setText(text)
+        self.message_label.setVisible(bool(text))
+        self._pin_message_height()
+
+    def set_detail(self, text: str) -> None:
+        """Refill the detail box, hiding it when there is nothing to show."""
+        self.detail_label.setText(text)
+        self.detail_label.setVisible(bool(text))
+
+    def apply_notice(self, title: str, message: str, *, detail: str = "",
+                     danger: bool = False, glyph: Optional[str] = None,
+                     button_text: Optional[str] = None) -> None:
+        """Re-word a single-button notice in place.
+
+        Lets an already-open notice be refreshed when a newer result of the same
+        kind replaces it, instead of stacking a second window. Intended for the
+        one-button notice shape only (``actions`` of length 1).
+        """
+        self._danger = danger
+        self.title_label.setText(title)
+        if glyph is not None:
+            self.icon_badge.setText(glyph)
+        caption = button_text if button_text is not None else self.buttons[0].text()
+        kind = "danger" if danger else "accent"
+        self._actions[0] = (caption, kind)
+        self.buttons[0].setText(caption)
+        self.set_message(message)
+        self.set_detail(detail)
+        self.update_styles()
+        self.adjustSize()
 
     def _minimum_width_for_buttons(self) -> int:
         """Dialog width at which no button caption ever clips.
