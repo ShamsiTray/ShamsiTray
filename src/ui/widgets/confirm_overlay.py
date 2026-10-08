@@ -79,21 +79,17 @@ class ConfirmOverlay(ConfirmCard, QWidget):
     def set_message(self, text: str) -> None:
         """Refill the description line for the next use.
 
-        Releases the height pinned for the previous wording first: the pin is a
-        ``setFixedHeight``, so clearing the text alone would leave the old
-        measurement behind for the next question to inherit.
+        The label mechanics live in ``ConfirmCard`` (shared with the dialog's
+        in-place notice update); the overlay adds only its per-use state reset
+        and the size re-measure.
         """
-        self.message_label.setFixedHeight(0)
-        self.message_label.setText(text)
-        self.message_label.setVisible(bool(text))
-        self._pin_message_height()
+        super().set_message(text)
         self.choice = None
         self.adjustSize()
 
     def set_detail(self, text: str) -> None:
         """Refill the box for the next use, keeping the card visible/hidden as is."""
-        self.detail_label.setText(text)
-        self.detail_label.setVisible(bool(text))
+        super().set_detail(text)
         self.choice = None
         self.adjustSize()
 

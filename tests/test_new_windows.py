@@ -3,7 +3,7 @@ import datetime
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
 from PyQt6.QtGui import QCursor
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QComboBox, QDialog, QLabel, QWidget
@@ -817,6 +817,31 @@ def test_confirm_dialog_shows_detail_box_and_centers_content():
     assert dialog.message_label.alignment() & Qt.AlignmentFlag.AlignHCenter
     plain = ConfirmDialog(None, "حذف رویداد", "متن")
     assert plain.detail_label.isVisibleTo(plain) is False
+
+
+def test_confirm_dialog_never_shows_a_parentless_label():
+    """A parentless QLabel is a top-level window, so setVisible(True) on it
+    before the layout takes it in creates a real native frame at (0,0) - the
+    small framed window that flashed for a moment before every notice. The
+    labels must only become visible AFTER addWidget has reparented them."""
+    flashes = []
+
+    class _ParentlessShowFilter(QObject):
+        def eventFilter(self, obj, ev):
+            if (isinstance(obj, QLabel) and obj.parent() is None
+                    and ev.type() in (QEvent.Type.Show, QEvent.Type.PlatformSurface)):
+                flashes.append(obj.text())
+            return False
+
+    app = QApplication.instance()
+    show_filter = _ParentlessShowFilter()
+    app.installEventFilter(show_filter)
+    try:
+        ConfirmDialog(None, "بررسی بروزرسانی", "برنامه و فایل تعطیلات بروز است.",
+                      detail="جزئیات")
+    finally:
+        app.removeEventFilter(show_filter)
+    assert flashes == []
 
 
 def test_confirm_dialog_message_uses_readable_text_color():
