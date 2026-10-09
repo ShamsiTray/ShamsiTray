@@ -237,7 +237,66 @@ def test_check_failed_quiet_while_update_popup_is_open(tray, monkeypatch):
     assert notified == []
 
 
-def test_update_popup_dialog_open_guard(tray, monkeypatch):
+def test_manual_round_notices_share_the_replacement_key(tray, monkeypatch):
+    """Every round report is keyed, so a newer result rewrites the open notice."""
+    notified = _notify_recorder(monkeypatch)
+    _drive_round(tray, controller_module.APP_STATE_CURRENT,
+                 controller_module.HOLIDAYS_STATE_CURRENT)
+    assert notified[0][1].get("key") == controller_module.UPDATE_CHECK_NOTICE_KEY
+
+
+def test_manual_round_notice_yields_to_an_open_update_popup(tray, monkeypatch):
+    """The popup outranks the round report: ANY manual verdict that would have
+    opened a notice instead raises the open popup and stays silent."""
+    notified = _notify_recorder(monkeypatch)
+
+    class _Popup:
+        def __init__(self):
+            self.raised = 0
+
+        def raise_(self):
+            self.raised += 1
+
+        def activateWindow(self):
+            pass
+
+    popup = _Popup()
+    tray._active_update_popup = popup
+    tray._update_dialog_open = True
+    for app_state in (controller_module.APP_STATE_UNAVAILABLE,
+                      controller_module.APP_STATE_CURRENT,
+                      controller_module.APP_STATE_FAILED):
+        tray._manual_update_check = True
+        tray._on_round_finished(app_state, controller_module.HOLIDAYS_STATE_FAILED)
+    tray._update_dialog_open = False
+    tray._active_update_popup = None
+    assert notified == []
+    assert popup.raised == 3  # brought forward once per suppressed notice
+
+
+def test_manual_round_notice_silent_while_popup_pending(tray, monkeypatch):
+    """A popup already scheduled is still a decision the notice must not cover."""
+    notified = _notify_recorder(monkeypatch)
+    tray._active_update_popup = None
+    tray._update_popup_pending = True
+    tray._manual_update_check = True
+    tray._on_round_finished(controller_module.APP_STATE_CURRENT,
+                            controller_module.HOLIDAYS_STATE_CURRENT)
+    tray._update_popup_pending = False
+    assert notified == []
+
+
+def test_update_popup_dismisses_open_round_notice(tray, monkeypatch):
+    """When the popup takes over, the round notice must not sit underneath it."""
+    dismissed = []
+    monkeypatch.setattr(controller_module.ConfirmDialog, "dismiss_active_notice",
+                        staticmethod(lambda key: dismissed.append(key) or True))
+    _answer_update_popup(tray, monkeypatch, None)  # popup is dismissed again
+    tray._show_update_popup("9.9.9", "http://x", "")
+    assert dismissed == [controller_module.UPDATE_CHECK_NOTICE_KEY]
+
+
+
     tray._update_dialog_open = True
     chosen = []
     monkeypatch.setattr(controller_module.ConfirmDialog, "choose",

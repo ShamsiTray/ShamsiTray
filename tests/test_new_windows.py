@@ -32,6 +32,16 @@ def _ensure_qapp(qapp):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_active_notice():
+    """Keep the class-level keyed-notice slot from leaking across tests."""
+    ConfirmDialog._active_notice = None
+    ConfirmDialog._active_notice_key = None
+    yield
+    ConfirmDialog._active_notice = None
+    ConfirmDialog._active_notice_key = None
+
+
 # --- event manager ---
 
 @pytest.fixture
@@ -1240,8 +1250,126 @@ def test_confirm_dialog_notify_without_detail_keeps_the_box_hidden(qtbot, monkey
     assert dialogs[0].detail_label.text() == ""
 
 
-# --- update checker uses the themed dialogs ---
+# --- keyed notices: in-place replacement ---------------------------------------------
 
+def test_keyed_notify_updates_open_notice_instead_of_stacking(monkeypatch):
+    """A second result of the same key re-words the open notice and raises it;
+    no second window is built."""
+    built = []
+    real_init = ConfirmDialog.__init__
+
+    def capturing_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        built.append(self)
+
+    monkeypatch.setattr(ConfirmDialog, "__init__", capturing_init)
+    raised, activated = [], []
+
+    def fake_exec_centered(self, parent=None):
+        if len(built) == 1:  # a newer result lands while this notice is up
+            monkeypatch.setattr(self, "raise_", lambda: raised.append(True))
+            monkeypatch.setattr(self, "activateWindow", lambda: activated.append(True))
+            ConfirmDialog.notify(None, "بررسی بروزرسانی", "بررسی ناموفق بود.",
+                                 danger=True, glyph="\uf071", key="update-check")
+        return 0
+
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", fake_exec_centered)
+    ConfirmDialog.notify(None, "بررسی بروزرسانی", "برنامه بروز است.",
+                         glyph="\uf021", key="update-check")
+    assert len(built) == 1
+    assert built[0].message_label.text() == "بررسی ناموفق بود."
+    assert raised == [True]
+    assert activated == [True]
+
+
+def test_keyed_notify_builds_fresh_notice_after_first_closes(monkeypatch):
+    """Once the first notice closed, the next keyed call opens a new window."""
+    built = []
+    real_init = ConfirmDialog.__init__
+
+    def capturing_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        built.append(self)
+
+    monkeypatch.setattr(ConfirmDialog, "__init__", capturing_init)
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", lambda self, parent=None: 0)
+    ConfirmDialog.notify(None, "t", "first", key="update-check")
+    assert ConfirmDialog._active_notice is None  # cleared by the finally
+    ConfirmDialog.notify(None, "t", "second", key="update-check")
+    assert len(built) == 2
+    assert built[0] is not built[1]
+    assert ConfirmDialog._active_notice is None
+
+
+def test_unrelated_notify_does_not_overwrite_active_keyed_notice(monkeypatch):
+    """An ordinary (unkeyed) notice must not touch the open keyed notice."""
+    keyed = {}
+
+    def fake_exec_centered(self, parent=None):
+        keyed["dialog"] = self
+        ConfirmDialog.notify(None, "ذخیره رویدادها", "ذخیره رویدادها ناموفق بود.")
+        return 0
+
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", fake_exec_centered)
+    chosen = []
+    monkeypatch.setattr(ConfirmDialog, "choose",
+                        staticmethod(lambda *a, **k: chosen.append(a) or None))
+    ConfirmDialog.notify(None, "بررسی بروزرسانی", "برنامه بروز است.",
+                         key="update-check")
+    assert chosen  # the ordinary notice went down its own choose() path
+    assert keyed["dialog"].message_label.text() == "برنامه بروز است."
+
+
+def test_dismiss_active_notice_is_idempotent():
+    """Clearing is identity-based, so a repeated dismiss is a harmless no-op."""
+    dialog = ConfirmDialog(None, "t", "m", actions=[("باشه", "accent")])
+    ConfirmDialog._active_notice = dialog
+    ConfirmDialog._active_notice_key = "update-check"
+    rejects = []
+    dialog.reject = lambda: rejects.append(True)
+    assert ConfirmDialog.dismiss_active_notice("update-check") is True
+    assert rejects == [True]
+    assert ConfirmDialog._active_notice is None
+    assert ConfirmDialog._active_notice_key is None
+    assert ConfirmDialog.dismiss_active_notice("update-check") is False
+    assert rejects == [True]  # never rejected twice
+
+
+def test_clear_active_notice_ignores_an_older_dialog():
+    """The identity guard stops an older dialog's cleanup from clearing a newer
+    instance that already owns the slot."""
+    older = ConfirmDialog(None, "t", "older", actions=[("باشه", "accent")])
+    newer = ConfirmDialog(None, "t", "newer", actions=[("باشه", "accent")])
+    ConfirmDialog._active_notice = newer
+    ConfirmDialog._active_notice_key = "update-check"
+    ConfirmDialog._clear_active_notice(older)
+    assert ConfirmDialog._active_notice is newer
+    assert ConfirmDialog._active_notice_key == "update-check"
+    ConfirmDialog._clear_active_notice(newer)
+    assert ConfirmDialog._active_notice is None
+    assert ConfirmDialog._active_notice_key is None
+
+
+def test_dismissed_notice_exec_finishes_without_stale_state(monkeypatch):
+    """A notice dismissed by the popup lets its exec_centered return cleanly and
+    leaves no tracked reference behind."""
+    finished = []
+
+    def fake_exec_centered(self, parent=None):
+        # The popup takes over while this notice is up.
+        assert ConfirmDialog.dismiss_active_notice("update-check") is True
+        finished.append(True)
+        return 0
+
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", fake_exec_centered)
+    ConfirmDialog.notify(None, "بررسی بروزرسانی", "برنامه بروز است.",
+                         key="update-check")
+    assert finished == [True]  # exec_centered returned normally
+    assert ConfirmDialog._active_notice is None
+    assert ConfirmDialog._active_notice_key is None
+
+
+# --- update checker uses the themed dialogs ---
 def _answer_update_popup(monkeypatch, choice):
     """Answer the update popup without entering its modal loop.
 
