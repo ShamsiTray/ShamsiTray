@@ -82,6 +82,11 @@ AUTO_CHECK_REARM_INTERVAL_MS = 60 * 60 * 1000
 HOLIDAY_RETRY_DELAY_MS = 10 * 60 * 1000
 HOLIDAY_RETRY_MAX_ATTEMPTS = 3
 
+# Every manual round report shares one replacement key, so a second result
+# rewrites the open notice (and raises it) instead of stacking a second window.
+# The update popup outranks these notices and dismisses only this key's notice.
+UPDATE_CHECK_NOTICE_KEY = "update-check"
+
 # Windows broadcasts WM_TIMECHANGE to every top-level window, and the time
 # service can emit a burst of them while re-syncing. Coalescing them makes a
 # burst of any length cost one refresh (expiry cleanup + calendar rebuild + tray
@@ -486,6 +491,9 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _show_update_popup(self, version: str, installer_url: str, sha256: str):
         self._update_popup_pending = False
+        # The popup outranks the round notices: any open update-check notice is
+        # answered by the popup now, so it must not sit underneath it.
+        ConfirmDialog.dismiss_active_notice(UPDATE_CHECK_NOTICE_KEY)
         if self._update_dialog_open:
             return
         self._update_dialog_open = True
@@ -660,6 +668,15 @@ class SystemTrayIcon(QSystemTrayIcon):
         if app_state == APP_STATE_UPDATE_FOUND:
             # The deferred popup carries the report (and the extra holiday line).
             return
+        # The update popup outranks every notice: a manual result arriving while
+        # the popup is open (or already scheduled) must never stack a notice on
+        # top of the user's decision. Bring the popup forward instead. This
+        # guards UNAVAILABLE, every CURRENT wording and both FAILED wordings.
+        if self._update_dialog_open or self._update_popup_pending:
+            if self._active_update_popup is not None:
+                self._active_update_popup.raise_()
+                self._active_update_popup.activateWindow()
+            return
         if app_state == APP_STATE_UNAVAILABLE:
             # A newer release EXISTS but cannot be offered safely (no installer
             # asset, no valid sha256 digest, untrusted URL). Answering «بروز
@@ -669,40 +686,41 @@ class SystemTrayIcon(QSystemTrayIcon):
             ConfirmDialog.notify(
                 QApplication.activeWindow(), "بررسی بروزرسانی",
                 "نسخه جدید موجود است اما دانلود امن آن ممکن نیست.",
-                danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
+                danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION,
+                key=UPDATE_CHECK_NOTICE_KEY)
             return
         if app_state == APP_STATE_CURRENT:
             if holidays_state == HOLIDAYS_STATE_UPDATED:
                 ConfirmDialog.notify(
                     QApplication.activeWindow(), "بررسی بروزرسانی",
                     "فایل تعطیلات به‌روزرسانی شد.",
-                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
+                    key=UPDATE_CHECK_NOTICE_KEY)
             elif holidays_state == HOLIDAYS_STATE_CURRENT:
                 ConfirmDialog.notify(
                     QApplication.activeWindow(), "بررسی بروزرسانی",
                     "برنامه و فایل تعطیلات بروز است.",
-                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
+                    key=UPDATE_CHECK_NOTICE_KEY)
             else:
                 ConfirmDialog.notify(
                     QApplication.activeWindow(), "بررسی بروزرسانی",
                     "برنامه بروز است؛ بررسی فایل تعطیلات ناموفق بود.",
-                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE)
+                    glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
+                    key=UPDATE_CHECK_NOTICE_KEY)
         elif app_state == APP_STATE_FAILED:
             if holidays_state == HOLIDAYS_STATE_UPDATED:
                 ConfirmDialog.notify(
                     QApplication.activeWindow(), "بررسی بروزرسانی",
                     "فایل تعطیلات به‌روزرسانی شد، اما بررسی برنامه ناموفق بود.",
-                    danger=True, glyph=APP_CONFIG.FAS.FA_WIFI)
+                    danger=True, glyph=APP_CONFIG.FAS.FA_WIFI,
+                    key=UPDATE_CHECK_NOTICE_KEY)
             else:
-                # A failure arriving while the update popup is already up must
-                # never stack a second dialog on top of the user's decision.
-                if self._update_dialog_open or self._update_popup_pending:
-                    return
                 ConfirmDialog.notify(
                     QApplication.activeWindow(), "بررسی بروزرسانی",
                     "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
-                    danger=True,
-                    glyph=APP_CONFIG.FAS.FA_WIFI)
+                    danger=True, glyph=APP_CONFIG.FAS.FA_WIFI,
+                    key=UPDATE_CHECK_NOTICE_KEY)
 
     def _handle_holidays_round_bookkeeping(self, holidays_state: str):
         """Retry bookkeeping for the quiet holiday fetch.

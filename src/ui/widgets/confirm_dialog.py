@@ -42,6 +42,12 @@ from utils.ui_helpers import FramelessDragMixin
 class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
     """A themed modal ask: icon badge, title, short message, detail box, buttons."""
 
+    # The open notice opened under a replacement key, and that key. A newer
+    # result of the SAME key re-words this dialog instead of stacking a second
+    # window; ordinary (unkeyed) notices are never tracked.
+    _active_notice: Optional["ConfirmDialog"] = None
+    _active_notice_key: Optional[str] = None
+
     def __init__(self, parent, title: str, message: str, *, detail: str = "",
                  confirm_text: str = "تایید", cancel_text: str = "انصراف",
                  danger: bool = True, width: int = 340,
@@ -148,7 +154,7 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
     def notify(parent, title: str, message: str, *, detail: str = "",
                danger: bool = False,
                glyph: Optional[str] = None, button_text: str = "باشه",
-               width: int = 340) -> None:
+               width: int = 340, key: Optional[str] = None) -> None:
         """Single-button themed notice (replaces the stock informational boxes).
 
         Takes the same ``detail`` line as ``ask``/``choose`` so a notice can show
@@ -157,7 +163,59 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
         Failure notices (``danger=True``) style the OK button in the holiday red
         of the destructive actions instead of the accent blue, so an error dialog
         reads as an error at a glance - icon, badge and button all agree.
+
+        ``key`` opts a notice into single-instance replacement: while a notice
+        opened under the same key is up, a new call re-words it in place and
+        raises it rather than opening a second window. Unkeyed notices (every
+        other caller) keep the ordinary, untracked modal behavior.
         """
-        ConfirmDialog.choose(parent, title, message,
-                             actions=[(button_text, "danger" if danger else "accent")],
-                             danger=danger, detail=detail, glyph=glyph, width=width)
+        if key is None:
+            ConfirmDialog.choose(parent, title, message,
+                                 actions=[(button_text, "danger" if danger else "accent")],
+                                 danger=danger, detail=detail, glyph=glyph, width=width)
+            return
+        existing = ConfirmDialog._active_notice
+        if existing is not None and ConfirmDialog._active_notice_key == key:
+            existing.apply_notice(title, message, detail=detail, danger=danger,
+                                  glyph=glyph, button_text=button_text)
+            existing.setWindowTitle(title)
+            existing.raise_()
+            existing.activateWindow()
+            return
+        dialog = ConfirmDialog(parent, title, message, detail=detail, danger=danger,
+                               glyph=glyph, width=width,
+                               actions=[(button_text, "danger" if danger else "accent")])
+        ConfirmDialog._active_notice = dialog
+        ConfirmDialog._active_notice_key = key
+        try:
+            dialog.exec_centered(parent)
+        finally:
+            ConfirmDialog._clear_active_notice(dialog)
+
+    @staticmethod
+    def _clear_active_notice(dialog) -> None:
+        """Drop the tracked notice only if it is still ``dialog``.
+
+        The identity guard is what stops an older, dismissed dialog's cleanup
+        from clearing a newer instance that already took the slot.
+        """
+        if ConfirmDialog._active_notice is dialog:
+            ConfirmDialog._active_notice = None
+            ConfirmDialog._active_notice_key = None
+
+    @staticmethod
+    def dismiss_active_notice(key: str) -> bool:
+        """Reject the open notice opened under ``key``; True if one was dismissed.
+
+        The tracked references are cleared BEFORE rejecting: the dialog's own
+        ``finally`` then sees a non-matching identity and cannot double-clear (or
+        clear a newer instance). A second call finds the reference clear and is a
+        no-op, so it is safe to call again.
+        """
+        dialog = ConfirmDialog._active_notice
+        if dialog is None or ConfirmDialog._active_notice_key != key:
+            return False
+        ConfirmDialog._active_notice = None
+        ConfirmDialog._active_notice_key = None
+        dialog.reject()
+        return True
