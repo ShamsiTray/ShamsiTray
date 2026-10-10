@@ -431,13 +431,11 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._manual_update_check = manual
             logger.info(f"Checking for updates ({'manual' if manual else 'automatic'}).")
         elif manual:
-            # A manual press during a running round used to be a dead click (the
-            # button "looked broken" in the first minute after launch, while the
-            # scheduled auto check was in flight). Mark the running round as
-            # manual instead, so it reports to the user when it concludes -
-            # UNLESS the busy round is the quiet holidays-only refresh, which
-            # must never message: there the full check is queued and starts the
-            # moment the refresh concludes.
+            # A manual press during a running round marks that round as manual,
+            # so it reports to the user when it concludes - UNLESS the busy
+            # round is the quiet holidays-only refresh, which must never
+            # message: there the full check is queued and starts the moment
+            # the refresh concludes.
             if self.update_checker.round_kind == "holidays":
                 self._queued_full_check_after_holidays = True
                 logger.info("Manual update check requested during the quiet "
@@ -457,9 +455,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Manual-ness is read from the round snapshot, not the live flag: the
         # checker emits round_finished BEFORE check_concluded, and
         # _on_round_finished has already consumed _manual_update_check into
-        # _round_was_manual by the time this runs - the live flag is always
-        # False here, so a failed MANUAL round used to be retried like a silent
-        # automatic one.
+        # _round_was_manual by the time this runs, so the live flag is always
+        # False here.
         if not self._round_was_manual and self._auto_check_retries < AUTO_CHECK_MAX_RETRIES:
             self._auto_check_retries += 1
             logger.warning(
@@ -612,9 +609,8 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _on_no_updates(self):
         # Manual-check messages live in _on_round_finished, so one end-of-round
-        # handler can cover every app/holidays combination - this signal used to
-        # announce "app and holiday file are up to date" even when the holiday
-        # fetch had failed.
+        # handler can cover every app/holidays combination; this signal only
+        # logs.
         logger.info("No updates available (app and holiday data current).")
 
     def _on_check_failed(self, reason: str):

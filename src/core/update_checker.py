@@ -370,8 +370,8 @@ class UpdateChecker(QObject):
                 pass
             elif holidays_state == HOLIDAYS_STATE_CURRENT:
                 # "No updates" must mean the holidays are CURRENT, not merely
-                # "didn't change": a failed holiday fetch used to be announced
-                # as "app and holiday file are up to date".
+                # "didn't change": a failed holiday fetch must not read as
+                # "app and holiday file are up to date".
                 self.no_updates.emit()
         # One end-of-round signal carrying the WHOLE verdict, so the controller
         # can message a manual check without reporting the two halves separately

@@ -821,8 +821,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
             return
         self._cancel_day_tooltips()
         distance = describe_date_distance(jdate, today=self.current_date)
-        # The shared long formatter: the exact line this window used to build
-        # inline, now also used by the copy menu and the converter.
+        # The shared long formatter, also used by the copy menu and the converter.
         date_line = format_jalali_long(jdate)
         if distance.is_today:
             lines = ["تاریخ امروز است.", date_line]

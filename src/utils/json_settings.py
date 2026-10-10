@@ -49,8 +49,8 @@ class JsonSettings:
         if self._data.get(key) == value and not self._dirty:
             return
         # An equal-value write must still be retried while any flush has failed:
-        # the early return used to strand the value in memory forever, so a
-        # restart silently brought the old value back.
+        # returning early would leave the value only in memory, and a restart
+        # would silently bring the old value back.
         self._data[key] = value
         if self._flush():
             self._dirty.clear()

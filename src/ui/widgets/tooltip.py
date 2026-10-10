@@ -29,13 +29,11 @@ class CustomTooltip(QWidget):
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._layout.addWidget(self._label)
 
-        # One reusable auto-hide timer for the copy confirmations. The callers
-        # used to schedule their own QTimer.singleShot(600, hide), which cannot
-        # be cancelled: a second copy inside the first one's window was cut
-        # short by the FIRST timer's deadline, and the orphan timer could then
-        # hide an unrelated tooltip (a holiday, say) mid-display. Restarting a
-        # single shot gives every copy its own full window and leaves no
-        # stragglers.
+        # One reusable auto-hide timer for the copy confirmations. Restarting a
+        # single shot gives every copy its own full window; separate
+        # QTimer.singleShot calls cannot be cancelled, so an earlier one could
+        # cut a later copy short or hide an unrelated tooltip (a holiday, say)
+        # mid-display.
         self._auto_hide_timer = QTimer(self)
         self._auto_hide_timer.setSingleShot(True)
         self._auto_hide_timer.timeout.connect(self.hide)
