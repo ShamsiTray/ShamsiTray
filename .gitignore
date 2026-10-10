@@ -213,3 +213,9 @@ assets/images/LogoEvolution/
 
 # Publicity/download badges (not bundled with the app)
 assets/images/badges/
+
+# Output directories
+output/
+
+# opencode session state
+/.opencode/
