@@ -17,7 +17,7 @@ from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
-from utils.date_utils import is_jalali_leap_year, persian_month_name, to_persian_digits
+from utils.date_utils import days_in_jalali_month, persian_month_name, to_persian_digits
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import EventInputWidget
@@ -59,9 +59,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.fill_calendar_grid()
 
     def hideEvent(self, event):
-        """Override hideEvent to also close the 'Go To Date' window."""
+        """Override hideEvent to also close the 'Go To Date' window and its overlay,
+        so a stale overlay can never eat mouse input after the calendar reopens."""
         if self.go_to_window and self.go_to_window.isVisible():
             self.go_to_window.close()
+        self.overlay_blocker.hide()
         super().hideEvent(event)
 
     def set_user_events(self, user_events: dict):
@@ -352,9 +354,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 month -= 12
                 year += 1
 
-        max_day = 31 if month <= 6 else (30 if month <= 11 else (30 if is_jalali_leap_year(year) else 29))
-        day = min(self.display_date.day, max_day)
-
+        day = min(self.display_date.day, days_in_jalali_month(year, month))
         self.display_date = jdatetime.date(year, month, day)
         self.fill_calendar_grid()
 
@@ -369,8 +369,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def go_to_date(self, year, month):
         try:
-            max_day = 31 if month <= 6 else (30 if month <= 11 else (30 if is_jalali_leap_year(year) else 29))
-            day = min(self.display_date.day, max_day)
+            day = min(self.display_date.day, days_in_jalali_month(year, month))
             self.display_date = jdatetime.date(year, month, day)
             self.fill_calendar_grid()
         except (ValueError, TypeError):
@@ -401,21 +400,39 @@ class PersianCalendarWidget(BaseFramelessWindow):
         menu.exec(self.mapToGlobal(pos))
     
     def _open_go_to_date_window(self):
-        if self.go_to_window is None or not self.go_to_window.isVisible():
+        if self.go_to_window is not None and not self.go_to_window.isVisible():
+            # Stale hidden instance from a previous open — discard it.
+            self.go_to_window.deleteLater()
+            self.go_to_window = None
+        if self.go_to_window is None:
             self.overlay_blocker.setGeometry(self.rect())
             self.overlay_blocker.show()
             self.overlay_blocker.raise_()
-            self.go_to_window = GoToDateWindow(self)
-            self.go_to_window.date_selected.connect(self.go_to_date)
-            self.go_to_window.destroyed.connect(lambda: self.overlay_blocker.hide())
-            self.go_to_window.cancel_button.clicked.connect(self.overlay_blocker.hide)
+            window = GoToDateWindow(self)
+            self.go_to_window = window
+            # Delete on close so the destroyed signal always tears the overlay down,
+            # no matter which close path (cancel, confirm, calendar hidden) is taken.
+            window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            window.date_selected.connect(self.go_to_date)
+            # destroyed carries no argument; the handler reads sender() itself,
+            # so a stale window that died after being replaced cannot clear the
+            # current one.
+            window.destroyed.connect(self._on_go_to_window_destroyed)
+            window.cancel_button.clicked.connect(self.overlay_blocker.hide)
             parent_size = self.size()
-            child_size = self.go_to_window.size()
+            child_size = window.size()
             x = (parent_size.width() - child_size.width()) // 2
             y = (parent_size.height() - child_size.height()) // 2
-            self.go_to_window.move(x, y)
-            self.go_to_window.show()
-            self.go_to_window.raise_()
+            window.move(x, y)
+            window.show()
+            window.raise_()
+
+    def _on_go_to_window_destroyed(self):
+        if self.sender() is not self.go_to_window:
+            # A stale instance finished dying after a newer one replaced it.
+            return
+        self.go_to_window = None
+        self.overlay_blocker.hide()
 
     def _show_event_input_widget(self, jdate: jdatetime.date):
         if not jdate or self.event_input_widget.isVisible():
@@ -435,11 +452,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.event_input_widget.raise_()
 
     def _handle_event_saved(self, text: str, is_yearly: bool, remove_after_finish: bool):
+        # Save is disabled while the text is empty, so an empty text here is impossible;
+        # event deletion goes through the context menu (_remove_event) instead.
         if self.editing_date:
-            if text: 
-                self.event_added.emit(jdatetime.date(self.editing_date.year, self.editing_date.month, self.editing_date.day), text, is_yearly, remove_after_finish)
-            else: 
-                self.event_removed.emit(jdatetime.date(self.editing_date.year, self.editing_date.month, self.editing_date.day))
+            self.event_added.emit(self.editing_date, text, is_yearly, remove_after_finish)
         self._hide_event_input_widget()
 
     def _handle_event_canceled(self):

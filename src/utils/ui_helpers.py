@@ -3,15 +3,15 @@ UI Helper Functions
 -------------------
 
 This module contains utility functions related to creating or manipulating
-UI elements, such as dynamically drawing pixmaps.
+UI elements, such as dynamically drawing pixmaps or building shared stylesheets.
 """
-from PyQt6.QtCore import Qt, QEvent
-from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap, QStandardItemModel
-from PyQt6.QtWidgets import QApplication, QComboBox
+from typing import Optional
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG
-
-import time
 
 def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
     """
@@ -41,51 +41,34 @@ def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
 
     return pixmap
 
-def apply_combo_style(combo: QComboBox) -> None:
+def combo_stylesheet(
+    palette: dict,
+    *,
+    padding: str = "8px 5px",
+    center_text: bool = False,
+    dropdown_bg: Optional[str] = None,
+    dropdown_border_key: str = 'CALENDAR_BORDER_COLOR',
+    scrollbar_width: int = 10,
+    zero_drop_down: bool = True,
+) -> str:
     """
-    Applies a centered, and stable toggle behavior to a QComboBox.
+    Builds the shared QComboBox stylesheet used by the converter and the
+    go-to-date popup. Parameters cover the small per-window visual differences.
     """
-    combo.setEditable(True)
-    
-    line_edit = combo.lineEdit()
-    line_edit.setReadOnly(True)
-    line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    line_edit.setCursor(Qt.CursorShape.PointingHandCursor)
-    combo.view().viewport().setCursor(Qt.CursorShape.PointingHandCursor)
-    combo.view().setMouseTracking(True)
-    line_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-    combo.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-
-    model = QStandardItemModel()
-    combo.setModel(model)
-
-    combo._last_close_time = 0
-    original_hide = combo.hidePopup
-
-    def patched_hide_popup():
-        combo._last_close_time = time.time()
-        original_hide()
-
-    combo.hidePopup = patched_hide_popup
-    
-    line_edit.installEventFilter(combo)
-    
-    def custom_event_filter(obj, event):
-        if obj == combo.lineEdit() and event.type() == QEvent.Type.MouseButtonPress:
-            if event.button() != Qt.MouseButton.LeftButton:
-                    return True
-            if time.time() - getattr(combo, '_last_close_time', 0) < 0.2:
-                return True
-            if not combo.view().isVisible():
-                combo.showPopup()
-            return True
-        
-        if event.type() == QEvent.Type.MouseButtonDblClick:
-             return True
-            
-        if event.type() == QEvent.Type.MouseMove:
-            return True
-
-        return False
-
-    combo.eventFilter = custom_event_filter
+    dropdown_color = dropdown_bg if dropdown_bg is not None else palette['INPUT_BG_COLOR']
+    dropdown_border_rule = "border: 0px; width: 0px; height: 0px;" if zero_drop_down else "border: 0px;"
+    scrollbar_style = (
+        f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: {scrollbar_width}px; margin: 0px; border-radius: {scrollbar_width // 2}px; }}"
+        f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: {scrollbar_width // 2}px; min-height: 20px; }}"
+        f"QAbstractItemView::add-line:vertical, QAbstractItemView::sub-line:vertical {{ height: 0px; }}"
+        f"QAbstractItemView::add-page:vertical, QAbstractItemView::sub-page:vertical {{ background: none; }}")
+    text_align_rule = " text-align: center;" if center_text else ""
+    return (
+        f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px;{text_align_rule} selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;}}"
+        f"QComboBox:hover, QComboBox:focus, QComboBox::on {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
+        f"QComboBox::drop-down {{ {dropdown_border_rule} }}"
+        f"QComboBox QAbstractItemView {{ background-color: {dropdown_color}; color: {palette['TEXT_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; border: 1px solid {palette[dropdown_border_key]}; border-radius: 8px; outline: none;}}"
+        f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none; }}"
+        f"QComboBox QAbstractItemView::item:hover {{ background-color: {palette['HOVER_BG']}; border-radius: 4px; }}"
+        f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
+        f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)

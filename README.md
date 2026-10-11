@@ -56,7 +56,6 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 
 ## 🐛 Known Issues
 
-- The context menu’s bottom-right corner slightly exceeds the bounds; despite numerous attempts to fix it, none were successful. The issue is barely noticeable in dark mode and somewhat more visible in light mode.
 - Tray icon for the date **23** slightly exceed bounds, though it’s barely noticeable.
 
 ## 📝 Notes

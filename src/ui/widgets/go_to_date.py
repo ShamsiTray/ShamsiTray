@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayo
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
-from utils.ui_helpers import apply_combo_style
+from utils.ui_helpers import combo_stylesheet
 
 class GoToDateWindow(QWidget):
     """A small, non-movable window to jump to a specific month and year."""
@@ -55,7 +55,6 @@ class GoToDateWindow(QWidget):
         main_layout.addWidget(self.title_label)
         
         self.month_combo = QComboBox()
-        apply_combo_style(self.month_combo)
         self.month_combo.setMaxVisibleItems(5)
         month_names = [f"{to_persian_digits(str(i).zfill(2))} - {persian_month_name(i)}" for i in range(1, 13)]
         for name in month_names:
@@ -119,21 +118,13 @@ class GoToDateWindow(QWidget):
         
         self.error_label.setStyleSheet(f"color: red; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
 
-        scrollbar_style = (
-            f"QAbstractItemView::verticalScrollBar {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: 8px; margin: 0px; border-radius: 4px; }}"
-            f"QAbstractItemView::verticalScrollBar::handle {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: 4px; min-height: 20px; }}")
-        
-        combo_style = (
-            f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; }}"
-            f"QComboBox:focus, QComboBox::on, QComboBox:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
-            f"QComboBox::drop-down {{ border: 0px; }}"
-            f"QComboBox QAbstractItemView {{ background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; outline: 0px; }}"
-            f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none }}"
-            f"QComboBox QAbstractItemView::item:hover {{ background-color: {palette['HOVER_BG']}; border-radius: 4px; }}"
-            f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
-            f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
-
-        self.month_combo.setStyleSheet(combo_style)
+        self.month_combo.setStyleSheet(combo_stylesheet(
+            palette,
+            padding="5px",
+            dropdown_bg=palette['BACKGROUND_COLOR'],
+            dropdown_border_key='MENU_BORDER_COLOR',
+            scrollbar_width=8,
+            zero_drop_down=False))
         self.month_combo.view().setStyleSheet(f"QListView {{ background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}")
         
         self.year_input.setStyleSheet(

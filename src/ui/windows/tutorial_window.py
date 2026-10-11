@@ -10,7 +10,7 @@ import os
 import sys
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QMovie, QColor
 from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -31,7 +31,6 @@ except ImportError:
 
 class TutorialWindow(BaseFramelessWindow):
     """A window to display a first-time tutorial for the app."""
-    tutorial_closed = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -95,7 +94,6 @@ class TutorialWindow(BaseFramelessWindow):
             self.movie.stop()
             self.movie.deleteLater()
             self.movie = None
-        self.tutorial_closed.emit()
         self.close()
 
     def _apply_windows_styles(self):

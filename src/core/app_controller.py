@@ -144,26 +144,67 @@ class SystemTrayIcon(QSystemTrayIcon):
                 f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}")
     
     def _load_holidays_from_file(self) -> Dict[int, Dict[Tuple[int, int], List[str]]]:
+        # File-level failures (missing/corrupt file) yield an empty holiday set; per-entry
+        # failures are isolated so one bad entry cannot wipe every holiday for every year.
         try:
             with open(APP_CONFIG.HOLIDAYS_FILE_PATH, 'r', encoding='utf-8') as f:
-                raw_data = json.load(f).get('holidays', {})
-            holidays_data = {}
-            for year_str, events in raw_data.items():
-                year_int = int(year_str)
-                holidays_data[year_int] = {}
-                for month_day_str, desc in events.items():
-                    month, day = map(int, month_day_str.split('-'))
-                    holidays_data[year_int][(month, day)] = [desc] if isinstance(desc, str) else desc
-            logger.info("Holidays loaded successfully.")
-            return holidays_data
-        except (IOError, json.JSONDecodeError, ValueError) as e:
-            # If holidays fail to load, continue without them rather than blocking the app
-            logger.error(f"Failed to load or parse holidays file: {e}")
+                parsed = json.load(f)
+        except (IOError, OSError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to load holidays file, continuing without holidays: {e}")
             return {}
+
+        raw_data = parsed.get('holidays', {}) if isinstance(parsed, dict) else None
+        if not isinstance(raw_data, dict):
+            logger.error(f"Holidays file has unexpected root type ({type(parsed).__name__}), continuing without holidays.")
+            return {}
+
+        holidays_data: Dict[int, Dict[Tuple[int, int], List[str]]] = {}
+        skipped = 0
+        for year_str, events in raw_data.items():
+            try:
+                year_int = int(year_str)
+            except (ValueError, TypeError):
+                skipped += 1
+                logger.warning(f"Skipping invalid holiday year key {year_str!r}.")
+                continue
+            if not isinstance(events, dict):
+                skipped += 1
+                logger.warning(f"Skipping holiday year {year_str!r}: expected an object of month-day entries, got {type(events).__name__}.")
+                continue
+
+            year_holidays: Dict[Tuple[int, int], List[str]] = {}
+            for month_day_str, desc in events.items():
+                try:
+                    parts = str(month_day_str).split('-')
+                    if len(parts) != 2:
+                        raise ValueError(f"expected 'MM-DD', got {month_day_str!r}")
+                    month, day = int(parts[0]), int(parts[1])
+                    if not (1 <= month <= 12 and 1 <= day <= 31):
+                        raise ValueError(f"month/day out of range in {month_day_str!r}")
+                    if isinstance(desc, str):
+                        descriptions = [desc]
+                    elif isinstance(desc, list) and all(isinstance(d, str) for d in desc):
+                        descriptions = desc
+                    else:
+                        raise TypeError(f"description must be a string or a list of strings, got {type(desc).__name__}")
+                except (ValueError, TypeError) as e:
+                    skipped += 1
+                    logger.warning(f"Skipping invalid holiday entry {year_str!r}/{month_day_str!r}: {e}")
+                    continue
+                year_holidays[(month, day)] = descriptions
+            holidays_data[year_int] = year_holidays
+
+        total = sum(len(v) for v in holidays_data.values())
+        if skipped:
+            logger.warning(f"Holidays loaded with {skipped} invalid entr{'y' if skipped == 1 else 'ies'} skipped ({total} valid entries kept).")
+        else:
+            logger.info(f"Holidays loaded successfully ({total} entries).")
+        return holidays_data
 
     def _load_user_events(self) -> Dict[str, dict]:
         """Loads user events from QSettings and ensures they are in the new format."""
-        events = self.settings.value(APP_CONFIG.USER_EVENTS_SETTING_KEY, {}, type=dict)
+        raw_value = self.settings.value(APP_CONFIG.USER_EVENTS_SETTING_KEY)
+        events = self._normalize_user_events(raw_value)
         migrated = False
         for key, value in list(events.items()):
             if isinstance(value, str):
@@ -172,18 +213,48 @@ class SystemTrayIcon(QSystemTrayIcon):
             elif isinstance(value, dict) and "remove_after_finish" not in value:
                 value["remove_after_finish"] = False
                 migrated = True
+            elif not isinstance(value, dict):
+                logger.warning(f"Dropping malformed user event entry {key!r} (unexpected type {type(value).__name__}).")
+                del events[key]
+                migrated = True
         if migrated:
-            logger.info("Migrated old event format to new format.")
-            self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, events)
+            logger.info("Migrated or cleaned user event format.")
+            self._save_user_events()
         logger.info(f"Loaded {len(events)} user events.")
         return events
 
+    def _normalize_user_events(self, raw_value) -> Dict[str, dict]:
+        """Coerces the raw stored events value into a dict, tolerating corrupt data."""
+        if raw_value is None:
+            return {}
+        if isinstance(raw_value, dict):
+            return dict(raw_value)
+        if isinstance(raw_value, str):
+            try:
+                parsed = json.loads(raw_value)
+            except (ValueError, TypeError):
+                logger.warning("Stored user events value is not valid JSON; starting with an empty event set.")
+                return {}
+            if isinstance(parsed, dict):
+                return parsed
+            logger.warning(f"Stored user events JSON has unexpected root type ({type(parsed).__name__}); starting with an empty event set.")
+            return {}
+        logger.warning(f"Stored user events value has unexpected type ({type(raw_value).__name__}); starting with an empty event set.")
+        return {}
+
     def _save_user_events(self):
-        self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, self.user_events)
-        logger.info(f"Saved {len(self.user_events)} user events.")
+        try:
+            self.settings.setValue(APP_CONFIG.USER_EVENTS_SETTING_KEY, self.user_events)
+            logger.info(f"Saved {len(self.user_events)} user events.")
+        except Exception as e:
+            # Persistence failed: keep the in-memory state valid and report it, never crash.
+            logger.error(f"Failed to persist user events (in-memory state kept): {e}")
 
     def add_user_event(self, jdate: jdatetime.date, text: str, is_yearly: bool, remove_after_finish: bool):
         if not jdate:
+            return
+        if not text or not text.strip():
+            logger.warning("Ignoring attempt to add a user event with empty text.")
             return
         self.remove_user_event(jdate, save=False)
         
@@ -251,7 +322,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         
         user_event_text, _, _ = self.calendar_widget._get_user_event_for_date(new_date)
         is_user_event = bool(user_event_text)
-        is_holiday = new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day))
+        is_holiday = bool(new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day)))
         
         color = APP_CONFIG.TRAY_ICON_DARK_COLOR if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.TRAY_ICON_LIGHT_COLOR
         if is_user_event:
@@ -331,9 +402,8 @@ class SystemTrayIcon(QSystemTrayIcon):
                 self.show_calendar()
 
     def show_calendar(self):
-        if self.calendar_widget.selected_date != jdatetime.date.today():
-             self.calendar_widget.go_to_today()
-        
+        # Stay on the month the user was browsing; the calendar snaps back to today
+        # automatically on day changes (midnight timer / system time change).
         self.calendar_widget.fill_calendar_grid()
         self.calendar_widget.update_styles()
         

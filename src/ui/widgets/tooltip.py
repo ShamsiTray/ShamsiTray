@@ -35,11 +35,11 @@ class CustomTooltip(QWidget):
             cls._instance = CustomTooltip()
         return cls._instance
     
-    def show_tooltip(self, text: str, global_pos: QPoint, palette: dict):
+    def show_tooltip(self, text: str, global_pos: QPoint):
         if not text:
             self.hide()
             return
-        
+
         palette = APP_CONFIG.get_current_palette()
         self._label.setStyleSheet(f"QLabel {{background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 6px 10px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold;}}")
         
