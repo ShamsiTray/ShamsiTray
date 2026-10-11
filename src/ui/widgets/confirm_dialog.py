@@ -4,8 +4,8 @@ Themed Confirmation Dialog
 
 `ConfirmDialog` is a small frameless, palette-aware replacement for the stock
 ``QMessageBox`` asks (delete / replace confirmations, update offers, notices).
-The native message box ignored the app theme entirely - system-styled buttons,
-wrong font, square corners - so destructive actions felt bolted-on.
+A native message box ignores the app theme entirely - system-styled buttons,
+wrong font, square corners - so destructive actions read as bolted-on.
 
 The card itself (badge, title, message, detail box, buttons, painting) lives in
 `confirm_card.ConfirmCard`; this class is only what makes it a *window*: modal
@@ -17,8 +17,8 @@ of that, so the two share the mixin rather than a QWidget base - see
 Design notes:
 - It is a real ``QDialog`` (``exec()`` works) but painted like every other
   frameless window of the app: rounded card, Vazirmatn, palette colors.
-- ``WindowModal`` blocks only the parent window, matching the old ``exec()``
-  behaviour on the parent without freezing the whole application.
+- ``WindowModal`` blocks only the parent window, so a prompt cannot freeze the
+  whole application.
 - The card is draggable from any of its blank surfaces (labels and stretches
   pass mouse events through to the dialog; buttons consume their own), with
   the same screen clamping the frameless windows use - a centered dialog is

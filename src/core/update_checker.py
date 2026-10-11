@@ -76,7 +76,7 @@ def _version_base_parts(value: str) -> Optional[Tuple[int, ...]]:
 
     ``1.4.0`` -> (1, 4, 0), ``v2.0`` -> (2, 0), ``1.5.0-beta`` -> (1, 5, 0),
     ``junk`` -> None. The suffix split is what makes a pre-release tag
-    comparable at all: ``int('0-beta')`` raised and the whole tag was silently
+    comparable at all: without it, ``int('0-beta')`` raises and the tag is
     refused, which reads as "up to date" in the log.
     """
     text = str(value).strip().lstrip('vV ')
@@ -96,8 +96,8 @@ def is_prerelease_tag(tag: str) -> bool:
     The NAME-BASED fallback of ``is_prerelease_payload``, used only when the
     release payload carries no ``prerelease`` field of its own. Policy:
     pre-releases are never offered as updates - the caller skips them with a
-    clear log line instead of the old silent refusal, which looked exactly
-    like "the app is up to date".
+    clear log line rather than a refusal that reads exactly like "the app is
+    up to date".
     """
     text = str(tag).strip().lstrip('vV ')
     return '-' in text
@@ -164,9 +164,9 @@ def digest_hex(digest_field: str) -> Optional[str]:
 def is_valid_sha256(value: Optional[str]) -> bool:
     """True when ``value`` is a well-formed 64-char hex sha256 digest.
 
-    Used at the update-offer boundary: a missing/empty/malformed digest used to
-    slip through as '' and silently skip the final download checksum comparison,
-    accepting the installer unverified.
+    Used at the update-offer boundary: a missing/empty/malformed digest must
+    not slip through as '' and skip the final download checksum comparison,
+    leaving the installer accepted unverified.
     """
     return bool(value) and re.fullmatch(r"[0-9a-fA-F]{64}", value) is not None
 
@@ -399,9 +399,8 @@ class UpdateChecker(QObject):
             payload = json.loads(payload_text)
             tag = str(payload.get('tag_name', '')).strip()
             if is_prerelease_payload(payload, tag):
-                # Policy: pre-releases are never offered. The old parser choked
-                # on the suffix and logged the silent refusal as "App is up to
-                # date (latest release: 1.5.0-beta)".
+                # Policy: pre-releases are never offered; log the skip so it
+                # cannot be mistaken for "App is up to date".
                 logger.info(f"Ignoring pre-release {tag!r}; only stable releases are offered.")
                 return
             if not is_newer_version(tag, APP_CONFIG.APP_VERSION):
@@ -497,25 +496,24 @@ class UpdateChecker(QObject):
 
         Data is consumed in readyRead as it arrives and written straight to a
         `<name>.part` file, which is renamed over `destination` only after the
-        digest verifies. The old implementation buffered the entire installer
-        inside the reply and read it once at finished: a 60 MB download held
-        60 MB of RAM, and the finished-time readAll() could land after the
-        transport had already closed - the exact "read a closed device"
-        pattern behind Qt's "QIODevice::read (QSslSocket): device not open"
-        noise when the remote (or a middlebox) drops the connection right at
-        the end of the transfer. A crash mid-download leaves at worst a
-        harmless stray .part file in Downloads.
+        digest verifies. Streaming keeps RAM flat regardless of installer size,
+        and it never reads the reply after finished - a finished-time readAll()
+        can land after the transport has already closed, the exact "read a
+        closed device" pattern behind Qt's "QIODevice::read (QSslSocket):
+        device not open" noise when the remote (or a middlebox) drops the
+        connection right at the end of the transfer. A crash mid-download
+        leaves at worst a harmless stray .part file in Downloads.
 
-        Robustness: exactly one download may run at a time (a second start used
-        to overwrite the shared reply/hasher state mid-flight), an unhandled
-        OSError inside the readyRead slot used to abort the whole process (Qt
-        calls qFatal for slot exceptions), and a stalled connection used to hang
-        the dialog forever - an inactivity watchdog now fails the download after
-        DOWNLOAD_INACTIVITY_TIMEOUT_MS.
+        Robustness: exactly one download may run at a time (two would overwrite
+        the shared reply/hasher state mid-flight), the readyRead slot catches
+        OSError so a slot exception cannot abort the whole process (Qt calls
+        qFatal for those), and an inactivity watchdog fails a stalled connection
+        after DOWNLOAD_INACTIVITY_TIMEOUT_MS instead of hanging the dialog
+        forever.
 
         A rejected second request returns False and emits NOTHING: reusing
-        ``download_failed`` for it used to close the live download dialog and
-        display "download failed" while the first transfer was still running
+        ``download_failed`` for it would close the live download dialog and
+        display "download failed" while the first transfer is still running
         fine in the background.
         """
         if self._download_reply is not None:

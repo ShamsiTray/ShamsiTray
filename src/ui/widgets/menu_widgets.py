@@ -187,7 +187,7 @@ class TrayMenu(QMenu):
     Native QMenu::separator lines sit at fractional device positions, so at
     Windows scale factors like 125% / 150% a divider's one logical pixel of ink
     is split across one or two physical rows in a ratio that depends on where it
-    sits - which is why some dividers used to look thinner than others. Painting
+    sits - so dividers can look thinner than others. Painting
     every line from this menu's own paintEvent avoids that; see
     ``paint_device_snapped_hairline`` for the mechanism, which CenteredTextMenu
     shares so the calendar's day menu renders its dividers identically.

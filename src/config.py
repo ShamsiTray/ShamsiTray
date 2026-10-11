@@ -6,8 +6,6 @@ This module centralizes all static configuration for the ShamsiTray application,
 including application info, paths, settings keys, theme palettes, and UI constants.
 
 It's designed to be imported by any module that needs access to these settings.
-Date and asset-related helper functions have been moved to the `utils` package
-to keep this file focused solely on configuration data.
 """
 from pathlib import Path
 import os
@@ -85,8 +83,9 @@ class Config:
     # The three-valued appearance preference stored under
     # Appearance/ThemeChoice: "system" follows Windows light/dark live,
     # "light"/"dark" pin the theme. The key's ABSENCE reads as "system" too -
-    # the behaviour a fresh install has always had; the old toggle only ever
-    # wrote "light"/"dark", so existing pinned users keep their pin.
+    # the behaviour a fresh install has always had - and a stored "light"/"dark"
+    # stays pinned, so a preference written before the three-way choice keeps
+    # working.
     THEME_CHOICES = (Theme.SYSTEM, Theme.LIGHT, Theme.DARK)
 
     DARK_PALETTE = {
@@ -118,15 +117,14 @@ class Config:
         "CALENDAR_BACKGROUND_COLOR": "#ffffff", "CALENDAR_BORDER_COLOR": "#e5e7eb",
         "CALENDAR_TODAY_BG_COLOR": "rgba(156, 163, 175, 0.2)",
         "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(156, 163, 175, 0.35)",
-        # Tinted from the accent rather than left at the old green: these marks
-        # the SELECTED day next to an accent-blue today pill, so a second hue
-        # read as an unrelated state. Alpha is raised slightly to keep the day
-        # number legible now that the accent behind it is darker.
+        # Tinted from the accent so the selected day shares the hue of the
+        # today pill instead of reading as an unrelated state; the alpha keeps
+        # the day number legible over the accent.
         "CALENDAR_SELECTED_BG_COLOR": "rgba(26, 111, 168, 0.14)",
         "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(26, 111, 168, 0.24)",
         "MENU_BACKGROUND_COLOR": "#ffffff", "MENU_BORDER_COLOR": "#e5e7eb",
-        # 40 alpha was too faint to see at all against white; 60 keeps the row
-        # readable without competing with the menu's own border.
+        # 60 alpha keeps the hover row visible against white without competing
+        # with the menu's own border.
         "MENU_HOVER_COLOR": (60, 60, 60, 60), "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
     }
 

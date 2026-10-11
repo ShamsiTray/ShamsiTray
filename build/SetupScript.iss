@@ -247,8 +247,8 @@ function ShouldRemoveSettings(): Boolean;
 begin
   // The checkbox only exists when not UninstallSilent, but this is reached from
   // CurUninstallStepChanged(usPostUninstall) in silent mode too - where
-  // dereferencing it raised, skipping the DelTree below. The failure was SILENT:
-  // the exit code stayed 0, so unattended uninstalls reported success while
+  // dereferencing it raises, skipping the DelTree below. That failure is SILENT:
+  // the exit code stays 0, so unattended uninstalls report success while
   // leaving %LOCALAPPDATA%\ShamsiTray behind. Never trust the exit code to
   // reveal this class of error.
   Result := Assigned(RemoveSettingsCheckbox) and RemoveSettingsCheckbox.Checked;

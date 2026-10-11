@@ -278,10 +278,11 @@ class EventManagerWindow(BaseFramelessWindow):
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # One slot for the list and the «nothing found» label. Two siblings
-        # toggled independently collapsed the hidden one to zero height, and with
-        # nothing else asking for the stretch Qt handed the freed space to the
-        # title row - the header moved whenever a filter emptied the list. A
-        # QStackedWidget reports a constant size whichever page is current.
+        # toggled independently would collapse the hidden one to zero height,
+        # and with nothing else asking for the stretch Qt hands the freed space
+        # to the title row - the header moves whenever a filter empties the
+        # list. A QStackedWidget reports a constant size whichever page is
+        # current.
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.scroll_area)
         self.content_stack.addWidget(self.empty_label)

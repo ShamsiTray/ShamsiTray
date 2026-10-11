@@ -109,10 +109,10 @@ def validate_payload(payload: bytes) -> Optional[Tuple[dict, int]]:
 
     Returns (parsed_root, version) when the payload is JSON, carries a positive
     integer version, and its entries parse to at least one valid entry; None
-    otherwise. Comparing versions before this gate let a corrupt or unversioned
-    remote (version reads as 0) look exactly like "nothing newer" — an invalid
-    payload and a genuinely-old payload must be separate states, and only the
-    latter may silently end the check.
+    otherwise. Comparing versions before this gate would let a corrupt or
+    unversioned remote (version reads as 0) look exactly like "nothing newer" —
+    an invalid payload and a genuinely-old payload must be separate states, and
+    only the latter may silently end the check.
     """
     try:
         parsed = json.loads(payload.decode('utf-8'))

@@ -27,10 +27,9 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
 
     Subclasses set ``TASKBAR_ICON = True`` to opt into a real top-level window
     type: plain ``Qt.WindowType.Tool`` windows never get a taskbar entry, so a
-    minimized tool window could previously never be brought back. The calendar
-    popup and tutorial keep the Tool behaviour (a taskbar button for a quick
-    popup would be noise); the converter and the other tool windows show in
-    the taskbar like the converter always did.
+    minimized tool window cannot be brought back. The calendar popup and tutorial
+    keep the Tool behaviour (a taskbar button for a quick popup would be noise);
+    the converter and the other tool windows show in the taskbar.
 
     Dragging comes from ``FramelessDragMixin`` - including the Qt mouse-event
     routing: the top ``DRAGGABLE_AREA_HEIGHT`` pixels act as the grab strip, and

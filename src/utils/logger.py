@@ -92,12 +92,13 @@ def is_benign_qt_warning(message: str) -> bool:
 def install_qt_message_handler() -> None:
     """Route Qt's native diagnostics (qDebug/qWarning/qCritical) into the app log.
 
-    Qt's own messages previously went straight to stderr, so in the windowed
-    EXE they were invisible, while in dev runs they appeared unformatted and
-    uncorrelated with the log file. This handler mirrors every Qt message into
-    the shared rotating log (category kept when Qt provides one), drops the
-    known-benign warnings listed in ``_QT_BENIGN_WARNINGS`` entirely, and lets
-    fatal messages terminate the process like the default handler would.
+    Qt's own messages bypass Python logging entirely: they go straight to
+    stderr, which the windowed EXE hides, leaving dev runs to show them
+    unformatted and uncorrelated with the log file. This handler mirrors every
+    Qt message into the shared rotating log (category kept when Qt provides
+    one), drops the known-benign warnings listed in ``_QT_BENIGN_WARNINGS``
+    entirely, and lets fatal messages terminate the process like the default
+    handler would.
     """
     from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 

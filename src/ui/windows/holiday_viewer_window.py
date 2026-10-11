@@ -49,9 +49,9 @@ class HolidayViewerWindow(BaseFramelessWindow):
     def set_holidays(self, holidays_cache: Dict[int, Dict[Tuple[int, int], List[str]]]):
         """Swap the holiday cache and rebuild the visible year.
 
-        An open viewer used to keep showing the old data after a live holiday
-        auto-update until it was closed and reopened. The currently browsed year
-        is restored when the new data still offers it.
+        Applying the new cache in place keeps an open viewer from showing stale
+        data after a live holiday auto-update. The currently browsed year is
+        restored when the new data still offers it.
         """
         self.holidays_cache = holidays_cache
         previous_year = self._current_year()

@@ -21,7 +21,7 @@ records the clicked caption and calls `_finish_choice`, which each host
 implements - `QDialog` accepts or rejects, the overlay hides. `accept()` and
 `reject()` are `QDialog`-only and would raise on a plain widget host.
 
-Design notes carried over from the original `ConfirmDialog`:
+Design notes for the card's message and detail lines:
 - The main message/reason line is plain readable ``TEXT_COLOR`` - it is the one
   sentence that explains what is about to happen and must never read as
   de-emphasised grey; only secondary metadata stays muted.

@@ -4,11 +4,8 @@ Window Chrome
 
 Shared "window furniture" for the frameless windows: a caption row with
 close/minimize buttons and the Windows style tweak that restores native
-minimize/sysmenu behaviour on frameless top-level windows.
-
-Previously this logic was duplicated in the date converter and the tutorial
-window; every new tool window (event manager, holiday viewer) reuses it from
-here.
+minimize/sysmenu behaviour on frameless top-level windows. Every tool window
+(date converter, tutorial, event manager, holiday viewer) reuses it from here.
 """
 import sys
 

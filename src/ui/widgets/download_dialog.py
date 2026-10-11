@@ -2,10 +2,10 @@
 Themed Update Download Dialog
 -----------------------------
 
-`DownloadUpdateDialog` replaces the stock ``QProgressDialog`` that used to
-show the installer download. The stock dialog was the last native-styled
-surface in the update flow (the popup, the completion ask and every notice
-are already themed ``ConfirmDialog``s), and it ignored the app palette
+`DownloadUpdateDialog` is the themed installer-download card. The stock
+``QProgressDialog`` it stands in for is the last native-styled surface the
+update flow would otherwise use (the popup, the completion ask and every
+notice are themed ``ConfirmDialog``s), and it ignores the app palette
 entirely.
 
 Design notes:
@@ -98,8 +98,8 @@ class DownloadUpdateDialog(FramelessDragMixin, QDialog):
         """Fit the message label exactly around its wrapped text.
 
         Same word-wrapped-label sizeHint inflation as in ConfirmDialog: the short
-        «نسخه … در حال دریافت است…» line reported double its real height, and the
-        surplus showed up as dead air around the message. Pinning to
+        «نسخه … در حال دریافت است…» line reports double its real height, and the
+        surplus shows up as dead air around the message. Pinning to
         ``heightForWidth`` at the card's real inner width keeps the card compact
         without changing its design.
         """

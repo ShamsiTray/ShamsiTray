@@ -9,10 +9,10 @@ this application uses (``value`` / ``setValue`` / ``sync``), keeps the same
 crash mid-write can never corrupt the store.
 
 A missing or corrupt file degrades to an empty store with a logged warning;
-write failures are logged and leave the in-memory state intact - but they are
-no longer treated as success: a value whose write failed stays marked dirty, so
-setting the SAME value again retries the disk write instead of hitting the
-equal-value early return and silently never persisting.
+write failures are logged and leave the in-memory state intact, but are not
+treated as success: a value whose write failed stays marked dirty, so setting
+the SAME value again retries the disk write instead of hitting the equal-value
+early return and silently never persisting.
 """
 import json
 import logging

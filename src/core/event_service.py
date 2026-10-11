@@ -154,8 +154,8 @@ class EventService:
         the auto-delete flag because they repeat forever.
 
         Recurrence is validated HERE, not only in the UI: an arbitrary value
-        used to fall through key generation as a one-time key while still being
-        stored as its own recurrence — a key/entry mismatch.
+        would otherwise fall through key generation as a one-time key while
+        being stored under its own recurrence — a key/entry mismatch.
         """
         if not jdate:
             return False
@@ -300,9 +300,8 @@ class EventService:
 
         Replaced existing events are removed, the folded import entries are
         added, and expiry cleanup runs — all in memory first; the complete
-        resulting state is then persisted exactly once. The old two-write flow
-        (cleanup mid-import, then the import's own save) could leave a
-        half-imported file on disk when the second write failed.
+        resulting state is then persisted exactly once. Saving once means a
+        failed write can never leave a half-imported file on disk.
         """
         snapshot = dict(self.events)
         for key in plan.replaced_existing:

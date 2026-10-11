@@ -181,9 +181,7 @@ class FramelessDragMixin:
 class YearRangeValidationMixin:
     """Shared 'red border + hint' validation for a year QLineEdit.
 
-    The block was copy-pasted three times (converter, event input, go-to-date)
-    with only trivial differences - the same shape ``FramelessDragMixin`` was
-    extracted to remove elsewhere. The host class provides:
+    The host class provides:
 
     - ``self.year_input``: the QLineEdit to validate
     - ``self._year_bounds() -> (min, max)``: the allowed year range
@@ -350,8 +348,8 @@ def fit_combo_width(combo: QComboBox, *, font_size: int = 14, bold: bool = False
     combo's padding + border, or the popup's item padding + vertical scrollbar
     + frame, whichever is larger. A small ``safety`` factor absorbs the
     per-platform font raster differences (a couple of pixels per glyph on
-    some Windows DPI settings) that previously elided «همه ماه‌ها» to
-    "همه...ه ها" and «۱۴۰۸» to "۱..۸". The popup view inherits the same
+    some Windows DPI settings) that would elide «همه ماه‌ها» to "همه...ه ها"
+    and «۱۴۰۸» to "۱..۸". The popup view inherits the same
     minimum so list rows never clip either. Call this after the items are
     filled and the stylesheet is applied, and again whenever the items are
     repopulated.
@@ -435,9 +433,8 @@ def scrollbar_stylesheet(palette: dict, *, width: int = 10) -> str:
 def global_scrollbar_stylesheet(palette: dict) -> str:
     """App-wide scrollbar style applied at the QApplication level.
 
-    The controller used to re-inline the same rounded rules; building them here
-    keeps every scrollbar rule in one place so a theme tweak cannot drift between
-    the app-wide and per-widget styles.
+    Building the rounded rules here keeps every scrollbar rule in one place so a
+    theme tweak cannot drift between the app-wide and per-widget styles.
     """
     return _scrollbar_rules(palette, width=10, selector="QScrollBar", min_handle=20)
 

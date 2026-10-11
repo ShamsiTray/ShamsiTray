@@ -137,7 +137,7 @@ class GoToDateWindow(YearRangeValidationMixin, QWidget):
         """The height the error/hint label actually needs at the card's inner width.
 
         A word-wrapped QLabel's sizeHint badly over-estimates (Qt's wrapped-text
-        hint heuristic prefers a roughly square block), which used to grow this
+        hint heuristic prefers a roughly square block), which would grow this
         card far past the message and leave a band of dead space under it before
         the button row. ``heightForWidth`` answers the exact height the label
         gets once the layout assigns the inner width.
@@ -208,8 +208,8 @@ class GoToDateWindow(YearRangeValidationMixin, QWidget):
 
         The label is measured exactly (``heightForWidth`` at the card's inner
         width), so any wrap the fixed 200px width produces fits - and the card
-        no longer grows past the message, which used to leave dead space between
-        the hint and the button row.
+        does not grow past the message into dead space between the hint and the
+        button row.
         """
         self.error_label.setText(message)
         self.error_label.show()

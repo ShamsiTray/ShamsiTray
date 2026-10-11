@@ -73,8 +73,8 @@ AUTO_CHECK_RETRY_DELAY_MS = 10 * 60 * 1000
 AUTO_CHECK_MAX_RETRIES = 3
 
 # The 24h gate is enforced by _auto_check_updates itself; this recurring timer is
-# what makes the gate REACHED again: the old singleShot ran once per session, so
-# a machine that sleeps instead of rebooting never checked again after launch.
+# what makes the gate REACHED again: a one-shot timer fires once per session, so
+# a machine that sleeps instead of rebooting would never check again after launch.
 AUTO_CHECK_REARM_INTERVAL_MS = 60 * 60 * 1000
 
 # A failed HOLIDAY fetch is retried quietly on its own cadence, separate from the
@@ -333,10 +333,9 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _handle_system_theme_change(self):
         """Re-read the Windows theme after a light/dark switch.
 
-        The theme used to be detected once at startup and never followed
-        Windows again. This applies while the stored preference is "system"
-        (or absent) - an explicit "light"/"dark" choice always wins, and the
-        tray menu's theme row is what sets either.
+        Applies while the stored preference is "system" (or absent) - an
+        explicit "light"/"dark" choice always wins, and the tray menu's theme
+        row is what sets either.
         """
         if self._theme_choice() != APP_CONFIG.Theme.SYSTEM:
             return
@@ -614,7 +613,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.info("No updates available (app and holiday data current).")
 
     def _on_check_failed(self, reason: str):
-        # Only bookkeeping here: the offline dialog moved to _on_round_finished
+        # Only bookkeeping here: the offline dialog lives in _on_round_finished
         # so the holiday outcome can choose the right wording.
         logger.warning(f"Update check failed: {reason}")
 
@@ -1018,8 +1017,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _add_auto_check_action(self, menu):
         """The tray toggle for the automatic update check.
 
-        ``Updates/CheckEnabled`` was only ever read, so the feature had no UI;
-        the row sits right above the manual «بررسی بروزرسانی» action it
+        The row sits right above the manual «بررسی بروزرسانی» action it
         complements. Like the other checkbox rows, the widget keeps the menu
         open on click and paints its own new state.
         """
@@ -1113,11 +1111,10 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _cycle_theme_choice(self):
         """Cycle the appearance preference: system → light → dark → system.
 
-        The old toggle saved light/dark permanently with no way back to
-        following Windows, so «هماهنگ با سیستم» worked only until the first
-        press. Every stop of the cycle is persisted explicitly - including
-        "system", which re-detects Windows now and keeps following it via
-        ``_handle_system_theme_change``.
+        Every stop of the cycle is persisted explicitly - including "system",
+        which re-detects Windows and keeps following it via
+        ``_handle_system_theme_change``: that persistence is what lets the
+        cycle return to following Windows.
         """
         order = APP_CONFIG.THEME_CHOICES
         next_choice = order[(order.index(self._theme_choice()) + 1) % len(order)]

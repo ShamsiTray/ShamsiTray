@@ -723,9 +723,9 @@ class PersianCalendarWidget(BaseFramelessWindow):
         question is part of the popup: it cannot be dragged away, it dims the grid
         like the editor and Go-To-Date do, and it disappears with the calendar.
         The date is parked in ``_pending_remove`` for ``_on_remove_choice`` to
-        consume - a modal ask used to answer this inline, an overlay can only
-        answer later. Pending day-cell tooltips are cancelled because the tooltip
-        is its own top-level window and would float over the overlay.
+        consume: an overlay answers asynchronously, unlike a modal ask that
+        answered inline. Pending day-cell tooltips are cancelled because the
+        tooltip is its own top-level window and would float over the overlay.
         """
         self._cancel_day_tooltips()
         matched = events_for_date(self.user_events, jdate)
