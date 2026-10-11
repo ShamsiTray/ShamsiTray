@@ -206,9 +206,6 @@ def test_light_accent_backs_white_text_at_wcag_aa():
         f"against white text (AA needs {WCAG_AA_NORMAL_TEXT}:1)")
 
 
-@pytest.mark.xfail(reason="known gap: the dark accent predates the AA sweep and "
-                          "was left alone; retune it with the dark theme",
-                  strict=False)
 def test_dark_accent_backs_white_text_at_wcag_aa():
     palette = APP_CONFIG.DARK_PALETTE
     ratio = _contrast_ratio("#ffffff", palette["ACCENT_COLOR"])

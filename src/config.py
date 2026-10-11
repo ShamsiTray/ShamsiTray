@@ -91,7 +91,7 @@ class Config:
 
     DARK_PALETTE = {
         "TEXT_COLOR": "#e0e0e0", "BACKGROUND_COLOR": "#2c2c2c",
-        "INPUT_BG_COLOR": "#3a3a3a", "ACCENT_COLOR": "#4d9a4d",
+        "INPUT_BG_COLOR": "#3a3a3a", "ACCENT_COLOR": "#398439",
         "HOVER_BG": "rgba(255, 255, 255, 0.08)", "SCROLLBAR_HANDLE_COLOR": "#505050",
         "SCROLLBAR_GROOVE_COLOR": "#303030", "HOLIDAY_COLOR": "#FF4C4C",
         "GREY_COLOR": "#808080", "WEEKDAY_NAMES_COLOR": "#b8b8b8",
