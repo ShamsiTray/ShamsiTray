@@ -10,6 +10,10 @@ from PyQt6.QtCore import QPoint
 import main as main_module
 from config import APP_CONFIG
 
+# The tests below replace main_module.QLockFile wholesale; capturing the real
+# error enum here lets their stubs hand main() genuine values.
+REAL_LOCK_ERRORS = main_module.QLockFile.LockError
+
 
 class FakeApp:
     """Stand-in for QApplication capturing the wiring main() performs."""
@@ -211,20 +215,63 @@ def test_main_single_instance_shows_themed_notice(stubbed, monkeypatch):
     ConfirmDialog (the last native QMessageBox in the app), then exit 0."""
 
     class LockedLock:
+        stale_ms = None
+        LockError = REAL_LOCK_ERRORS
+
         def __init__(self, _path):
             pass
 
+        def setStaleLockTime(self, ms):
+            LockedLock.stale_ms = ms
+
         def tryLock(self, timeout):
             return False  # another instance holds the lock
+
+        def error(self):
+            return REAL_LOCK_ERRORS.LockFailedError
 
     monkeypatch.setattr(main_module, "QLockFile", LockedLock)
     with pytest.raises(SystemExit) as exit_info:
         main_module.main()
     assert exit_info.value.code == 0
+    # The lock guards the app for its whole runtime, so its age must never
+    # expire it; 0 is Qt's "no timestamp expiry" (the pid check still heals a
+    # lock left by a crashed process).
+    assert LockedLock.stale_ms == 0
     assert stubbed.trays == []  # never booted a second tray
     assert stubbed.notifies and "در حال اجرا" in stubbed.notifies[0][0][2]
     # Informational notice: not styled as a failure (danger=False default).
     assert stubbed.notifies[0][1].get("danger") is None
+
+
+def test_main_lock_error_other_than_contention_exits_non_zero(stubbed, monkeypatch):
+    """An unwritable data dir or a full disk fails the lock with no other
+    instance running; reporting that as "already running" and exiting 0 would
+    make the launch look fine while nothing actually started."""
+
+    class BrokenLock:
+        LockError = REAL_LOCK_ERRORS
+
+        def __init__(self, _path):
+            pass
+
+        def setStaleLockTime(self, ms):
+            pass
+
+        def tryLock(self, timeout):
+            return False
+
+        def error(self):
+            return REAL_LOCK_ERRORS.UnknownError
+
+    monkeypatch.setattr(main_module, "QLockFile", BrokenLock)
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main()
+    assert exit_info.value.code == 1
+    assert stubbed.trays == []  # never booted a tray on a broken lock
+    assert stubbed.notifies and "قفل" in stubbed.notifies[0][0][2]
+    # Styled as a failure, unlike the already-running informational notice.
+    assert stubbed.notifies[0][1].get("danger") is True
 
 
 def test_main_registers_windows_appid_only_on_windows(stubbed, monkeypatch):

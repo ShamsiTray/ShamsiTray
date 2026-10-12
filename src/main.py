@@ -86,7 +86,25 @@ def main():
     # process leaves it behind (QLockFile tests staleness itself).
     APP_CONFIG.ensure_user_data_dirs()
     lock = QLockFile(str(APP_CONFIG.USER_DATA_DIR / "app.lock"))
+    # The lock guards the app for its whole runtime, so it must never expire by
+    # age: Qt documents that a resource protected indefinitely should always
+    # call setStaleLockTime(0). Zero only turns the timestamp expiry off - a
+    # lock whose owner is gone is still detected and healed through the pid
+    # check, so a crashed instance does not block the next launch.
+    lock.setStaleLockTime(0)
     if not lock.tryLock(0):
+        if lock.error() != QLockFile.LockError.LockFailedError:
+            # A lock failure other than contention has a cause of its own: an
+            # unwritable data dir (PermissionError) or a full disk
+            # (UnknownError) fails the lock with no other instance around, and
+            # reporting that as "already running" while exiting 0 would make
+            # the launch look fine while nothing actually started.
+            logger.error(f"Cannot acquire the single-instance lock ({lock.error().name}); exiting.")
+            ConfirmDialog.notify(None, "خطای اجرا",
+                                 "برنامه نتوانست قفل اجرا را ایجاد کند. دسترسی به پوشه داده‌ها را بررسی کنید.",
+                                 glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION,
+                                 danger=True)
+            sys.exit(1)
         logger.warning("Another ShamsiTray instance is already running; exiting.")
         ConfirmDialog.notify(None, "اجرای برنامه",
                              "یک نسخه دیگر از برنامه در حال اجرا است.",
