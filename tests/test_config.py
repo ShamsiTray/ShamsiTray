@@ -108,6 +108,14 @@ def test_fas_icon_glyphs_are_distinct():
     assert all(ord(g) > 0xE000 for g in glyphs)  # private-use area
 
 
+def test_arrows_rotate_is_the_two_arrow_glyph():
+    """Font Awesome 7 names U+F021 `arrows-rotate` (the two-arrow spinner) and
+    U+F2F1 `arrow-rotate-right` (one arrow), and the bundled cmap carries both,
+    so only the codepoint itself tells the update cards' spinner from a plain
+    arrow."""
+    assert APP_CONFIG.FAS.FA_ARROWS_ROTATE == '\uf021'
+
+
 def test_update_endpoints_are_https():
     assert APP_CONFIG.APP_RELEASES_API_URL.startswith("https://")
     assert APP_CONFIG.APP_RELEASES_PAGE_URL.startswith("https://")

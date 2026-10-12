@@ -196,7 +196,7 @@ class Config:
         FA_XMARK = '\uf00d'
         FA_MINUS = '\uf068'
         FA_TRASH = '\uf1f8'
-        FA_ARROWS_ROTATE = '\uf2f1'
+        FA_ARROWS_ROTATE = '\uf021'  # f2f1 is the one-arrow arrow-rotate-right
         FA_DOWNLOAD = '\uf019'
         FA_UPLOAD = '\uf093'
         FA_CIRCLE_EXCLAMATION = '\uf06a'
