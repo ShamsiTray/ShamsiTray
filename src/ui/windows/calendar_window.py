@@ -52,6 +52,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.selected_date = self.current_date
         self.editing_date: Optional[jdatetime.date] = None
         self.go_to_window: Optional[GoToDateWindow] = None
+        # Qt emits this object's destroyed() before it deletes the children, so this
+        # flag lets the go-to handler tell "that window died" from "we are all going
+        # away". It is a lambda on purpose: a bound method whose receiver is the
+        # object being destroyed is not called, a free function is.
+        self._is_being_destroyed = False
+        self.destroyed.connect(lambda *_: setattr(self, "_is_being_destroyed", True))
 
         self.day_labels: List[List[ClickableLabel]] = []
         self._show_gregorian_mdy = True
@@ -453,10 +459,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
             # no matter which close path (cancel, confirm, calendar hidden) is taken.
             window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             window.date_selected.connect(self.go_to_date)
-            # destroyed carries no argument; the handler reads sender() itself,
-            # so a stale window that died after being replaced cannot clear the
-            # current one.
-            window.destroyed.connect(self._on_go_to_window_destroyed)
+            # By the time destroyed fires, sender() is a fresh wrapper for the dying
+            # object, so it can never be identity-checked against the stored window.
+            # Capture the window here instead: a stale instance that died after being
+            # replaced still cannot clear the current one.
+            window.destroyed.connect(
+                lambda *_, dying=window: self._on_go_to_window_destroyed(dying)
+            )
             window.cancel_button.clicked.connect(self.overlay_blocker.hide)
             parent_size = self.size()
             child_size = window.size()
@@ -466,11 +475,16 @@ class PersianCalendarWidget(BaseFramelessWindow):
             window.show()
             window.raise_()
 
-    def _on_go_to_window_destroyed(self):
-        if self.sender() is not self.go_to_window:
+    def _on_go_to_window_destroyed(self, window: GoToDateWindow):
+        if window is not self.go_to_window:
             # A stale instance finished dying after a newer one replaced it.
             return
         self.go_to_window = None
+        if self._is_being_destroyed:
+            # Qt is already deleting the siblings (the overlay and the day cells), so
+            # there is nothing left to hide or restyle - and touching them here would
+            # raise out of a slot, which PyQt turns into a fatal abort.
+            return
         self.overlay_blocker.hide()
         self.normalize_day_hover()
 

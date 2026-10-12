@@ -346,6 +346,21 @@ def test_go_to_window_destroyed_clears_overlay(calendar, qtbot):
     assert calendar.overlay_blocker.isHidden()
 
 
+def test_calendar_teardown_with_popup_open_is_safe(qtbot):
+    # The popup is a child window, so Qt deletes it from the calendar's own
+    # destructor, after the siblings it would touch. Raising out of that slot
+    # aborts the process instead of failing the test, so this one guards the
+    # handler's shutdown path. The widget is not registered with qtbot: it is
+    # deleted here, and qtbot would re-close it at teardown.
+    calendar = PersianCalendarWidget({}, {})
+    calendar.show()
+    calendar._open_go_to_date_window()
+    gone = []
+    calendar.destroyed.connect(lambda: gone.append(True))
+    calendar.deleteLater()
+    qtbot.waitUntil(lambda: bool(gone), timeout=3000)
+
+
 def test_stale_go_to_window_is_replaced(calendar, qtbot):
     stale = GoToDateWindow(calendar)  # hidden, parented: "stale" instance
     calendar.go_to_window = stale
