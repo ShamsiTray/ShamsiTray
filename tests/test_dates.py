@@ -189,6 +189,33 @@ def test_ms_until_midnight_never_negative():
     assert value >= 0
 
 
+def test_ms_until_midnight_accepts_an_aware_datetime():
+    """Building the midnight naive raised TypeError against an aware ``now``."""
+    now = datetime.datetime(2025, 6, 1, 23, 45, tzinfo=datetime.timezone.utc)
+    assert ms_until_midnight(now) == 15 * 60 * 1000
+
+
+class _SpringForward(datetime.tzinfo):
+    """A zone that jumps +1:00 -> +2:00 at 2025-03-30 02:00 (local rules)."""
+
+    _SWITCH = datetime.datetime(2025, 3, 30, 2)
+
+    def utcoffset(self, dt):
+        return datetime.timedelta(hours=1 if dt.replace(tzinfo=None) < self._SWITCH else 2)
+
+    def dst(self, dt):
+        return datetime.timedelta(hours=1)
+
+
+def test_ms_until_midnight_counts_elapsed_time_across_a_dst_shift():
+    """Wall-clock subtraction reports 22.5 h across this window; the clock
+    springs forward an hour, so the real gap to the next midnight is 21.5 h."""
+    now = datetime.datetime(2025, 3, 30, 1, 30, tzinfo=_SpringForward())
+    assert (datetime.datetime(2025, 3, 31, 0, 0) - now.replace(tzinfo=None)) \
+        == datetime.timedelta(hours=22, minutes=30)  # the wall-clock reading
+    assert ms_until_midnight(now) == int(21.5 * 3600 * 1000)
+
+
 # --- numeric copy formats (کپی تاریخ submenu) ---
 
 def test_format_jalali_numeric_zero_pads():
