@@ -52,10 +52,11 @@ def migrate_from_registry(settings: JsonSettings, legacy=None) -> None:
     try:
         for key in _SETTING_KEYS:
             value = legacy.value(key)
-            # JSON wins: a value already living in the JSON store (the app ran
+            # JSON wins: a key already living in the JSON store (the app ran
             # on the new store before, or a partial migration retried) must
-            # never be clobbered by the stale registry copy.
-            if value is not None and settings.value(key) is None:
+            # never be clobbered by the stale registry copy. Presence is what
+            # counts, so a key holding an explicit null still wins.
+            if value is not None and not settings.contains(key):
                 settings.setValue(key, value)
                 migrated.append(key)
     except Exception as e:
