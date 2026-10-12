@@ -231,24 +231,35 @@ def _upgrade_store_from_bundled(store, bundled) -> None:
 
 
 def _replace_store_file_from_bundled(store, bundled, *, backup_log: str, success_log: str, failure_log: str) -> None:
-    """Shared atomic swap: back the current store up, copy bundled over it.
+    """Shared atomic swap: copy the current store aside, publish the bundled copy.
 
     The store being replaced may have been AHEAD of the bundled data (updated
     via a live holiday download) before some unrelated failure, and silently
     regressing the user to older data with the evidence destroyed is worse than
-    keeping a backup around - hence the .bak. A failure here leaves the original
-    store in place.
+    keeping a backup around - hence the .bak. The backup COPIES the store
+    instead of moving it: a publish that fails after a successful backup used
+    to leave no store on disk at all, and a backup that cannot be made cancels
+    the swap rather than overwriting the only copy.
     """
+    backup_tmp = None
     tmp = None
     try:
         if not APP_CONFIG.ensure_user_data_dirs():
             return
         backup = store.with_suffix('.json.bak')
         try:
-            os.replace(store, backup)
+            # Staged through its own .tmp file, like the store: a copy that dies
+            # halfway must not have truncated the previous backup already.
+            backup_tmp = store.with_suffix('.json.bak.tmp')
+            shutil.copy2(store, backup_tmp)
+            os.replace(backup_tmp, backup)
+            backup_tmp = None
             logger.warning(backup_log)
         except OSError as e:
             logger.error(f"Could not back up the holiday store: {e}")
+            # Overwriting the only on-disk copy of data that may be newer than
+            # the bundled file is the worst outcome this path can produce.
+            return
         tmp = store.with_suffix('.json.tmp')
         shutil.copyfile(bundled, tmp)
         os.replace(tmp, store)
@@ -256,19 +267,21 @@ def _replace_store_file_from_bundled(store, bundled, *, backup_log: str, success
         logger.info(success_log)
     except OSError as e:
         logger.error(f"{failure_log}: {e}")
+    finally:
         # Same debris rule as replace_store: a failed copy/replace must not
-        # strand the .tmp side file next to the store.
-        if tmp is not None and tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+        # strand a side file next to the store.
+        for side in (tmp, backup_tmp):
+            if side is not None and side.exists():
+                try:
+                    side.unlink()
+                except OSError:
+                    pass
 
 
 def _repair_store_from_bundled(store, bundled) -> None:
     """Replace a corrupt/unreadable AppData store with the bundled data (atomically).
 
-    The corrupt file is renamed to ``holidays.json.bak`` first (best-effort,
+    The corrupt file is copied to ``holidays.json.bak`` first (best-effort,
     replacing any previous backup): the store being replaced may have been AHEAD
     of the bundled data (updated via a live holiday download) before some
     unrelated disk hiccup corrupted it, and silently regressing the user to older

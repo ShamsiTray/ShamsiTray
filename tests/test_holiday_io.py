@@ -97,14 +97,22 @@ def test_resolve_seeds_store_from_bundled_when_missing(paths):
     data = holiday_io.resolve_holidays_store()
     assert data == {1403: {(1, 1): ['Nowruz'], (2, 2): ['a', 'b']}}
     assert store.exists(), 'store seeded from bundled copy'
+    # The seed must carry the bundled payload, not merely exist: a seed that
+    # wrote nothing usable would push every later launch back into the
+    # bundled-fallback branch.
+    assert holiday_io.load_holidays_file(store) == data
+    assert holiday_io.read_version(store) == 1
 
 
 def test_resolve_prefers_existing_store(paths):
     store, bundled = paths
-    store.write_text(json.dumps(bundled_payload(version=2)), encoding='utf-8')
+    # Different MAPPINGS, not just different versions: with both files holding
+    # the same holidays, returning the bundled mapping would pass.
+    store.write_text(json.dumps(
+        {'version': 2, 'holidays': {'1404': {'3-3': 'Store Only'}}}), encoding='utf-8')
     bundled.write_text(json.dumps(bundled_payload(version=1)), encoding='utf-8')
     data = holiday_io.resolve_holidays_store()
-    assert data  # parsed from the store, not the older bundled file
+    assert data == {1404: {(3, 3): ['Store Only']}}  # the store's mapping
     assert holiday_io.read_version(store) == 2
 
 
@@ -150,6 +158,23 @@ def test_replace_store_validates_and_swaps_atomically(paths):
     assert list(store.parent.glob('*.tmp')) == []
 
 
+def test_replace_store_failure_keeps_the_previous_store(paths, monkeypatch):
+    """The swap is atomic end to end: when the rename cannot land, the store
+    that was there before keeps serving - writing straight to the destination
+    would have destroyed it the moment the write failed."""
+    store, _bundled = paths
+    assert holiday_io.replace_store(json.dumps(bundled_payload(version=2)).encode('utf-8'))
+    new_payload = json.dumps({'version': 5, 'holidays': {'1404': {'1-1': 'X'}}}).encode('utf-8')
+
+    def failing_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(holiday_io.os, 'replace', failing_replace)
+    assert holiday_io.replace_store(new_payload) is False
+    assert holiday_io.read_version(store) == 2  # previous store intact
+    assert list(store.parent.glob('*.tmp')) == []  # no debris
+
+
 def test_replace_store_rejects_empty_and_corrupt(paths, caplog):
     store, _ = paths
     assert not holiday_io.replace_store(b'{bad json')
@@ -178,21 +203,28 @@ def test_replace_store_cleans_tmp_when_replace_fails(paths, monkeypatch):
 
 def test_repair_store_cleans_tmp_when_replace_fails(paths, monkeypatch):
     """Same debris rule for the self-repair path: a failed swap must not
-    leave the .tmp side file behind."""
+    leave the .tmp side file behind, and the swap really must fail."""
     store, bundled = paths
     bundled.write_text(json.dumps(bundled_payload(version=2)), encoding='utf-8')
+    store.write_text('{corrupt', encoding='utf-8')
 
     real_replace = holiday_io.os.replace
 
     def failing_replace(src, dst):
-        if str(dst).endswith('.json.tmp'):
+        # The staged .tmp file is the SOURCE of the publish rename - the
+        # destination is the store itself, whose name never ends in .tmp - so
+        # the guard has to match the source for the failure to happen at all.
+        if str(src) == str(store.with_suffix('.json.tmp')):
             raise OSError("disk full")
-        # the corrupt-store backup rename still works
         real_replace(src, dst)
 
     monkeypatch.setattr(holiday_io.os, 'replace', failing_replace)
     holiday_io._repair_store_from_bundled(store, bundled)
     assert not store.with_suffix('.json.tmp').exists()
+    # The publish really failed: the store is still the broken file the repair
+    # wanted to replace, and the corrupt evidence was kept as the backup.
+    assert holiday_io.load_holidays_file(store) == {}
+    assert store.with_suffix('.json.bak').read_text(encoding='utf-8') == '{corrupt'
 
 
 # --- store upgrade from a newer bundled file ---------------------------------------
@@ -229,16 +261,69 @@ def test_resolve_upgrade_failure_keeps_serving_the_old_store(paths, monkeypatch,
     bundled.write_text(json.dumps(
         {'version': 4, 'holidays': {'1405': {'1-1': 'Fresh'}}}), encoding='utf-8')
 
-    def boom(src, dst):
-        raise OSError("access denied")
+    def failing_publish(src, dst):
+        # The publish is the rename ONTO the store; the backup rename lands on
+        # the .bak file, so this leaves the backup path exercised too.
+        if dst == store:
+            raise OSError("access denied")
+        real_replace(src, dst)
 
-    monkeypatch.setattr(holiday_io.os, 'replace', boom)
+    real_replace = holiday_io.os.replace
+    monkeypatch.setattr(holiday_io.os, 'replace', failing_publish)
     with caplog.at_level(logging.WARNING):
         data = holiday_io.resolve_holidays_store()
     assert data == {1403: {(1, 1): ['Nowruz'], (2, 2): ['a', 'b']}}
     assert any('Could not upgrade the AppData holiday store' in r.message
                for r in caplog.records)
     assert not store.with_suffix('.json.tmp').exists()
+
+
+def test_upgrade_publish_failure_leaves_the_store_on_disk(paths, monkeypatch):
+    """The backup must COPY the store, never move it: a publish failure after a
+    successful backup used to leave NO store on disk, so the next launch
+    silently reseeded it from the bundled file."""
+    store, bundled = paths
+    store.write_text(json.dumps(bundled_payload(version=1)), encoding='utf-8')
+    bundled.write_text(json.dumps(
+        {'version': 4, 'holidays': {'1405': {'1-1': 'Fresh'}}}), encoding='utf-8')
+    real_replace = holiday_io.os.replace
+
+    def failing_publish(src, dst):
+        if dst == store:
+            raise OSError("disk full")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(holiday_io.os, 'replace', failing_publish)
+    holiday_io._upgrade_store_from_bundled(store, bundled)
+
+    assert store.exists()  # still the store the app was serving
+    assert holiday_io.read_version(store) == 1
+    assert holiday_io.load_holidays_file(store) == {1403: {(1, 1): ['Nowruz'], (2, 2): ['a', 'b']}}
+    # ... and the backup taken before the failed publish holds the same data.
+    assert holiday_io.load_holidays_file(store.with_suffix('.json.bak')) \
+        == {1403: {(1, 1): ['Nowruz'], (2, 2): ['a', 'b']}}
+    assert list(store.parent.glob('*.tmp')) == []
+
+
+def test_upgrade_without_a_backup_leaves_the_store_alone(paths, monkeypatch, caplog):
+    """When the backup cannot even be taken, nothing may be replaced:
+    overwriting the only on-disk copy of data that may be newer than the
+    bundled file is the worst outcome this path can produce."""
+    store, bundled = paths
+    store.write_text(json.dumps(bundled_payload(version=1)), encoding='utf-8')
+    bundled.write_text(json.dumps(
+        {'version': 4, 'holidays': {'1405': {'1-1': 'Fresh'}}}), encoding='utf-8')
+
+    def failing_copy2(src, dst):
+        raise OSError("access denied")
+
+    monkeypatch.setattr(holiday_io.shutil, 'copy2', failing_copy2)
+    with caplog.at_level(logging.ERROR):
+        holiday_io._upgrade_store_from_bundled(store, bundled)
+    assert any('Could not back up the holiday store' in r.message for r in caplog.records)
+    assert holiday_io.read_version(store) == 1  # store untouched
+    assert not store.with_suffix('.json.bak').exists()  # no half-written backup
+    assert list(store.parent.glob('*.tmp')) == []  # nothing was staged
 
 
 def test_resolve_repairs_a_store_whose_entries_all_were_skipped(paths):
