@@ -249,8 +249,13 @@ def ms_until_midnight(now: datetime.datetime) -> int:
     (exactly-midnight input schedules the following midnight).
     """
     tomorrow = now + datetime.timedelta(days=1)
-    next_midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day)
-    return max(0, int((next_midnight - now).total_seconds() * 1000))
+    # The midnight carries ``now``'s own tzinfo (a naive constant would raise
+    # TypeError against an aware ``now``), and the gap is measured through the
+    # epoch: two datetimes sharing one tzinfo subtract as bare wall clocks, so
+    # a DST shift inside the window would come out an hour wrong.
+    next_midnight = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day,
+                                      tzinfo=now.tzinfo)
+    return max(0, int((next_midnight.timestamp() - now.timestamp()) * 1000))
 
 
 def format_jalali_long(jdate, *, persian_digits=True):
