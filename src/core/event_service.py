@@ -40,9 +40,9 @@ from utils.event_io import (
     events_sorted_by_next_occurrence,
     keys_matching_date,
     load_user_events,
-    make_event_key,
     recurrence_of_key,
     save_user_events,
+    target_key_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -138,11 +138,11 @@ class EventService:
 
         Public because the event manager adds through its own editor and must
         reach the same verdict as ``add()`` - a visible-date match there would
-        call every event on the date a duplicate.
+        call every event on the date a duplicate. The rule itself lives in
+        ``utils.event_io.target_key_for``, shared with the calendar's pre-save
+        collision check so the two can never disagree.
         """
-        anchor = next((key for key in keys_matching_date(self.events, jdate)
-                       if recurrence_of_key(key) == recurrence), None)
-        return anchor or make_event_key(jdate, recurrence)
+        return target_key_for(self.events, jdate, recurrence)
 
     def add(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
             remove_after_finish: bool = False) -> bool:
@@ -211,7 +211,7 @@ class EventService:
             logger.warning(f"Unsupported recurrence {recurrence!r}; storing the event as one-time.")
             recurrence = RECURRENCE_NONE
         target_key = merge_into or (
-            key if recurrence_of_key(key) == recurrence else make_event_key(jdate, recurrence))
+            key if recurrence_of_key(key) == recurrence else self.target_key(jdate, recurrence))
         if merge_into is None and target_key != key and target_key in self.events:
             logger.warning(
                 f"Refusing to edit {key!r} onto the occupied key {target_key!r}; "

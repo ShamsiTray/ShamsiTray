@@ -565,6 +565,30 @@ def test_edit_onto_an_occupied_key_asks_before_touching_the_store(calendar):
     assert not calendar.event_input_widget.isVisible()
 
 
+def test_clamped_month_edit_asks_merge_for_the_occupied_clamped_anchor(calendar):
+    """Editing a one-time event shown on a clamped day into a monthly one used
+    to derive a fresh 0000-00-30 destination, miss the monthly event actually
+    occupying the date through its clamped 0000-00-31 key, and emit the edit -
+    which the store then refused in silence. The destination resolves through
+    the shared anchor rule, so the ask appears and nothing is emitted yet."""
+    jdate = jdatetime.date(1405, 7, 30)  # Mehr has 30 days: day 31 clamps to 30
+    calendar.user_events = {
+        "0000-00-31": {"text": "monthly on the 31st", "recurrence": "monthly",
+                       "remove_after_finish": False},
+        "1405-07-30": {"text": "One-time", "recurrence": "none", "remove_after_finish": True},
+    }
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1405-07-30",
+                                            calendar.user_events["1405-07-30"])
+
+    calendar._handle_event_saved("One-time", "monthly", False)
+
+    assert keyed == [] and generic == []
+    assert calendar._merge_overlay.isVisible()
+    assert calendar._pending_merge == ("1405-07-30", jdate, "0000-00-31",
+                                       "One-time", "monthly", False)
+
+
 def test_confirmed_merge_saves_against_the_occupied_key(calendar):
     jdate = _two_events_on_one_date(calendar)
     keyed, _ = _capture_updates(calendar)

@@ -146,9 +146,46 @@ def key_matches_date(key: str, jdate: jdatetime.date) -> bool:
     return jdate.day == _days_in_jalali_month_safe(jdate.year, jdate.month) and day > jdate.day
 
 
+def is_exact_day_key(key: str, jdate: jdatetime.date) -> bool:
+    """True when ``key`` pins exactly the month-day the user is looking at.
+
+    A clamped match does not pin the visible date: monthly day 31 in a 30-day
+    month, yearly 30 Esfand in a non-leap year. Among same-recurrence matches
+    such a key must lose to one that pins the date exactly, because the exact
+    one is the anchor the user can actually see - mapping order must not decide.
+    """
+    parsed = parse_event_key(key)
+    if parsed is None:
+        return False
+    _year, month, day = parsed
+    if month is None:  # monthly (0000-00-DD): only the day is pinned
+        return day == jdate.day
+    return month == jdate.month and day == jdate.day
+
+
 def keys_matching_date(events: Dict[str, dict], jdate: jdatetime.date) -> List[str]:
     """All stored keys whose event occurs on ``jdate`` (at most one per mode)."""
     return [key for key in events if key_matches_date(key, jdate)]
+
+
+def target_key_for(events: Dict[str, dict], jdate: jdatetime.date, recurrence: str) -> str:
+    """The key an event of ``recurrence`` lands on for the visible date ``jdate``.
+
+    The anchor rule, owned here so every caller that has to predict the save -
+    the service's ``target_key()`` and the calendar's pre-save collision check -
+    reaches the same verdict. Reuse a key of the SAME recurrence already on the
+    date: ``jdate`` can be a clamped occurrence (a monthly day 31 shown on the
+    30th, 30 Esfand on the 29th of a non-leap year), and re-deriving the key
+    would walk that event's anchor one step further away on every save. Among
+    same-recurrence matches the one pinning the shown month-day exactly wins
+    over a clamped one, because that is the event the user is looking at.
+    A fresh key is derived only when nothing of that recurrence lives there.
+    """
+    candidates = [key for key in keys_matching_date(events, jdate)
+                  if recurrence_of_key(key) == recurrence]
+    anchor = next((key for key in candidates if is_exact_day_key(key, jdate)),
+                  candidates[0] if candidates else None)
+    return anchor or make_event_key(jdate, recurrence)
 
 
 def events_on_date(events: Dict[str, dict], jdate: jdatetime.date) -> List[Tuple[str, dict]]:

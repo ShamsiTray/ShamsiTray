@@ -31,6 +31,25 @@ def _entry(text, recurrence=RECURRENCE_NONE, remove_after_finish=False):
     return {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
 
 
+def test_target_key_prefers_the_exact_day_over_a_clamped_match(service):
+    """A clamped month can hold two monthly events whose keys both match the
+    visible date - the exact 0000-00-30 and a clamped 0000-00-31. Mapping order
+    used to decide, so the edit could land on the clamped key and the cleanup
+    evict the exact one; the exact-day anchor must win."""
+    service.events["0000-00-31"] = _entry("monthly on the 31st", RECURRENCE_MONTHLY)
+    service.events["0000-00-30"] = _entry("monthly on the 30th", RECURRENCE_MONTHLY)
+    month_with_30_days = jdatetime.date(1405, 7, 30)  # Mehr has 30 days
+
+    assert service.target_key(month_with_30_days, RECURRENCE_MONTHLY) == "0000-00-30"
+    # ... whichever order the two keys sit in the mapping (rebuild reversed).
+    original = dict(service.events)
+    service.events.clear()
+    service.events.update(dict(reversed(list(original.items()))))
+    assert list(service.events) == ["0000-00-30", "0000-00-31"]
+    assert service.target_key(month_with_30_days, RECURRENCE_MONTHLY) == "0000-00-30"
+    assert event_io.make_event_key(month_with_30_days, RECURRENCE_MONTHLY) == "0000-00-30"
+
+
 # --- load / save plumbing ---------------------------------------------------------
 
 
@@ -74,6 +93,28 @@ def test_reload_drops_entries_that_left_the_file(service, user_data, monkeypatch
 
     assert live_reference is service.events
     assert set(live_reference) == {"1405-01-01"}
+
+
+def test_update_key_refuses_a_destination_that_clamps_onto_an_occupied_key(service):
+    """Changing a one-time event on a clamped day into a monthly one used to
+    derive a fresh 0000-00-30 key, miss the monthly event that actually
+    occupies the shown date through its clamped 0000-00-31 key, and park a
+    second monthly entry beside it. The destination resolves through the same
+    anchor rule as ``target_key`` now, so the occupancy check sees the real
+    neighbour and refuses - exactly as the UI would."""
+    service.events["0000-00-31"] = _entry("monthly on the 31st", RECURRENCE_MONTHLY)
+    service.events["1405-07-30"] = _entry("one-time")
+    shown = jdatetime.date(1405, 7, 30)  # Mehr has 30 days: day 31 clamps to 30
+
+    assert service.update_key("1405-07-30", shown, "edited", RECURRENCE_MONTHLY) is False
+    assert service.events["1405-07-30"]["text"] == "one-time"   # untouched
+    assert "0000-00-30" not in service.events                   # nothing parked beside
+
+    # With the user's consent the edit folds into the occupied key instead.
+    assert service.update_key("1405-07-30", shown, "edited", RECURRENCE_MONTHLY,
+                              merge_into="0000-00-31") is True
+    assert "1405-07-30" not in service.events
+    assert "edited" in service.events["0000-00-31"]["text"]
 
 
 def test_resaving_a_monthly_event_keeps_its_anchor(service, monkeypatch):
