@@ -22,8 +22,9 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               format_jalali_long, persian_month_name,
                               to_persian_digits)
 from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, events_for_date,
-                            events_on_date, recurrence_of_key,
-                            recurrences_on_date, target_key_for)
+                            events_for_key, events_on_date, keys_matching_date,
+                            recurrence_of_key, recurrences_on_date, target_key_for)
+from utils.logger import setup_logging
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
@@ -31,6 +32,9 @@ from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import EventInputWidget, recurrence_label
 from ui.widgets.menu_widgets import MenuActionWidget
 from .base_window import BaseFramelessWindow
+
+logger = setup_logging(__name__)
+
 
 @dataclass
 class DayStyle:
@@ -112,6 +116,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
         """
         overlay, self._active_overlay = self._active_overlay, None
         self._pending_remove = None
+        self._pending_remove_key = None
+        self._pending_remove_subjects = ()
         self._pending_merge = None
         if overlay is not None:
             overlay.hide()
@@ -126,6 +132,22 @@ class PersianCalendarWidget(BaseFramelessWindow):
         overlay.center_in(self)
         overlay.show()
         overlay.raise_()
+
+    def _present_notice(self, title: str, message: str = "", *, detail: str = "",
+                        danger: bool = False, glyph: Optional[str] = None):
+        """Show a read-only notice in the popup, re-worded for this use.
+
+        Both callers - the distance readout and a confirmation that had to be
+        dropped - are things the user can only acknowledge, and keeping the card
+        inside the popup matters: a top-level dialog would take the activation an
+        unpinned calendar closes on. Pending day tooltips are cancelled here
+        because the tooltip is its own top-level window and would float over the
+        card.
+        """
+        self._cancel_day_tooltips()
+        self._notice_overlay.apply_notice(title, message, detail=detail,
+                                          danger=danger, glyph=glyph)
+        self._present_overlay(self._notice_overlay)
 
     def _cancel_day_tooltips(self):
         """Kill every pending cell tooltip (and hide the shared tooltip window).
@@ -171,16 +193,26 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._editing_event_key: Optional[str] = None
         self._pending_remove: Optional[jdatetime.date] = None
         self._pending_remove_key: Optional[str] = None
-        # key, jdate, target_key, text, recurrence, remove_after_finish
-        self._pending_merge: Optional[Tuple[str, jdatetime.date, str, str, str, bool]] = None
-        self._distance_overlay = ConfirmOverlay(
+        # The keys the parked ask would remove, with the text each carried when
+        # the card was shown: the answer is revalidated against the store before
+        # it is allowed to delete.
+        self._pending_remove_subjects: Tuple[Tuple[str, str], ...] = ()
+        # key, jdate, target_key, text, recurrence, remove_after_finish,
+        # source_text - the entry text the ask previewed, so the answer can be
+        # re-validated against the store when it finally arrives
+        self._pending_merge: Optional[Tuple[str, jdatetime.date, str, str, str, bool, str]] = None
+        # The read-only notice surface, re-worded per use with apply_notice: the
+        # distance readout and the report of a dropped confirmation share it,
+        # because both are things the user can only acknowledge and only one can
+        # be up at a time.
+        self._notice_overlay = ConfirmOverlay(
             self, "فاصله تا امروز", danger=False,
             glyph=APP_CONFIG.FAS.FA_CLOCK, notice=True)
         # Both overlays must answer back: an overlay only hides itself, so without
         # this the dimmer would stay up over a notice that is already gone and the
         # grid would refuse every click.
-        self._distance_overlay.chosen.connect(self._on_distance_choice)
-        self._distance_overlay.hide()
+        self._notice_overlay.chosen.connect(self._on_notice_choice)
+        self._notice_overlay.hide()
         self._remove_overlay = ConfirmOverlay(
             self, "حذف رویداد", confirm_text="حذف", cancel_text="انصراف",
             danger=True)
@@ -656,7 +688,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
                      and target_key in self.user_events)
         if collision:
             self._pending_merge = (key, jdate, target_key, text, recurrence,
-                                   remove_after_finish)
+                                   remove_after_finish,
+                                   str(self.user_events.get(key, {}).get("text", "")))
         elif key is not None:
             self.event_updated_by_key.emit(key, jdate, text, recurrence,
                                            remove_after_finish, "")
@@ -713,7 +746,19 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.normalize_day_hover()
         if pending is None or text != self._merge_overlay.confirm_button.text():
             return
-        key, jdate, target_key, merged_text, recurrence, remove_after_finish = pending
+        key, jdate, target_key, merged_text, recurrence, remove_after_finish, source_text = pending
+        # The ask bound consent to the KEY, not to the entry the user saw: while
+        # the overlay was up the shared store could change under it. The merge
+        # folds into the target's CURRENT text, but the source is replaced by the
+        # parked edit - an entry re-worded under the same key in the meantime
+        # would have that change discarded, so drop the ask instead of applying
+        # consent to different content. Reported inside the popup: a top-level
+        # dialog would take the activation the unpinned calendar closes on.
+        if str(self.user_events.get(key, {}).get("text", "")) != source_text:
+            logger.info(f"Dropping the merge ask for {key!r}: the entry changed while the ask was pending.")
+            self._present_notice("ادغام انجام نشد",
+                                 "رویداد از زمان پرسش تغییر کرده است؛ ادغام اعمال نشد.")
+            return
         self.event_updated_by_key.emit(key, jdate, merged_text, recurrence,
                                        remove_after_finish, target_key)
 
@@ -731,22 +776,34 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._cancel_day_tooltips()
         self.normalize_day_hover()
 
-    def _request_remove_confirmation(self, jdate: jdatetime.date):
-        """Ask before deleting; a context-menu click must never delete silently.
+    def _ask_to_remove(self, *, jdate: Optional[jdatetime.date] = None,
+                       key: Optional[str] = None):
+        """Ask to delete ``key``, or whatever the day holds, from the live store.
 
-        Asks with the in-calendar overlay rather than a top-level dialog, so the
-        question is part of the popup: it cannot be dragged away, it dims the grid
-        like the editor and Go-To-Date do, and it disappears with the calendar.
-        The date is parked in ``_pending_remove`` for ``_on_remove_choice`` to
-        consume: an overlay answers asynchronously, unlike a modal ask that
-        answered inline. Pending day-cell tooltips are cancelled because the
-        tooltip is its own top-level window and would float over the overlay.
+        A context-menu click must never delete silently, and the ask is the only
+        place that builds it - including when the answer found the store changed
+        and has to ask again, so the question, the preview and the parked subject
+        are always recomputed together instead of reusing what the user just
+        answered.
+
+        It stays in the popup rather than a top-level dialog: it cannot be dragged
+        away, dims the grid like the editor and Go-To-Date do, and disappears with
+        the calendar, unlike a modal ask that answered inline. Pending day-cell
+        tooltips are cancelled because the tooltip is its own top-level window and
+        would float over the card.
         """
+        subjects = self._remove_subject(jdate, key)
         self._cancel_day_tooltips()
-        matched = events_for_date(self.user_events, jdate)
-        text = str(matched[1].get("text", "")) if matched else ""
+        if key is not None:
+            entry = events_for_key(self.user_events, key)
+        else:
+            best = events_for_date(self.user_events, jdate)
+            entry = best[1] if best else None
+        text = str(entry.get("text", "")) if entry else ""
         preview = text if len(text) <= 40 else text[:40] + "…"
         self._pending_remove = jdate
+        self._pending_remove_key = key
+        self._pending_remove_subjects = subjects
         # The question is the card's description line, the event text is what the
         # box is for - the same split the event manager's dialog uses. An event
         # with no text simply has no box.
@@ -755,27 +812,58 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._present_overlay(self._remove_overlay)
 
     def _on_remove_choice(self, text: str):
-        """Act on the delete overlay's answer.
+        """Act on the delete overlay's answer, rechecking the store first.
 
-        The pending date is cleared *before* anything else, so cancel and confirm
-        share this path, the overlay can never be answered twice, and a
-        re-entrant emit cannot see a stale date.
+        The pending request is cleared *before* anything else, so cancel and
+        confirm share this path, the overlay can never be answered twice, and a
+        re-entrant emit cannot see a stale request. A yes is then put back to the
+        live store: the card named one event, but the removal covers every entry
+        sharing that visible date, and the ask waited while the rest of the app
+        kept writing. Deleting on the snapshot would destroy an event that was
+        added or re-worded beside the one the user saw, so when the subject
+        changed the question is asked again from the store instead.
         """
         target, self._pending_remove = self._pending_remove, None
-        target_key, self._pending_remove_key = getattr(self, '_pending_remove_key', None), None
+        target_key, self._pending_remove_key = self._pending_remove_key, None
+        subjects, self._pending_remove_subjects = self._pending_remove_subjects, ()
         self._dismiss_active_overlay()
         self.normalize_day_hover()
+        if text != self._remove_overlay.confirm_button.text():
+            return
+        live_subjects = self._remove_subject(target, target_key)
+        if live_subjects != subjects:
+            if not live_subjects:
+                # The event went away while the card waited: a yes could only
+                # delete nothing, so the request is dropped instead of asked
+                # about again with an empty box.
+                logger.info("The delete ask was answered after its event disappeared; dropping it.")
+                return
+            logger.info("The delete ask outlived its snapshot; asking again from the live store.")
+            self._ask_to_remove(jdate=target, key=target_key)
+            return
         if target_key is not None:
-            if text == self._remove_overlay.confirm_button.text():
-                self.event_removed_by_key.emit(target_key)
-            return
-        if target is None:
-            return
-        if text == self._remove_overlay.confirm_button.text():
+            self.event_removed_by_key.emit(target_key)
+        elif target is not None:
             self.event_removed.emit(target)
 
-    def _on_distance_choice(self, text: str):
-        """Dismiss the read-only distance notice.
+    def _remove_subject(self, jdate: Optional[jdatetime.date],
+                        key: Optional[str]) -> Tuple[Tuple[str, str], ...]:
+        """The keys a delete would remove, with the text each carries right now.
+
+        The card previews ONE event, but a date-level delete removes every entry
+        sharing that visible date (``remove_for_date``). Binding the ask to the
+        whole set is what lets the answer notice an event added, re-worded or
+        deleted alongside the one the card named.
+        """
+        if key is not None:
+            keys = [key] if events_for_key(self.user_events, key) else []
+        else:
+            keys = keys_matching_date(self.user_events, jdate) if jdate else []
+        return tuple(sorted(
+            (k, str(self.user_events.get(k, {}).get("text", ""))) for k in keys))
+
+    def _on_notice_choice(self, text: str):
+        """Dismiss the read-only notice.
 
         There is nothing to answer, so this only tears the surface down: the
         overlay already hid itself, and the dimmer is the calendar's to lower.
@@ -786,28 +874,20 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.normalize_day_hover()
 
     def _remove_event_by_key(self, key: str):
-        if not key:
+        """Ask to delete the single event under ``key`` (a per-event day row)."""
+        if not key or self._active_overlay is not None:
             return
-        if self._active_overlay is not None:
-            return
-        self._pending_remove_key = key
-        from utils.event_io import events_for_key
-        entry = events_for_key(self.user_events, key)
-        text = str(entry.get("text", "")) if entry else ""
-        preview = text if len(text) <= 40 else text[:40] + "…"
-        self._remove_overlay.set_message("این رویداد حذف شود؟")
-        self._remove_overlay.set_detail(preview)
-        self._present_overlay(self._remove_overlay)
+        self._ask_to_remove(key=key)
 
     def _remove_event(self, jdate: jdatetime.date):
+        """Ask to delete the day's event(s) (the date-level day row)."""
         if not jdate:
             return
         # A second request while a confirmation is up would overwrite the pending
-        # date, so the first one owns the answer.
+        # request, so the first one owns the answer.
         if self._active_overlay is not None:
             return
-        self._pending_remove_key = None
-        self._request_remove_confirmation(jdate)
+        self._ask_to_remove(jdate=jdate)
 
     def _show_date_distance(self, jdate: jdatetime.date):
         """Show how far the clicked day sits from today, in the popup.
@@ -834,7 +914,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # already up.
         if self._active_overlay is not None:
             return
-        self._cancel_day_tooltips()
         distance = describe_date_distance(jdate, today=self.current_date)
         # The shared long formatter, also used by the copy menu and the converter.
         date_line = format_jalali_long(jdate)
@@ -845,5 +924,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
             if distance.has_calendar_units:
                 lines.append(format_distance_breakdown(distance))
             lines.append(date_line)
-        self._distance_overlay.set_detail("\n".join(lines))
-        self._present_overlay(self._distance_overlay)
+        # Re-worded, not just refilled: the notice card is shared with the report
+        # of a dropped confirmation, so title and badge are set per use.
+        self._present_notice("فاصله تا امروز", detail="\n".join(lines),
+                             glyph=APP_CONFIG.FAS.FA_CLOCK)
