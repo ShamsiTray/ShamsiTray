@@ -114,6 +114,31 @@ def main():
     settings = JsonSettings()
     migrate_from_registry(settings)
 
+    # An unreadable store is not a first run: the preferences are gone, and the
+    # user should know rather than wonder later why their choices reverted. The
+    # file itself is normally kept (as <name>.corrupt) so nothing is thrown
+    # away; when it could not be kept aside it is still in place and the store
+    # refuses to write over it, which the user has to hear about too - otherwise
+    # the settings they change in this run look saved and are gone at exit.
+    if settings.recovery_backup:
+        if settings.read_only:
+            ConfirmDialog.notify(
+                None, "خطا در ذخیره تنظیمات",
+                "فایل تنظیمات قابل خواندن نیست و امکان تهیه نسخه پشتیبان از آن وجود ندارد.",
+                detail="برای جلوگیری از آسیب به فایل اصلی، ذخیره تنظیمات در این اجرای برنامه "
+                       "غیرفعال شده است. تغییراتی که اکنون در تنظیمات ایجاد می‌کنید، پس از بستن "
+                       "برنامه از بین خواهند رفت.",
+                danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
+            logger.warning("Settings are read-only: the unreadable store could not be kept aside, "
+                           "so no preference change will be saved this session.")
+        else:
+            ConfirmDialog.notify(
+                None, "بازنشانی تنظیمات",
+                "فایل تنظیمات خوانده نشد و تنظیمات به حالت پیش‌فرض بازگشت.",
+                detail=f"فایل قبلی با نام «{settings.recovery_backup}» در پوشه داده‌های برنامه نگه داشته شد.",
+                glyph=APP_CONFIG.FAS.FA_CIRCLE_INFO)
+            logger.warning(f"Settings were reset; the unreadable store is at {settings.recovery_backup!r}.")
+
     tray_icon = SystemTrayIcon(settings=settings)
     tray_icon.show()
     logger.info("System tray icon initialized")
