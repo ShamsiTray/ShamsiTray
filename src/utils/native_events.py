@@ -38,12 +38,31 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
     @staticmethod
     def _setting_change_section(lparam: int):
         """The WM_SETTINGCHANGE lParam string ('ImmersiveColorSet', ...), or
-        None when it cannot be read. Reading must be fault-isolated: the
-        pointer can be null or point at anything a broadcast carries."""
+        None when it cannot be read as a string.
+
+        Walked one wchar at a time up to a 32-char cap, stopping at the
+        terminator: an unbounded ``c_wchar_p`` read walks an unterminated
+        payload arbitrarily far through memory, and a fixed-size bulk copy
+        reads past a short payload's allocation. A try/except cannot contain a
+        native access violation, so the real guarantee is the OS contract that
+        WM_SETTINGCHANGE carries a valid string; the cap only limits how far a
+        bad payload can be walked and the null check covers the documented
+        null case.
+        """
         if not lparam:
             return None
         try:
-            return ctypes.cast(lparam, ctypes.c_wchar_p).value
+            chars = []
+            for i in range(32):
+                ch = ctypes.c_wchar.from_address(
+                    lparam + i * ctypes.sizeof(ctypes.c_wchar)).value
+                # A c_wchar's .value is a one-character string, so the
+                # terminator arrives as "\x00" - falsy as a string, not as a
+                # character, so compare it explicitly.
+                if ch == "\x00":
+                    break
+                chars.append(ch)
+            return "".join(chars)
         except Exception as e:  # pragma: no cover - depends on OS payloads
             logger.debug(f"Could not read WM_SETTINGCHANGE lParam string: {e}")
             return None
