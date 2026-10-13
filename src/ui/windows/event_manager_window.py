@@ -512,6 +512,9 @@ class EventManagerWindow(BaseFramelessWindow):
         if recurrence != RECURRENCE_NONE:
             remove_after_finish = False
 
+        # Snapshot for the guard below: the replace ask runs a nested event loop
+        # over a store the rest of the app shares.
+        store_at_ask = dict(self.user_events)
         collisions = []
         if editing_key is None:
             if picked_date is None:
@@ -523,7 +526,7 @@ class EventManagerWindow(BaseFramelessWindow):
             # and that still asks first.
             new_key = self.event_store.target_key(picked_date, recurrence)
             if new_key in self.user_events:
-                if not self._confirm_replace(new_key):
+                if not self._confirm_replace([new_key]):
                     return
                 collisions = [new_key]
         else:
@@ -548,8 +551,19 @@ class EventManagerWindow(BaseFramelessWindow):
             # Moving onto a date that already holds another event replaces it; ask.
             if new_key != editing_key:
                 collisions = self._colliding_keys(new_key, exclude=editing_key)
-                if collisions and not self._confirm_replace(collisions[0]):
+                if collisions and not self._confirm_replace(collisions):
                     return
+
+        # The confirmation above waited inside a nested event loop, and the
+        # store is shared: the background expiry pass can delete an event while
+        # the dialog is up. ``collisions``, ``editing_key`` and ``new_key`` all
+        # describe the snapshot the user was shown, so acting on them now would
+        # replace or drop an event that changed under the dialog. The save bails
+        # and the editor stays up, so the next press works from the live store.
+        if self.user_events != store_at_ask:
+            logger.info("Event store changed while the replace confirmation was open; "
+                        "not saving the edit.")
+            return
 
         self._hide_event_input_widget()
         replace_keys = list(collisions)
@@ -570,12 +584,21 @@ class EventManagerWindow(BaseFramelessWindow):
         return [key for key in self.user_events
                 if key != exclude and keys_share_visible_date(new_key, key)]
 
-    def _confirm_replace(self, key: str) -> bool:
-        """Adding onto a date that already holds an event replaces it; ask first."""
-        text = str(self.user_events[key].get("text", ""))
+    def _confirm_replace(self, keys: list) -> bool:
+        """Adding onto a date that already holds events replaces them; ask first.
+
+        The save removes EVERY key the answer covers, so the ask has to name
+        all of them: a dialog that previewed one event while the save deleted
+        two would replace an event the user never saw.
+        """
+        texts = [str(self.user_events[key].get("text", "")) for key in keys]
+        if len(keys) == 1:
+            message = "برای این تاریخ از قبل رویدادی ثبت شده است؛ جایگزین شود؟"
+        else:
+            message = f"برای این تاریخ از قبل {len(keys)} رویداد ثبت شده است؛ همه جایگزین شوند؟"
         return ConfirmDialog.ask(
-            self, "رویداد تکراری", "برای این تاریخ از قبل رویدادی ثبت شده است؛ جایگزین شود؟",
-            detail=text, confirm_text="جایگزینی", cancel_text="انصراف", danger=False)
+            self, "رویداد تکراری", message, detail="\n".join(texts),
+            confirm_text="جایگزینی", cancel_text="انصراف", danger=False)
 
     def _hide_event_input_widget(self):
         self._editing_key = None
