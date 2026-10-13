@@ -63,9 +63,11 @@ class CustomCheckbox(QWidget):
         palette = APP_CONFIG.get_current_palette()
         icon = APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID if self._is_checked else APP_CONFIG.FAS.FA_SQUARE_REGULAR
         if not self.isEnabled():
+            # Disabled only greys the box: the glyph still has to match
+            # isChecked() (which does not change when the widget is disabled),
+            # or a checked box that gets disabled would draw the empty square.
             icon_color = palette['GREY_COLOR']
             text_color = palette['GREY_COLOR']
-            icon = APP_CONFIG.FAS.FA_SQUARE_REGULAR
         else:
             icon_color = palette['ACCENT_COLOR'] if self._is_checked else palette['TEXT_COLOR']
             text_color = palette['TEXT_COLOR']
