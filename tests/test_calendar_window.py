@@ -192,6 +192,31 @@ def test_navigation_stops_at_supported_year_bounds(calendar):
     assert calendar.display_date.year == APP_CONFIG.SUPPORTED_MAX_YEAR
 
 
+def test_day_click_on_an_out_of_range_cell_is_ignored(calendar):
+    """The grid's leading/trailing cells belong to the neighbouring month:
+    clicking the trailing cell of month 12 of 1600 used to walk the view into
+    1601, outside the range navigation and go-to-date are clamped to."""
+    calendar.display_date = jdatetime.date(APP_CONFIG.SUPPORTED_MAX_YEAR, 12, 15)
+    calendar.fill_calendar_grid()
+    trailing = [cell.jalali_date for row in calendar.day_labels for cell in row
+                if cell.jalali_date is not None
+                and cell.jalali_date.year > APP_CONFIG.SUPPORTED_MAX_YEAR]
+    assert trailing, "month 12 of 1600 must show leading days of 1601"
+
+    calendar.day_labels[0][0].clicked.emit(trailing[0])
+    assert calendar.display_date.year == APP_CONFIG.SUPPORTED_MAX_YEAR
+
+    calendar.display_date = jdatetime.date(APP_CONFIG.SUPPORTED_MIN_YEAR, 1, 15)
+    calendar.fill_calendar_grid()
+    leading = [cell.jalali_date for row in calendar.day_labels for cell in row
+               if cell.jalali_date is not None
+               and cell.jalali_date.year < APP_CONFIG.SUPPORTED_MIN_YEAR]
+    assert leading, "month 1 of 1200 must show trailing days of 1199"
+
+    calendar.day_labels[-1][-1].clicked.emit(leading[-1])
+    assert calendar.display_date.year == APP_CONFIG.SUPPORTED_MIN_YEAR
+
+
 def test_navigation_clamps_day_to_target_month_length(calendar):
     # Jalali months 1-6 have 31 days, 7-11 have 30: 06-31 -> 07-30 clamps.
     calendar.display_date = jdatetime.date(1404, 6, 31)
@@ -772,6 +797,19 @@ def test_editor_open_cancels_day_tooltips(calendar, monkeypatch):
 
 
 # --- go-to-date popup ---------------------------------------------------------------
+
+
+def test_deferred_go_to_creator_is_a_no_op_over_a_hidden_calendar(calendar):
+    """The menu arms a 50 ms singleShot for this creator; losing activation can
+    dismiss the calendar in that window, and the callback used to build and show
+    the go-to window (and its overlay blocker) over a hidden calendar."""
+    calendar.hide()
+    try:
+        calendar._open_go_to_date_window()
+        assert calendar.go_to_window is None
+        assert not calendar.overlay_blocker.isVisible()
+    finally:
+        calendar.show()
 
 
 def test_open_go_to_date_window_shows_overlay(calendar, qtbot):
