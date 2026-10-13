@@ -251,8 +251,10 @@ class CenteredTextMenu(QMenu):
     render no visible primitive for them, and any primitive they do draw picks
     its own color, not the palette's), so the arrow is painted here: a small
     triangle centered in the row's TRAILING padding gutter, in the text colors.
-    Because it lives entirely inside that 15px gutter, the caption can center in
-    the FULL content rect like every other row.
+    The shared stylesheet zeroes Qt's own arrow subcontrols, so that primitive
+    cannot come back and double the triangle, and the caption is drawn in the
+    arrow-aware text zone (see ``_arrow_aware_text_zone``) rather than in the
+    full content rect.
 
     Behavior is untouched by construction: no mouse handling, no hover state, no
     custom rows - hover-to-open, hover background, keyboard navigation, RTL
@@ -314,15 +316,18 @@ class CenteredTextMenu(QMenu):
 
     @staticmethod
     def _arrow_aware_text_zone(zone: QRect) -> QRect:
-        """Tighten the text zone around its centre where a submenu arrow sits.
+        """Tighten the text zone beside where a submenu arrow is painted.
 
-        ``QRect.adjust`` ADDS to each edge, so ``adjust(4, 0, 4, 0)`` would
-        shift the whole zone - and the centred caption drawn in it - 4px to the
-        right. The arrow is painted in the trailing padding gutter, outside this
-        zone, so the room it takes must come off both sides: the overflow check
-        becomes 8px stricter while the caption stays centred.
+        ``QRect.adjust`` ADDS to each edge, and the trims here are deliberately
+        asymmetric: 10px off the LEADING edge, 4px off the trailing one. That is
+        the RTL look this app is built for - the caption's ink settles a couple
+        of pixels past the content rect's geometric centre, on the side away
+        from the arrow - and it is not mirrored for LTR rows, which ShamsiTray
+        never lays out. The arrow itself is painted in the trailing padding
+        gutter, outside this zone, so these trims are headroom for the overflow
+        check (14px stricter) rather than the arrow's own box.
         """
-        return zone.adjusted(4, 0, -4, 0)
+        return zone.adjusted(10, 0, -4, 0)
 
     def _paint_submenu_arrow(self, painter: QPainter, row: QRect, rtl: bool,
                              color: QColor):
