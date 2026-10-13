@@ -23,6 +23,22 @@ def _click(target, x, y):
     QTest.mouseClick(target, Qt.MouseButton.LeftButton, pos=QPoint(x, y))
 
 
+def test_arrow_aware_text_zone_insets_instead_of_shifting():
+    """QRect.adjust ADDS to each edge, so adjusting +4 on left AND right shifts
+    the zone - and the centred caption drawn in it - to the right. The
+    arrow-aware zone must be an inset: narrower, same centre."""
+    from PyQt6.QtCore import QRect
+
+    from ui.widgets.menu_widgets import CenteredTextMenu
+
+    zone = QRect(10, 0, 100, 20)
+    inset = CenteredTextMenu._arrow_aware_text_zone(zone)
+    assert inset.left() == zone.left() + 4
+    assert inset.right() == zone.right() - 4
+    assert inset.center().x() == zone.center().x()
+    assert inset.width() == zone.width() - 8
+
+
 @pytest.fixture()
 def checkbox_menu(qapp):
     menu = QMenu()
