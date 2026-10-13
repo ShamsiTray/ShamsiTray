@@ -588,6 +588,22 @@ def test_nudge_pulls_a_flush_popup_off_the_edge(work_area, qtbot):
     assert popup.x() + 100 - 1 == work_area.right() - MENU_EDGE_MARGIN
 
 
+def test_nudge_keeps_both_edges_inside_a_snug_work_area(work_area, qtbot):
+    """When the work area is barely wider than the popup, a full-width margin on
+    both edges makes the left/top rules overwrite the right/bottom ones and push
+    the popup back out; each axis's margin must shrink to the free space."""
+    from PyQt6.QtWidgets import QMenu
+    popup = QMenu()
+    popup.addAction("x")
+    popup.setFixedSize(work_area.width() - 3, 60)
+    qtbot.addWidget(popup)
+    popup.show()
+    popup.move(work_area.right() - popup.width() + 1, 300)  # flush right
+    nudge_popup_inside_work_area(popup)
+    assert popup.x() >= work_area.left()
+    assert popup.x() + popup.width() - 1 <= work_area.right()
+
+
 def test_nudge_is_a_no_op_while_hidden(work_area, qtbot):
     """Called from showEvent, so a hidden popup must return immediately rather
     than moving a window the show is about to place itself."""

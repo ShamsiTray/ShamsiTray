@@ -72,15 +72,22 @@ def nudge_popup_inside_work_area(popup, *, margin: int = MENU_EDGE_MARGIN) -> No
     geo = screen.availableGeometry()
     frame = popup.frameGeometry()
 
+    # A margin wider than the free space on its axis makes the two edge rules
+    # fight: the left/top pair would overwrite the right/bottom pair and push
+    # the popup back out of the work area. Shrink each margin to what that axis
+    # actually has to give, so the rules agree - or the popup simply fills it.
+    margin_x = min(margin, max(0, (geo.width() - frame.width()) // 2))
+    margin_y = min(margin, max(0, (geo.height() - frame.height()) // 2))
+
     x, y = frame.x(), frame.y()
-    if frame.right() > geo.right() - margin:
-        x = geo.right() - margin - frame.width() + 1
-    if frame.bottom() > geo.bottom() - margin:
-        y = geo.bottom() - margin - frame.height() + 1
-    if frame.left() < geo.left() + margin:
-        x = geo.left() + margin
-    if frame.top() < geo.top() + margin:
-        y = geo.top() + margin
+    if frame.right() > geo.right() - margin_x:
+        x = geo.right() - margin_x - frame.width() + 1
+    if frame.bottom() > geo.bottom() - margin_y:
+        y = geo.bottom() - margin_y - frame.height() + 1
+    if frame.left() < geo.left() + margin_x:
+        x = geo.left() + margin_x
+    if frame.top() < geo.top() + margin_y:
+        y = geo.top() + margin_y
 
     if (x, y) != (frame.x(), frame.y()):
         popup.move(x, y)
