@@ -468,6 +468,22 @@ def test_choosing_an_event_to_edit_emits_that_key(qtbot, open_menu):
     assert received == [(cell.jalali_date, "0000-00-02", "Pay bills")]
 
 
+def test_choosing_an_event_to_remove_emits_that_key(qtbot, open_menu):
+    """The delete submenu is built by the same row builder as the edit one, and
+    its rows must carry the same per-event key."""
+    _host, cell = _two_event_cell(qtbot)
+    received = []
+    cell.remove_event_requested_specific.connect(lambda key: received.append(key))
+    menu = open_menu(cell)
+
+    remove_menu = next(a.menu() for a in menu.actions() if a.text() == "حذف رویداد")
+    next(a for a in remove_menu.actions() if a.text() == "Pay bills (ماهانه)").trigger()
+    assert received == []  # deferred until the menu is gone
+    qtbot.wait(100)
+
+    assert received == ["0000-00-02"]
+
+
 def _merged_cell(qtbot, text="Pay bills\nDoctor appointment", recurrence="monthly"):
     """A cell whose single event carries several text lines (the merge result)."""
     host = _HostWindow({

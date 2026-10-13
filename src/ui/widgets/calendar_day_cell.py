@@ -260,31 +260,15 @@ class ClickableLabel(QLabel):
             remove_event_widget.triggered.connect(
                 lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
         elif day_events:
-            edit_menu = CenteredTextMenu(menu)
-            edit_menu.setTitle("ویرایش رویداد")
-            menu.addMenu(edit_menu)
-            edit_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
-            edit_menu.setLayoutDirection(menu.layoutDirection())
-
-            for key, entry in day_events:
-                action = edit_menu.addAction(_event_menu_label(entry))
-                action.triggered.connect(
-                    lambda checked=False, k=key, e=entry: self._trigger_edit_specific_and_close(menu, k, e)
-                )
+            self._add_event_rows_submenu(
+                menu, "ویرایش رویداد", day_events,
+                lambda key, entry: self._trigger_edit_specific_and_close(menu, key, entry))
 
             menu.addSeparator()
 
-            del_menu = CenteredTextMenu(menu)
-            del_menu.setTitle("حذف رویداد")
-            menu.addMenu(del_menu)
-            del_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
-            del_menu.setLayoutDirection(menu.layoutDirection())
-
-            for key, entry in day_events:
-                action = del_menu.addAction(_event_menu_label(entry))
-                action.triggered.connect(
-                    lambda checked=False, k=key: self._trigger_remove_specific_and_close(menu, k)
-                )
+            self._add_event_rows_submenu(
+                menu, "حذف رویداد", day_events,
+                lambda key, _entry: self._trigger_remove_specific_and_close(menu, key))
 
         distance_widget.triggered.connect(lambda: self._trigger_distance_and_close_menu(menu, self.jalali_date))
 
@@ -330,6 +314,28 @@ class ClickableLabel(QLabel):
             action.triggered.connect(
                 lambda checked=False, mode=mode: self._copy_date_and_close(copy_menu, mode))
         return copy_menu
+
+    def _add_event_rows_submenu(self, parent_menu: QMenu, title: str, rows,
+                                on_row) -> QMenu:
+        """Add the per-event «ویرایش رویداد» / «حذف رویداد» submenu to the day menu.
+
+        Both submenus list exactly the same rows - one per event of the day,
+        folded onto a single line by ``_event_menu_label`` - and differ only in
+        what a row does, so they share this builder instead of carrying two
+        copies of it. ``rows`` is the ``(key, entry)`` list for the day and
+        ``on_row(key, entry)`` runs when a row is triggered.
+        """
+        submenu = CenteredTextMenu(parent_menu)
+        submenu.setTitle(title)
+        parent_menu.addMenu(submenu)
+        submenu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
+        submenu.setLayoutDirection(parent_menu.layoutDirection())
+
+        for key, entry in rows:
+            action = submenu.addAction(_event_menu_label(entry))
+            action.triggered.connect(
+                lambda checked=False, k=key, e=entry: on_row(k, e))
+        return submenu
 
     def _copy_date_and_close(self, copy_menu: QMenu, mode: str):
         """Copy the right-clicked day's date(s) and close the menus.
