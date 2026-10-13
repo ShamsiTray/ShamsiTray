@@ -1,0 +1,14 @@
+# Commits `git blame` should skip, so the line that matters keeps the author and
+# date of the change that actually wrote it.
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs   # enable locally
+#
+# GitHub reads this file automatically. List a commit only when its whole diff is
+# mechanical (formatting, whitespace, line endings), and re-check the hashes
+# after any history rewrite - a rewritten commit is a new hash.
+
+# style(app): strip trailing whitespace
+b85742401f695b8a61bbb195287fae36257a70de
+
+# style(assets): reformat holidays.json
+6bc75644013d147f437b53332bb7fd765d58bacd
