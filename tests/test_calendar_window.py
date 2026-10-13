@@ -110,11 +110,20 @@ def test_today_and_selected_get_border(calendar):
     assert style.font_size == 17  # today pops one size up
 
 
-def test_out_of_month_holiday_is_tinted_not_full_red(calendar):
+@pytest.mark.parametrize("theme", [Config.Theme.DARK, Config.Theme.LIGHT])
+def test_out_of_month_holiday_is_tinted_not_full_red(calendar, theme):
+    """Out-of-month days carry the holiday tint via rgba(), never the full red.
+
+    The tint derives from the active palette's holiday colour, so it is asserted
+    in both themes rather than against the dark one's literal.
+    """
+    APP_CONFIG.set_theme(theme)
+    tint = QColor(APP_CONFIG.get_current_palette()["HOLIDAY_COLOR"])
     calendar.holidays_cache = {1404: {(4, 30): ["جشن ماه قبل"]}}
     style = calendar._determine_day_style(jdatetime.date(1404, 4, 30), False)
-    # Out-of-month days carry the holiday tint via rgba(), never the full red.
-    assert style.text_color.startswith("rgba(255, 76, 76")
+    assert style.text_color.startswith(
+        f"rgba({tint.red()}, {tint.green()}, {tint.blue()}, ")
+    assert not style.text_color.startswith("#")  # a tint, not the solid colour
     assert style.border_style == "none"
 
 
@@ -350,21 +359,24 @@ def test_a_disabled_mode_is_readable_but_visibly_unavailable(calendar):
 
 
 def test_the_dimmed_modes_follow_the_theme(calendar):
+    """The disabled recurrence rows are re-tinted from whichever palette is
+    active, so switching the theme moves their grey with it."""
     jdate = jdatetime.date(1404, 5, 10)
     calendar.user_events = {"0000-00-10": {"text": "Take medication", "recurrence": "monthly",
                                            "remove_after_finish": False}}
+    # The "before" reading is the dark palette's grey: select it rather than
+    # inherit whatever the host has active (conftest restores the palette).
+    APP_CONFIG.set_theme(Config.Theme.DARK)
     calendar._show_event_input_widget(jdate)
     widget = calendar.event_input_widget
+    widget.update_styles()
     dark_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
 
     APP_CONFIG.set_theme(Config.Theme.LIGHT)
-    try:
-        widget.update_styles()
-        light_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
-    finally:
-        APP_CONFIG.set_theme(Config.Theme.DARK)
-        widget.update_styles()
+    widget.update_styles()
+    light_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
 
+    assert QColor(dark_grey) == QColor(Config.DARK_PALETTE["GREY_COLOR"])
     assert QColor(light_grey) == QColor(Config.LIGHT_PALETTE["GREY_COLOR"])
     assert QColor(light_grey) != QColor(dark_grey)
 

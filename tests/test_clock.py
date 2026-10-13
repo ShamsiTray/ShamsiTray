@@ -65,13 +65,22 @@ def test_system_time_change_refreshes_everything(tray, monkeypatch):
 
 
 def test_minute_tick_skips_when_date_unchanged(tray, monkeypatch):
-    calls = []
-    monkeypatch.setattr(tray, "update_tray_icon", lambda force=False: calls.append(force))
-    # Simulate the minute-timer lambda path with an unchanged date:
-    new_date = jdatetime.date.today()
-    if new_date == tray.calendar_widget.current_date:
-        pass  # update_tray_icon(force=False) returns early internally
-    assert tray.calendar_widget.current_date == new_date
+    """The real wiring: the minute timer's timeout reaches update_tray_icon
+    unforced, and an unchanged date ends in its early return - no icon work.
+    """
+    icons = []
+    monkeypatch.setattr(tray, "setIcon", lambda icon: icons.append(icon))
+
+    tray.update_tray_icon(force=True)  # establish the date the tray last drew
+    icons.clear()
+
+    tray.minute_timer.timeout.emit()
+    assert icons == []  # unchanged date: the tick is a no-op
+
+    # A changed date redraws through the same unpatched path.
+    tray._last_tray_date = jdatetime.date.today() - datetime.timedelta(days=1)
+    tray.minute_timer.timeout.emit()
+    assert len(icons) == 1
 
 
 def test_time_change_filter_is_inactive_off_windows(qtbot):

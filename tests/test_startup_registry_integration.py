@@ -15,6 +15,7 @@ Everything else exercises the autostart policy through the in-memory fake
 (``tests/fake_registry.py``) via the ``fake_startup_registry`` fixture.
 """
 import sys
+import uuid
 
 import pytest
 
@@ -26,14 +27,19 @@ pytestmark = [
                        reason="the real autostart backend is Windows-only"),
 ]
 
-TEST_VALUE_NAME = "ShamsiTrayIntegrationTest"
+TEST_VALUE_PREFIX = "ShamsiTrayIntegrationTest"
 FAKE_EXE = '"C:\\Program Files\\ShamsiTray\\ShamsiTray.exe"'
 
 
 @pytest.fixture
 def registry():
-    """A real backend under a throwaway value name, cleaned up afterwards."""
-    reg = StartupRegistry(value_name=TEST_VALUE_NAME)
+    """A real backend under a per-run throwaway value name, cleaned up after.
+
+    The name is deliberately not the app's own; the uuid suffix additionally
+    keeps two runs - or a leftover from a crashed one - from colliding with
+    each other or with a pre-existing Run value of the same base name.
+    """
+    reg = StartupRegistry(value_name=f"{TEST_VALUE_PREFIX}-{uuid.uuid4().hex[:8]}")
     reg.delete()  # start from a known-absent state
     try:
         yield reg

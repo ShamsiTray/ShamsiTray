@@ -184,7 +184,12 @@ def _parse_rgba(value: str):
         return value.lower(), 1.0
     inner = value[value.index("(") + 1:value.rindex(")")].replace(",", " ").split()
     r, g, b, a = (float(x) for x in inner[:4])
-    return "#%02x%02x%02x" % (int(r), int(g), int(b)), a / 255.0
+    # The palette spells alphas both ways - float fractions (0.2) and 0-255
+    # ints (51) - and Qt's stylesheet parser accepts both, so read them the same
+    # way: a value <= 1 is a fraction, anything larger is divided by 255.
+    # Dividing a fraction by 255 composited a ~0.1% tint, so the "flattened
+    # translucent fill" contrast assertions tested the plain backdrop instead.
+    return "#%02x%02x%02x" % (int(r), int(g), int(b)), (a if a <= 1 else a / 255.0)
 
 
 def _flatten(fg_rgba: str, bg_hex: str) -> str:
