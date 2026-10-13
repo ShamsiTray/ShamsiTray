@@ -27,8 +27,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; PyQt6 6.x and Python 3.12 need Windows 10 1809 or newer; without this the
-; installer happily offers itself on releases that cannot run the payload.
-MinVersion=10.0
+; installer happily offers itself on releases that cannot run the payload. A
+; bare "10.0" accepts pre-1809 builds of Windows 10, so pin the 1809 build.
+MinVersion=10.0.17763
 ; Paths are relative to this script (build/): PyInstaller output and the repo tree.
 OutputDir=..\output
 OutputBaseFilename=ShamsiTraySetup-{#MyAppVersion}
@@ -96,8 +97,9 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 ; There is deliberately no [InstallDelete] on {app}: Name: {app} there resolves to
 ; whatever directory the user browsed to on the destination page, so it deletes
 ; that folder's entire contents - a profile or tools directory would be wiped
-; before the install even starts. It was also redundant: {app} is DelTree'd at
-; post-uninstall, and Flags: ignoreversion already replaces stale payload files.
+; before the install even starts. It was also redundant: Flags: ignoreversion
+; already replaces stale payload files, and the uninstaller removes the
+; directories it installed if they are left empty.
 
 [Code]
 var
@@ -124,12 +126,19 @@ begin
   if not IsAppRunning() then
     Exit;
 
-  if MsgBox('The application {#MyAppName} is currently running. ' +
-            'Do you want to close it and continue with the uninstallation?',
-            mbConfirmation, MB_YESNO) <> IDYES then
+  // Inno does not suppress a plain MsgBox under /SUPPRESSMSGBOXES, so an
+  // unattended (/VERYSILENT) uninstall would block on this prompt forever.
+  // Silent mode closes the tray without asking; the interactive prompt keeps
+  // its "close it and continue" meaning, so SuppressibleMsgBox would not do.
+  if not UninstallSilent then
   begin
-    Result := False;
-    Exit;
+    if MsgBox('The application {#MyAppName} is currently running. ' +
+              'Do you want to close it and continue with the uninstallation?',
+              mbConfirmation, MB_YESNO) <> IDYES then
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   // Graceful close first. taskkill without /F only posts WM_CLOSE, which this
@@ -148,12 +157,19 @@ begin
 
   // Uninstalling under a live process would leave the exe locked, so the file
   // removal above and the DelTree in CurUninstallStepChanged would both fail
-  // and silently leave the install directory behind.
+  // and silently leave the install directory behind. In silent mode carry on
+  // rather than block: the leftover-directory cleanup below is best-effort and
+  // the files the uninstaller owns are removed as far as the lock allows.
   if IsAppRunning() then
   begin
-    MsgBox('{#MyAppName} could not be closed. Close it from the tray, then run this uninstaller again.',
-           mbError, MB_OK);
-    Result := False;
+    if UninstallSilent then
+      Log('{#MyAppName} could not be closed; continuing the silent uninstall.')
+    else
+    begin
+      MsgBox('{#MyAppName} could not be closed. Close it from the tray, then run this uninstaller again.',
+             mbError, MB_OK);
+      Result := False;
+    end;
   end;
 end;
 
@@ -271,10 +287,16 @@ begin
       DelTree(ExpandConstant('{localappdata}\ShamsiTray'), True, True, True);
     end;
 
-    // Force delete the installation directory if it still exists
+    // Clean up the installation directory without erasing anything the
+    // uninstaller does not own: by this point Inno has already removed every
+    // file it installed, so whatever is still in {app} was placed there by the
+    // user (a custom destination can hold unrelated files) and a recursive
+    // force-delete would destroy it. Drop the empty subdirectories Inno left
+    // behind, then the directory itself only if that left it empty.
     if DirExists(ExpandConstant('{app}')) then
     begin
-      DelTree(ExpandConstant('{app}'), True, True, True);
+      DelTree(ExpandConstant('{app}\*'), False, False, True);
+      RemoveDir(ExpandConstant('{app}'));
     end;
   end;
 
