@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    # Windows runner, not ubuntu: the app is Windows-only (pywin32, the tray
+    # icon, the autostart Run key), so the suite runs on the platform a release
+    # is built on. The suite itself boots headless - tests/conftest.py selects
+    # the offscreen Qt platform.
+    runs-on: windows-latest
+    steps:
+      # No credentials in .git/config: the job installs third-party packages and
+      # never pushes, so a persisted token would only be there to leak.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # The release gate: exits non-zero until config.py, SetupScript.iss and
+      # details.txt name the same version.
+      - name: Version strings agree
+        run: python build/check_versions.py
+
+      - name: Lint
+        run: python -m ruff check src/ tests/ run.py
+
+      # pytest.ini deselects the windows_integration marker, so the real
+      # HKCU Run key is never touched here.
+      - name: Test
+        run: python -m pytest -q
