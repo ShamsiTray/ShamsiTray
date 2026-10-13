@@ -195,8 +195,12 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     @user_events.setter
     def user_events(self, value: Dict[str, dict]):
+        # Snapshot first: ``value`` may be the live store itself, and
+        # clear-then-update against that same dict leaves it empty - which the
+        # next save would then persist.
+        snapshot = dict(value)
         self._events.events.clear()
-        self._events.events.update(value)
+        self._events.events.update(snapshot)
 
     def _get_windows_theme(self) -> str:
         """Detects if Windows is in light or dark mode. Defaults to dark if detection fails."""

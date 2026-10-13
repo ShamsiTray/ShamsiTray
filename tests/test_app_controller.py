@@ -1960,6 +1960,21 @@ def test_update_user_event_by_key_is_safe_for_an_unknown_key(tray):
     assert tray.user_events == {}
 
 
+def test_user_events_setter_survives_assigning_the_store_itself(tray):
+    """The setter's contract invites ``tray.user_events = tray.user_events`` -
+    the getter hands back the live store - so clearing before updating from that
+    same dict would wipe it, and the next save would persist the wipe."""
+    tray.user_events = {"1405-01-01": {"text": "keep me", "recurrence": "none",
+                                       "remove_after_finish": False}}
+    live_store = tray.user_events
+
+    tray.user_events = tray.user_events
+
+    assert tray.user_events is live_store
+    assert tray.user_events == {"1405-01-01": {"text": "keep me", "recurrence": "none",
+                                               "remove_after_finish": False}}
+
+
 def test_update_user_event_by_key_rolls_back_on_save_failure(tray, monkeypatch):
     monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
