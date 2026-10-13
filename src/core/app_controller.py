@@ -170,10 +170,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.cursor_over_tray_probe = self._cursor_is_over_tray
         self.calendar_widget.event_added.connect(self.add_user_event)
         self.calendar_widget.event_removed.connect(self.remove_user_event)
-        if hasattr(self.calendar_widget, "event_removed_by_key"):
-            self.calendar_widget.event_removed_by_key.connect(self.remove_user_event_by_key)
-        if hasattr(self.calendar_widget, "event_updated_by_key"):
-            self.calendar_widget.event_updated_by_key.connect(self.update_user_event_by_key)
+        self.calendar_widget.event_removed_by_key.connect(self.remove_user_event_by_key)
+        self.calendar_widget.event_updated_by_key.connect(self.update_user_event_by_key)
 
         QTimer.singleShot(1000, self._prewarm_calendar)
 
