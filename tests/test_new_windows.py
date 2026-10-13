@@ -192,7 +192,7 @@ def test_manager_delete_requires_confirmation(manager, qtbot, monkeypatch):
     today = jdatetime.date.today()
     manager.controller.add_user_event(today, "برای حذف", "none", False)
     key = today.strftime("%Y-%m-%d")
-    monkeypatch.setattr(manager, "_confirm_delete", lambda k: True)
+    monkeypatch.setattr(manager, "_confirm_delete", lambda keys: True)
     with qtbot.waitSignal(manager.events_changed, timeout=2000):
         manager._on_delete_requested(key)
     assert key not in manager.controller.user_events
@@ -202,7 +202,7 @@ def test_manager_delete_declined_keeps_event(manager, monkeypatch):
     today = jdatetime.date.today()
     manager.controller.add_user_event(today, "می‌ماند", "none", False)
     key = today.strftime("%Y-%m-%d")
-    monkeypatch.setattr(manager, "_confirm_delete", lambda k: False)
+    monkeypatch.setattr(manager, "_confirm_delete", lambda keys: False)
     manager._on_delete_requested(key)
     assert key in manager.controller.user_events
 
@@ -231,7 +231,7 @@ def test_manager_adds_a_one_time_beside_a_yearly_event_on_the_same_day(manager, 
     manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
@@ -247,7 +247,7 @@ def test_manager_adds_a_monthly_beside_a_one_time_event_on_the_same_day(manager,
     manager.user_events["1405-08-01"] = {"text": "Doctor", "recurrence": RECURRENCE_NONE,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
@@ -263,7 +263,7 @@ def test_manager_adds_a_yearly_beside_a_one_time_event_on_the_same_day(manager, 
     manager.user_events["1405-08-01"] = {"text": "Doctor", "recurrence": RECURRENCE_NONE,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
@@ -277,7 +277,7 @@ def test_manager_adds_a_one_time_beside_a_monthly_event_on_the_same_day(manager,
     manager.user_events["0000-00-01"] = {"text": "Take medication", "recurrence": RECURRENCE_MONTHLY,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
@@ -293,13 +293,13 @@ def test_manager_asks_before_replacing_the_same_recurrence_on_the_same_day(manag
     manager.user_events["1405-08-01"] = {"text": "قدیمی", "recurrence": RECURRENCE_NONE,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
     manager._on_edit_saved("تازه", RECURRENCE_NONE, False)
 
-    assert asked == ["1405-08-01"]
+    assert asked == [["1405-08-01"]]
     assert list(manager.user_events) == ["1405-08-01"]
     assert manager.user_events["1405-08-01"]["text"] == "تازه"
 
@@ -311,13 +311,13 @@ def test_manager_re_adding_a_monthly_replaces_it_on_its_own_anchor(manager, monk
     manager.user_events["0000-00-31"] = {"text": "قدیمی", "recurrence": RECURRENCE_MONTHLY,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 7, 30)
 
     manager._on_edit_saved("تازه", RECURRENCE_MONTHLY, False)
 
-    assert asked == ["0000-00-31"]
+    assert asked == [["0000-00-31"]]
     assert list(manager.user_events) == ["0000-00-31"]
     assert manager.user_events["0000-00-31"]["text"] == "تازه"
 
@@ -325,7 +325,7 @@ def test_manager_re_adding_a_monthly_replaces_it_on_its_own_anchor(manager, monk
 def test_manager_declining_the_replace_keeps_the_stored_event(manager, monkeypatch):
     manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
                                          "remove_after_finish": False}
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: False)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: False)
     manager._editing_key = None
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
@@ -342,14 +342,63 @@ def test_manager_moving_onto_another_events_day_replaces_it(manager, monkeypatch
     manager.user_events["1404-05-05"] = {"text": "یک‌بار", "recurrence": RECURRENCE_NONE,
                                          "remove_after_finish": False}
     asked = []
-    monkeypatch.setattr(manager, "_confirm_replace", lambda key: asked.append(key) or True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
     manager._on_edit_requested("1404-05-05")
     manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
 
     manager._on_edit_saved("یک‌بار", RECURRENCE_NONE, False)
 
-    assert asked == ["0000-08-01"]
+    assert asked == [["0000-08-01"]]
     assert list(manager.user_events) == ["1405-08-01"]
+
+
+def test_manager_moving_onto_a_date_with_two_events_asks_about_both(manager, monkeypatch):
+    """A moved edit replaces every stored key sharing the moved-to visible date,
+    so the one confirmation has to name all of them: a dialog that previewed a
+    single event while the save removed two would replace an event nobody saw."""
+    manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
+                                         "remove_after_finish": False}
+    manager.user_events["1405-08-01"] = {"text": "یک‌بار", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": True}
+    manager.user_events["1405-09-01"] = {"text": "جابه‌جا می‌شود", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    asked = []
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: asked.append(keys) or True)
+    manager._on_edit_requested("1405-09-01")
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+
+    manager._on_edit_saved("جابه‌جا شد", RECURRENCE_NONE, False)
+
+    assert asked == [["0000-08-01", "1405-08-01"]]
+    assert list(manager.user_events) == ["1405-08-01"]
+
+
+def test_manager_leaves_a_save_whose_confirmation_outlived_its_snapshot(manager, monkeypatch):
+    """The replace confirmation waits inside a nested event loop, and the store
+    is shared with the background expiry pass, so the collisions it asked about
+    can already be stale when it returns. Acting on them would replace or drop
+    an event that changed under the dialog, so the save bails instead."""
+    manager.user_events["0000-08-01"] = {"text": "سالانه", "recurrence": RECURRENCE_YEARLY,
+                                         "remove_after_finish": False}
+    manager.user_events["1405-09-01"] = {"text": "جابه‌جا می‌شود", "recurrence": RECURRENCE_NONE,
+                                         "remove_after_finish": False}
+    manager._on_edit_requested("1405-09-01")
+    manager.event_input_widget.event_date = lambda: jdatetime.date(1405, 8, 1)
+    confirmed = []
+
+    def confirm_while_the_store_moves(keys):
+        # What the expiry pass does mid-dialog: the event the ask was about is
+        # gone before the answer arrives. The answer is still yes.
+        confirmed.append(list(keys))
+        del manager.user_events["0000-08-01"]
+        return True
+
+    monkeypatch.setattr(manager, "_confirm_replace", confirm_while_the_store_moves)
+    manager._on_edit_saved("جابه‌جا شد", RECURRENCE_NONE, False)
+
+    assert confirmed == [["0000-08-01"]]
+    # The move never happened: no key was written and the edited one survives.
+    assert list(manager.user_events) == ["1405-09-01"]
 
 
 def test_manager_unchanged_save_keeps_a_clamped_anchor(manager):
@@ -440,7 +489,7 @@ def test_manager_add_replace_confirmed(manager, monkeypatch):
     key = today.strftime("%Y-%m-%d")
     manager.controller.add_user_event(today, "قدیمی", "none", False)
     manager._on_add_requested()
-    monkeypatch.setattr(manager, "_confirm_replace", lambda k: True)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: True)
     manager._on_edit_saved("جایگزین", RECURRENCE_NONE, False)
     assert manager.controller.user_events[key]["text"] == "جایگزین"
 
@@ -450,7 +499,7 @@ def test_manager_add_replace_declined(manager, monkeypatch):
     key = today.strftime("%Y-%m-%d")
     manager.controller.add_user_event(today, "قدیمی", "none", False)
     manager._on_add_requested()
-    monkeypatch.setattr(manager, "_confirm_replace", lambda k: False)
+    monkeypatch.setattr(manager, "_confirm_replace", lambda keys: False)
     manager._on_edit_saved("جایگزین", RECURRENCE_NONE, False)
     assert manager.controller.user_events[key]["text"] == "قدیمی"
 
