@@ -22,8 +22,8 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               format_jalali_long, persian_month_name,
                               to_persian_digits)
 from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, events_for_date,
-                            events_on_date, make_event_key, recurrence_of_key,
-                            recurrences_on_date)
+                            events_on_date, recurrence_of_key,
+                            recurrences_on_date, target_key_for)
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
@@ -670,16 +670,20 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def _edited_target_key(self, jdate: jdatetime.date, key: Optional[str],
                            recurrence: str) -> Optional[str]:
-        """Where an edit of ``key`` would land, mirroring the service's own rule.
+        """Where an edit of ``key`` would land, by the store's own anchor rule.
 
-        Mirrored rather than asked for because the collision has to be known
-        BEFORE the store is touched: an unchanged recurrence keeps the entry's own
-        key (a clamped occurrence must not walk a recurring event's anchor), and
-        anything else is re-derived from the occurrence the user was shown.
+        Asked of the shared rule in ``utils.event_io`` rather than mirrored
+        here, because the collision has to be known BEFORE the store is touched:
+        an unchanged recurrence keeps the entry's own key (a clamped occurrence
+        must not walk a recurring event's anchor), and anything else is
+        re-derived by the same rule the service's ``target_key()`` applies. A
+        local copy of that rule silently disagrees on a clamped day, so the
+        collision goes undetected, the merge ask never appears and the store
+        then refuses the save in silence - the user's edit does nothing.
         """
         if key is None or recurrence_of_key(key) == recurrence:
             return key
-        return make_event_key(jdate, recurrence)
+        return target_key_for(self.user_events, jdate, recurrence)
 
     def _present_merge_confirmation(self, target_key: str, recurrence: str):
         """Ask before folding the edited event into the one already on ``target_key``.

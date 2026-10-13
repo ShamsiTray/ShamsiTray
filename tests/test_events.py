@@ -84,6 +84,26 @@ def test_keys_matching_date_collects_collisions():
     assert sorted(event_io.keys_matching_date(events, jdate)) == ["0000-00-05", "0000-05-05", "1404-05-05"]
 
 
+def test_target_key_for_prefers_the_exact_day_over_a_clamped_match():
+    """A clamped month matches two same-recurrence keys (the exact 0000-00-30
+    and a clamped 0000-00-31), and mapping order must not decide which one an
+    edit lands on: the exact-day anchor is the event the user is looking at."""
+    month_with_30_days = jdatetime.date(1405, 7, 30)  # Mehr has 30 days
+    events = {
+        "0000-00-31": {"text": "monthly on the 31st", "recurrence": "monthly",
+                       "remove_after_finish": False},
+        "0000-00-30": {"text": "monthly on the 30th", "recurrence": "monthly",
+                       "remove_after_finish": False},
+    }
+    assert event_io.target_key_for(events, month_with_30_days, "monthly") == "0000-00-30"
+    assert event_io.target_key_for(
+        dict(reversed(list(events.items()))), month_with_30_days, "monthly") == "0000-00-30"
+    # Nothing of that recurrence on the date: a fresh key is derived.
+    assert event_io.target_key_for({}, month_with_30_days, "monthly") == "0000-00-30"
+    # A different recurrence keeps to its own anchor rule.
+    assert event_io.target_key_for(events, month_with_30_days, "none") == "1405-07-30"
+
+
 def test_events_for_date_priority_specific_then_yearly_then_monthly():
     jdate = jdatetime.date(1404, 5, 5)
     events = {
