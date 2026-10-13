@@ -87,7 +87,7 @@ def normalize_search_text(text: str) -> str:
 
     Persian and Arabic-Indic digits become Latin, Arabic yeh/kaf become the
     Persian letters, the zero-width non-joiner is dropped, and the result is
-    lowercased - so «کتاب علي», «کتاب علی» and «کتاب علی» all match each other,
+    lowercased - so «کتاب علي», «کتاب علی» and «کتاب‌علی» all match each other,
     and 12 / ۱۲ / ١٢ each find «جلسه ۱۲ نفره».
     """
     s = str(text) if not isinstance(text, str) else text
