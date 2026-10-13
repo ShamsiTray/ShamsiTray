@@ -487,7 +487,10 @@ def line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bo
     ``placeholder_color`` to pin the placeholder text's color (QSS placeholders
     otherwise fall back to a platform-chosen grey)."""
     align_rule = " text-align: center;" if center_text else ""
-    placeholder_rule = f" QLineEdit::placeholder {{ color: {placeholder_color}; }}" if placeholder_color else ""
+    # A `QLineEdit::placeholder { color: ... }` block never matches in a Qt
+    # style sheet - the glyphs keep the platform's grey - so the placeholder
+    # color has to ride on the QLineEdit rule itself as `placeholder-text-color`.
+    placeholder_rule = f" QLineEdit {{ placeholder-text-color: {placeholder_color}; }}" if placeholder_color else ""
     return (
         f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding};{align_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
         f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"

@@ -370,7 +370,24 @@ def test_line_edit_stylesheet_variants(palette):
     assert "text-align: center" not in plain
     centered = line_edit_stylesheet(palette, center_text=True, placeholder_color="#808080")
     assert "text-align: center" in centered
-    assert "QLineEdit::placeholder { color: #808080; }" in centered
+    # A `QLineEdit::placeholder { color: ... }` block never matches in a Qt
+    # style sheet; the property the parser honours is `placeholder-text-color`.
+    assert "QLineEdit { placeholder-text-color: #808080; }" in centered
+
+
+def test_line_edit_placeholder_rule_actually_recolors_the_glyphs(qtbot, palette):
+    """The rule must reach the widget, not just the string: after polish the
+    PlaceholderText palette role carries the requested color."""
+    from PyQt6.QtGui import QPalette
+    from PyQt6.QtWidgets import QLineEdit
+
+    widget = QLineEdit()
+    widget.setPlaceholderText("سال")
+    qtbot.addWidget(widget)
+    widget.setStyleSheet(line_edit_stylesheet(palette, placeholder_color="#123456"))
+    widget.ensurePolished()
+    color = widget.palette().color(QPalette.ColorRole.PlaceholderText)
+    assert color.name().upper() == "#123456"
 
 
 def test_error_line_edit_stylesheet_extends_plain_with_red(palette):
