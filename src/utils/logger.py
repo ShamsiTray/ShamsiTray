@@ -89,6 +89,40 @@ def is_benign_qt_warning(message: str) -> bool:
     return any(benign in message for benign in _QT_BENIGN_WARNINGS)
 
 
+def _log_qt_message(msg_type, context, message) -> None:
+    """Mirror one Qt message into the shared log.
+
+    The body of the installed handler, kept as its own function so tests can
+    call it: a fatal is routed by raising out of here and terminates the
+    process, which cannot be driven end to end through ``qInstallMessageHandler``.
+    """
+    from PyQt6.QtCore import QtMsgType
+
+    # The benign list is a filter for WARNINGS only. Qt prints those strings as
+    # warnings when it is discarding a queued message, but the same words can
+    # appear in a critical or fatal, and testing the text before the severity
+    # would silently swallow it - fatal losing its terminate with it.
+    if msg_type == QtMsgType.QtWarningMsg and is_benign_qt_warning(message):
+        return
+    level = {
+        QtMsgType.QtDebugMsg: logging.DEBUG,
+        QtMsgType.QtInfoMsg: logging.INFO,
+        QtMsgType.QtWarningMsg: logging.WARNING,
+        QtMsgType.QtCriticalMsg: logging.ERROR,
+        QtMsgType.QtFatalMsg: logging.CRITICAL,
+    }.get(msg_type, logging.WARNING)
+    try:
+        # PyQt6 hands the category over as a str already (a .decode() here
+        # raises). Qt names uncategorized messages "default", which this app
+        # logs as qt.general.
+        category = context.category if context.category and context.category != "default" else "general"
+    except Exception:
+        category = "general"
+    setup_logging(f"qt.{category}").log(level, message)
+    if msg_type == QtMsgType.QtFatalMsg:
+        raise SystemExit(1)
+
+
 def install_qt_message_handler() -> None:
     """Route Qt's native diagnostics (qDebug/qWarning/qCritical) into the app log.
 
@@ -96,31 +130,10 @@ def install_qt_message_handler() -> None:
     stderr, which the windowed EXE hides, leaving dev runs to show them
     unformatted and uncorrelated with the log file. This handler mirrors every
     Qt message into the shared rotating log (category kept when Qt provides
-    one), drops the known-benign warnings listed in ``_QT_BENIGN_WARNINGS``
+    one), drops the known-benign *warnings* listed in ``_QT_BENIGN_WARNINGS``
     entirely, and lets fatal messages terminate the process like the default
     handler would.
     """
-    from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
+    from PyQt6.QtCore import qInstallMessageHandler
 
-    def handler(msg_type, context, message):
-        if is_benign_qt_warning(message):
-            return
-        level = {
-            QtMsgType.QtDebugMsg: logging.DEBUG,
-            QtMsgType.QtInfoMsg: logging.INFO,
-            QtMsgType.QtWarningMsg: logging.WARNING,
-            QtMsgType.QtCriticalMsg: logging.ERROR,
-            QtMsgType.QtFatalMsg: logging.CRITICAL,
-        }.get(msg_type, logging.WARNING)
-        try:
-            # PyQt6 hands the category over as a str already (a .decode() here
-            # raises). Qt names uncategorized messages "default", which this app
-            # logs as qt.general.
-            category = context.category if context.category and context.category != "default" else "general"
-        except Exception:
-            category = "general"
-        setup_logging(f"qt.{category}").log(level, message)
-        if msg_type == QtMsgType.QtFatalMsg:
-            raise SystemExit(1)
-
-    qInstallMessageHandler(handler)
+    qInstallMessageHandler(_log_qt_message)

@@ -1,6 +1,7 @@
 """Tests for utils.logger: shared rotating handlers, dedup setup, the
 benign-Qt-warning filter and the Qt message-handler routing."""
 import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -128,3 +129,40 @@ def test_qt_message_handler_survives_reinstall(user_data, fresh_shared_handlers)
     for handler in logging.getLogger("qt.general").handlers:
         handler.flush()
     assert "qt-reinstall-probe" in APP_CONFIG.LOG_FILE_PATH.read_text(encoding="utf-8")
+
+
+def test_qt_critical_with_benign_text_is_still_logged(user_data, fresh_shared_handlers):
+    """The benign filter is a WARNING filter: a critical that happens to carry
+    one of those substrings must still reach the log, at its own severity."""
+    from PyQt6.QtCore import QtMsgType
+
+    _prebind_qt_general()
+    logger_module._log_qt_message(
+        QtMsgType.QtCriticalMsg,
+        SimpleNamespace(category=""),
+        "QIODevice::read (QSslSocket): device not open",
+    )
+    for handler in logging.getLogger("qt.general").handlers:
+        handler.flush()
+    content = APP_CONFIG.LOG_FILE_PATH.read_text(encoding="utf-8")
+    assert "QIODevice::read (QSslSocket)" in content
+    assert "[ERROR]" in content
+
+
+def test_qt_fatal_with_benign_text_still_terminates(user_data, fresh_shared_handlers):
+    """The fatal path must survive the benign filter: dropping the warning with
+    the same text must not drop the SystemExit a fatal relies on."""
+    from PyQt6.QtCore import QtMsgType
+
+    _prebind_qt_general()
+    with pytest.raises(SystemExit):
+        logger_module._log_qt_message(
+            QtMsgType.QtFatalMsg,
+            SimpleNamespace(category=""),
+            "QIODevice::read (QSslSocket): device not open",
+        )
+    for handler in logging.getLogger("qt.general").handlers:
+        handler.flush()
+    content = APP_CONFIG.LOG_FILE_PATH.read_text(encoding="utf-8")
+    assert "QIODevice::read (QSslSocket)" in content
+    assert "[CRITICAL]" in content
