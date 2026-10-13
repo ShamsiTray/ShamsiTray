@@ -1531,27 +1531,36 @@ def test_tray_click_completes_a_just_dismissed_popup(tray, monkeypatch):
     cal = tray.calendar_widget
     shown = []
     monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))
-    monkeypatch.setattr(cal, "consume_outside_click_dismissal", lambda: True)
     monkeypatch.setattr(tray, "geometry",
                         lambda: QRect(QCursor.pos() - QPoint(4, 4), QSize(8, 8)))
 
+    # The probe reads the tray geometry: this dismissal happened over the icon.
+    cal._record_outside_dismissal()
     tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
     assert shown == []
 
     # One-shot marker: the following click opens the calendar again.
-    monkeypatch.setattr(cal, "consume_outside_click_dismissal", lambda: False)
     tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
     assert shown == [1]
 
 
 def test_dismissal_far_from_the_tray_icon_still_opens(tray, monkeypatch):
+    """The overlap with the icon is judged when the dismissal is recorded: a
+    popup dismissed elsewhere must still let the next tray click open it, even
+    though the cursor is over the icon by the time that click arrives."""
     from PyQt6.QtWidgets import QSystemTrayIcon
 
     shown = []
     monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))
-    monkeypatch.setattr(tray.calendar_widget, "consume_outside_click_dismissal", lambda: True)
     monkeypatch.setattr(tray, "geometry",
                         lambda: QRect(QCursor.pos() + QPoint(400, 400), QSize(8, 8)))
+
+    # Away from the icon when the dismissal is recorded...
+    tray.calendar_widget._record_outside_dismissal()
+    # ... and over it by the time the icon delivers its click. The verdict has
+    # to come from the dismissal, or this click would be swallowed.
+    monkeypatch.setattr(tray, "geometry",
+                        lambda: QRect(QCursor.pos() - QPoint(4, 4), QSize(8, 8)))
 
     tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
     assert shown == [1]
