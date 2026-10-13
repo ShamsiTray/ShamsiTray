@@ -15,9 +15,13 @@ anchor date. It is hidden for the calendar so that flow behaves exactly as
 before. The year is a text input (Persian or Latin digits) rather than a
 bounded dropdown, so the flow keeps working no matter how far ahead the user
 plans.
+
+The module also owns the shared recurrence wording: ``recurrence_label`` and
+the ``delete_confirmation_message`` built from it, which the calendar's
+date-level card and the event manager's per-row dialog both ask.
 """
 import jdatetime
-from typing import Optional
+from typing import Iterable, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal, QRegularExpression
 from PyQt6.QtGui import QColor, QPainter, QRegularExpressionValidator, QTextOption
@@ -25,7 +29,8 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButt
 
 from config import APP_CONFIG
 from utils.date_utils import days_in_jalali_month, from_persian_digits, to_persian_digits
-from utils.event_io import RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEARLY
+from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEARLY,
+                            recurrence_of_key)
 from utils.ui_helpers import (YearRangeValidationMixin, accent_button_stylesheet,
                               center_combo_items, combo_stylesheet,
                               danger_button_stylesheet, fit_combo_width)
@@ -48,6 +53,41 @@ YEAR_RANGE_HINT = f"سال باید بین {to_persian_digits(MIN_EVENT_YEAR)} �
 def recurrence_label(mode: str) -> str:
     """Persian label for a recurrence mode."""
     return _RECURRENCE_LABELS[_RECURRENCE_VALUES.index(mode)] if mode in _RECURRENCE_VALUES else _RECURRENCE_LABELS[0]
+
+
+def _join_fa(items: list) -> str:
+    """Persian list wording: «الف، ب و ج» (no separator before the last item)."""
+    if len(items) <= 1:
+        return items[0] if items else ""
+    return "، ".join(items[:-1]) + " و " + items[-1]
+
+
+def delete_confirmation_message(keys: Iterable[str]) -> str:
+    """The delete ask for ``keys`` - every key the answer would remove.
+
+    A date-level delete covers every entry sharing that visible date and a
+    recurring key covers every occurrence of its series, so the wording cannot
+    be read off the single event the card previews: a monthly event would ask
+    like a one-off deletion and its other occurrences would go unmentioned.
+    Both surfaces ask from the same key model here (beside the recurrence
+    labels it reuses), so the calendar's date-level card and the event
+    manager's per-row card cannot drift into saying different things.
+    """
+    keys = list(keys)
+    modes = [recurrence_of_key(key) for key in keys]
+    if len(modes) <= 1:
+        if not modes or modes[0] == RECURRENCE_NONE:
+            return "این رویداد حذف شود؟"
+        return (f"این رویداد تکرارشونده {recurrence_label(modes[0])} است و تمام "
+                "تکرارهای آن حذف خواهند شد. آیا مطمئن هستید؟")
+    # Kinds in use, told apart by recurrence: a date holds at most one event per
+    # mode, so the list is what the user is about to lose rather than a count
+    # they cannot check.
+    labels = _join_fa(list(dict.fromkeys(
+        recurrence_label(mode) for mode in modes)))
+    return (f"این روز {to_persian_digits(len(keys))} رویداد دارد ({labels})؛ "
+            "همه حذف میشوند و تکرارهای رویدادهای تکرارشونده هم پاک میشود. "
+            "آیا مطمئن هستید؟")
 
 
 class RTLTextEdit(QTextEdit):
