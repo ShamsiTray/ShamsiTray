@@ -244,6 +244,60 @@ def test_main_single_instance_shows_themed_notice(stubbed, monkeypatch):
     assert stubbed.notifies[0][1].get("danger") is None
 
 
+def test_main_reports_a_settings_reset(tmp_path, stubbed):
+    """An unreadable settings store is not a first run: the app says so at
+    startup instead of silently reverting every preference."""
+    settings_path = APP_CONFIG.SETTINGS_FILE_PATH
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main()
+
+    assert exit_info.value.code == 0
+    assert stubbed.trays  # booted normally, with defaults
+    assert any("بازنشانی تنظیمات" in args[1] for args, _kwargs in stubbed.notifies)
+    _args, kwargs = next(n for n in stubbed.notifies if "بازنشانی تنظیمات" in n[0][1])
+    assert "settings.json.corrupt" in kwargs["detail"]
+
+
+def test_main_warns_when_the_unreadable_store_cannot_be_preserved(tmp_path, stubbed, monkeypatch):
+    """Neither path could keep the bytes, so the store refuses to write over the
+    only copy left: the notice has to say saving is off for this session and
+    that changes made in it are lost at exit - not that a backup was kept."""
+    settings_path = APP_CONFIG.SETTINGS_FILE_PATH
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text("{not json", encoding="utf-8")
+
+    def refused(*_args, **_kwargs):
+        raise OSError("locked")
+
+    monkeypatch.setattr("utils.json_settings.os.replace", refused)
+    monkeypatch.setattr("utils.json_settings._copy_bytes", refused)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main()
+
+    assert exit_info.value.code == 0
+    _args, kwargs = next(n for n in stubbed.notifies if "خطا در ذخیره تنظیمات" in n[0][1])
+    assert "نسخه پشتیبان" in _args[2]              # no backup could be made
+    assert "غیرفعال شده است" in kwargs["detail"]    # saving is off this session
+    assert "از بین خواهند رفت" in kwargs["detail"]   # and the changes die with it
+    assert kwargs["danger"] is True                 # a failure, not a plain notice
+    # The kept-aside wording must not appear: nothing was preserved.
+    assert not any("بازنشانی تنظیمات" in args[1] for args, _kwargs in stubbed.notifies)
+    assert settings_path.read_text(encoding="utf-8") == "{not json"  # untouched
+
+
+def test_main_stays_quiet_on_a_first_run(tmp_path, stubbed):
+    """No store at all is a first run, not a loss: no reset notice."""
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main()
+
+    assert exit_info.value.code == 0
+    assert not any("بازنشانی تنظیمات" in args[1] for args, _kwargs in stubbed.notifies)
+
+
 def test_main_lock_error_other_than_contention_exits_non_zero(stubbed, monkeypatch):
     """An unwritable data dir or a full disk fails the lock with no other
     instance running; reporting that as "already running" and exiting 0 would
