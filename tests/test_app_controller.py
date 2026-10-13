@@ -1,6 +1,7 @@
 """Tests for core.app_controller: the update-flow orchestration, tray icon
 rendering, timers, theme/startup settings and the window lifecycle."""
 import datetime
+import sys
 
 import jdatetime
 import pytest
@@ -42,7 +43,11 @@ def test_boot_reads_stored_theme(tray):
 
 
 def test_boot_detects_dark_theme_off_windows(tray, monkeypatch):
-    # On Linux _get_windows_theme cannot touch the registry and defaults to dark.
+    """Off Windows there is no registry to read, so detection falls back to dark
+    instead of raising - a verdict that must not depend on the host's own
+    personalization, hence the simulated platform."""
+    monkeypatch.setattr(sys, "platform", "linux")
+
     assert tray._get_windows_theme() == APP_CONFIG.Theme.DARK
 
 
@@ -796,18 +801,33 @@ def test_update_tray_icon_without_force_skips_same_day(tray):
     assert icon_calls == []
 
 
-def test_tray_date_is_logged_not_blank(tray, caplog):
+def test_tray_date_is_logged_not_blank(tray):
     """jdatetime renders itself as "" under an empty format spec, so the refresh
-    used to log «new date: » with nothing after it — once a minute, forever."""
+    used to log «new date: » with nothing after it — once a minute, forever.
+
+    The record is captured on the module logger itself, the way the other
+    logging tests in the suite do, instead of filtering every logger's output
+    by message text.
+    """
     import logging
 
-    with caplog.at_level(logging.INFO):
-        tray.update_tray_icon(force=True)
+    messages = []
 
-    messages = [r.getMessage() for r in caplog.records
-                if "Updating tray icon for new date" in r.getMessage()]
-    assert messages
-    assert all(m.rstrip().endswith(str(jdatetime.date.today())) for m in messages)
+    class Capture(logging.Handler):
+        def emit(self, record):
+            messages.append(record.getMessage())
+
+    module_logger = logging.getLogger("core.app_controller")
+    capture = Capture()
+    module_logger.addHandler(capture)
+    try:
+        tray.update_tray_icon(force=True)
+    finally:
+        module_logger.removeHandler(capture)
+
+    logged = [m for m in messages if "Updating tray icon for new date" in m]
+    assert logged
+    assert all(m.rstrip().endswith(str(jdatetime.date.today())) for m in logged)
 
 
 def test_tray_tooltip_includes_user_event(tray):
@@ -937,13 +957,16 @@ def test_minute_timer_exists(tray):
 
 def test_theme_cycle_advances_and_persists(tray, monkeypatch):
     """The theme row advances the persisted three-valued choice; two presses
-    land on the opposite pin, a third returns to following the system
-    (re-detected, not stuck on the old pin)."""
+    land on the opposite pin, a third returns to following the system.
+
+    Detection is stubbed to light rather than read from the host: the stop
+    before the last one is dark, so landing on light proves that "system"
+    re-detected instead of staying on the pin it came from.
+    """
     monkeypatch.setattr(tray, "_get_windows_theme",
-                        lambda: APP_CONFIG.Theme.DARK, raising=True)
+                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
     monkeypatch.setattr(tray, "_apply_theme", lambda: None)
     key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
-    original = tray.current_theme  # detected system theme (dark off-Windows)
 
     tray._cycle_theme_choice()   # system -> light
     assert tray.current_theme == APP_CONFIG.Theme.LIGHT
@@ -951,8 +974,8 @@ def test_theme_cycle_advances_and_persists(tray, monkeypatch):
     tray._cycle_theme_choice()   # light -> dark
     assert tray.current_theme == APP_CONFIG.Theme.DARK
     assert tray.settings.value(key) == APP_CONFIG.Theme.DARK
-    tray._cycle_theme_choice()   # dark -> system (re-detected: dark)
-    assert tray.current_theme == original
+    tray._cycle_theme_choice()   # dark -> system, re-detected as light
+    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
     assert tray.settings.value(key) == APP_CONFIG.Theme.SYSTEM
 
 

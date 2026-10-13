@@ -14,11 +14,17 @@ WM_TIMECHANGE = 0x001E
 WM_NOTHING = 0x0200  # WM_USER: an unrelated message id
 
 
-def _win_msg(message_id: int) -> int:
-    """Build a real Windows MSG struct and return its address."""
+def _win_msg(message_id: int):
+    """Build a real Windows MSG struct.
+
+    Returns the struct alongside its address: the filter dereferences that
+    address, so the struct must stay alive for the whole call - the address of
+    a function-local struct points at freed memory once this returns (CPython
+    usually leaves the old bytes in place, which is why the tests ever passed).
+    """
     msg = ctypes.wintypes.MSG()
     msg.message = message_id
-    return ctypes.addressof(msg)
+    return msg, ctypes.addressof(msg)
 
 
 def test_non_windows_events_are_ignored():
@@ -37,19 +43,22 @@ def test_null_message_is_handled():
 def test_timechange_message_fires_callback():
     seen = []
     filt = TimeChangeEventFilter(lambda: seen.append(1))
-    assert filt.nativeEventFilter("windows_generic_MSG", _win_msg(WM_TIMECHANGE)) == (False, 0)
+    msg, addr = _win_msg(WM_TIMECHANGE)
+    assert filt.nativeEventFilter("windows_generic_MSG", addr) == (False, 0)
     assert seen == [1]
 
 
 def test_other_windows_messages_do_not_fire():
     filt = TimeChangeEventFilter(lambda: pytest.fail("must not fire"))
-    assert filt.nativeEventFilter("windows_generic_MSG", _win_msg(WM_NOTHING)) == (False, 0)
+    msg, addr = _win_msg(WM_NOTHING)
+    assert filt.nativeEventFilter("windows_generic_MSG", addr) == (False, 0)
 
 
 def test_dispatcher_message_type_is_also_watched():
     seen = []
     filt = TimeChangeEventFilter(lambda: seen.append(1))
-    filt.nativeEventFilter("windows_dispatcher_MSG", _win_msg(WM_TIMECHANGE))
+    msg, addr = _win_msg(WM_TIMECHANGE)
+    filt.nativeEventFilter("windows_dispatcher_MSG", addr)
     assert seen == [1]
 
 
@@ -70,7 +79,8 @@ def test_zeroed_message_buffer_is_safe():
 
 def test_non_callable_callback_is_safe():
     filt = TimeChangeEventFilter(None)
-    assert filt.nativeEventFilter("windows_generic_MSG", _win_msg(WM_TIMECHANGE)) == (False, 0)
+    msg, addr = _win_msg(WM_TIMECHANGE)
+    assert filt.nativeEventFilter("windows_generic_MSG", addr) == (False, 0)
 
 
 def test_raising_callback_is_contained():
@@ -91,7 +101,8 @@ def test_raising_callback_is_contained():
     module_logger.addHandler(capture)
     try:
         filt = TimeChangeEventFilter(boom)
-        result = filt.nativeEventFilter("windows_generic_MSG", _win_msg(WM_TIMECHANGE))
+        msg, addr = _win_msg(WM_TIMECHANGE)
+        result = filt.nativeEventFilter("windows_generic_MSG", addr)
     finally:
         module_logger.removeHandler(capture)
 
@@ -104,20 +115,26 @@ def test_raising_callback_is_contained():
 WM_SETTINGCHANGE = 0x001A
 
 
-def _setting_msg(message_id: int, section: str) -> int:
-    """A MSG with a real wide-string lParam, like Windows sends."""
+def _setting_msg(message_id: int, section: str):
+    """A MSG with a real wide-string lParam, like Windows sends.
+
+    Returns the MSG, the section buffer and the MSG's address. All three must
+    outlive the filter call: lParam points INTO the buffer and the filter
+    dereferences the MSG address.
+    """
     msg = ctypes.wintypes.MSG()
     msg.message = message_id
-    msg.lParam = ctypes.cast(ctypes.create_unicode_buffer(section), ctypes.c_void_p).value
-    return ctypes.addressof(msg)
+    section_buf = ctypes.create_unicode_buffer(section)
+    msg.lParam = ctypes.cast(section_buf, ctypes.c_void_p).value
+    return msg, section_buf, ctypes.addressof(msg)
 
 
 def test_settingchange_color_set_fires_callback_with_section():
     seen = []
     filt = TimeChangeEventFilter(lambda: seen.append("time"),
                                  on_setting_change_callback=seen.append)
-    filt.nativeEventFilter("windows_generic_MSG",
-                           _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet"))
+    msg, section_buf, addr = _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet")
+    filt.nativeEventFilter("windows_generic_MSG", addr)
     assert seen == ["ImmersiveColorSet"]
 
 
@@ -125,8 +142,8 @@ def test_settingchange_other_sections_are_ignored():
     seen = []
     filt = TimeChangeEventFilter(lambda: seen.append("time"),
                                  on_setting_change_callback=seen.append)
-    filt.nativeEventFilter("windows_generic_MSG",
-                           _setting_msg(WM_SETTINGCHANGE, "Environment"))
+    msg, section_buf, addr = _setting_msg(WM_SETTINGCHANGE, "Environment")
+    filt.nativeEventFilter("windows_generic_MSG", addr)
     assert seen == []
 
 
@@ -159,6 +176,5 @@ def test_settingchange_null_lparam_is_safe():
 
 def test_settingchange_without_callback_is_safe():
     filt = TimeChangeEventFilter(None)  # no second callback wired
-    assert filt.nativeEventFilter(
-        "windows_generic_MSG",
-        _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet")) == (False, 0)
+    msg, section_buf, addr = _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet")
+    assert filt.nativeEventFilter("windows_generic_MSG", addr) == (False, 0)

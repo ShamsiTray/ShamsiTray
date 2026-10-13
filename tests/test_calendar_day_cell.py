@@ -792,6 +792,20 @@ def _ink_bbox(image: QImage, rect: QRect, bg: str, tol: int = 10) -> QRect | Non
     return QRect(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
 
 
+@pytest.fixture
+def dark_palette():
+    """Select the dark theme and hand back its palette.
+
+    The ink probe below finds the lightest pixel in a glyph box, which only
+    locates the ink on a dark ground (see ``_lightest_pixel``): these assertions
+    are about the dark palette by definition. Selecting it explicitly keeps them
+    off the host's Windows setting; the suite-wide ``restore_active_palette``
+    fixture puts the palette back afterwards.
+    """
+    APP_CONFIG.set_theme(APP_CONFIG.Theme.DARK)
+    return APP_CONFIG.get_current_palette()
+
+
 def _lightest_pixel(image: QImage, rect: QRect) -> QColor:
     """The closest-to-white pixel in `rect` — the core of light glyph ink on
     a dark background (dark-theme TEXT_COLOR)."""
@@ -852,7 +866,7 @@ def test_qss_item_text_is_transparent_so_the_painter_never_doubles_it(qtbot):
         assert _ink_bbox(centered_img, geo, palette["BACKGROUND_COLOR"]) is not None
 
 
-def test_native_copy_rows_render_centered_text(qtbot, cell, open_menu):
+def test_native_copy_rows_render_centered_text(qtbot, dark_palette, cell, open_menu):
     """THE requirement: the three «کپی تاریخ» entries and the title row render
     with visually centered text. Leaf rows: ink centered in the content rect.
     Title row: text centered in the arrow-aware zone (the painted arrow lives
@@ -862,7 +876,7 @@ def test_native_copy_rows_render_centered_text(qtbot, cell, open_menu):
     color. (The old QSS rendering drew all of these left-aligned at the
     padding edge.)"""
     cell.setText("۵")
-    palette = APP_CONFIG.get_current_palette()
+    palette = dark_palette
     bg = palette["BACKGROUND_COLOR"]
     menu = open_menu(cell)
     menu.popup(QPoint(10, 10))
@@ -971,10 +985,10 @@ def test_hover_background_still_paints_under_centered_text(qtbot, cell, open_men
         f"hover fill changed: {sample.name()} vs {expected.name()}"
 
 
-def test_disabled_rows_still_render_visible_grey_text(qtbot):
+def test_disabled_rows_still_render_visible_grey_text(qtbot, dark_palette):
     """QSS item text is transparent even for disabled rows, so the painter
     must supply the grey there — a disabled row stays visible, never blank."""
-    palette = APP_CONFIG.get_current_palette()
+    palette = dark_palette
     m = CenteredTextMenu()
     qtbot.addWidget(m)
     m.setStyleSheet(_menu_stylesheet(palette))
@@ -988,7 +1002,7 @@ def test_disabled_rows_still_render_visible_grey_text(qtbot):
     assert _close(_lightest_pixel(img, ink), QColor(palette["GREY_COLOR"]))
 
 
-def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot):
+def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot, dark_palette):
     """Direction-aware indicator handling: under LTR the self-painted arrow
     sits in the trailing padding gutter (right of the content rect), its ink
     never touches the caption, and the caption keeps all of its glyphs inside
@@ -1001,7 +1015,7 @@ def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot):
     arrow is drawn in the trailing gutter in the row's text color, it costs the
     caption neither its box nor its glyphs, and Qt's own suppressed indicator
     does not come back beside it."""
-    palette = APP_CONFIG.get_current_palette()
+    palette = dark_palette
     bg = palette["BACKGROUND_COLOR"]
     m = CenteredTextMenu()
     qtbot.addWidget(m)

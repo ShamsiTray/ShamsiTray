@@ -427,10 +427,26 @@ def test_find_installer_asset_prefers_tag_version():
     assert UpdateChecker._find_installer_asset(other)["name"] == "ShamsiTraySetup-98.0.0.exe"
 
 
-def test_check_returns_true_only_when_a_round_starts(checker):
-    """UPD-6: callers must be able to tell a no-op check from a real one."""
+def test_check_returns_true_only_when_a_round_starts(checker, monkeypatch):
+    """UPD-6: callers must be able to tell a no-op check from a real one.
+
+    The request helper is stubbed: a bare check() here fired real rounds at the
+    app's GitHub endpoints - the autouse no-stray-network fixture only drops the
+    *scheduled* auto check, not a direct check() - and never waited for the
+    replies. The pending-round counter the second assertion rests on is the
+    stub's own increment, exactly as ``_get`` raises it.
+    """
+    urls = []
+
+    def fake_get(url, handler):
+        urls.append(url)
+        checker._pending += 1
+
+    monkeypatch.setattr(checker, "_get", fake_get)
+
     assert checker.check() is True
     assert checker.check() is False  # pending round: no-op
+    assert len(urls) == 2  # app + holidays; the no-op added none
 
 
 def test_file_sha256_matches_hashlib(tmp_path):

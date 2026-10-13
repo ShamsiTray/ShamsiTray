@@ -1,5 +1,6 @@
 """Boot smoke test: the full controller must come up cleanly, including with
 legacy stores, expired events and holiday seeding."""
+import datetime
 import json
 
 import jdatetime
@@ -48,12 +49,21 @@ def test_tray_boots_and_builds_menu(tray):
 
 def test_holiday_store_seeded_from_bundle(user_data):
     assert not APP_CONFIG.HOLIDAYS_STORE_PATH.exists()
-    tray_boot(user_data)
-    assert APP_CONFIG.HOLIDAYS_STORE_PATH.exists(), "AppData store should be seeded on first run"
+    icon = tray_boot(user_data)
+    try:
+        assert APP_CONFIG.HOLIDAYS_STORE_PATH.exists(), "AppData store should be seeded on first run"
+    finally:
+        remove_tray_event_filter(icon)
 
 
 def tray_boot(user_data):
-    """Boot a tray against an in-memory autostart registry, never the real one."""
+    """Boot a tray against an in-memory autostart registry, never the real one.
+
+    The caller MUST hand the returned icon to ``remove_tray_event_filter``
+    before the test ends: the filter installs on the application object, which
+    outlives the test, so a live filter holding bound callbacks (and the boot
+    timer it schedules) would leak into later tests.
+    """
     from core.app_controller import SystemTrayIcon
     from tests.fake_registry import FakeStartupRegistry
     from utils.json_settings import JsonSettings
@@ -61,11 +71,19 @@ def tray_boot(user_data):
                           startup_registry=FakeStartupRegistry())
 
 
+def remove_tray_event_filter(icon):
+    """Remove the tray's native event filter from the application object."""
+    from PyQt6.QtCore import QCoreApplication
+    QCoreApplication.instance().removeNativeEventFilter(icon.event_filter)
+
+
 def test_boot_with_expired_pending_event_does_not_crash(user_data, monkeypatch):
     """Regression: an expired auto-delete event at startup used to raise
     AttributeError (calendar not yet created) and abort the launch."""
-    today = jdatetime.date.today()
-    past = today.replace(day=1) if today.day > 1 else today.replace(month=max(1, today.month - 1), day=28)
+    # timedelta arithmetic, not a replace()-based construction: on 1 Farvardin
+    # the month clamp keeps the same year and lands on a FUTURE date, so those
+    # tests could flake one day a year.
+    past = jdatetime.date.today() - datetime.timedelta(days=1)
     expired_key = make_event_key(past, "none")
     _seed_events_file({
         "version": event_io.EVENTS_STORE_VERSION,
@@ -73,10 +91,12 @@ def test_boot_with_expired_pending_event_does_not_crash(user_data, monkeypatch):
     })
 
     tray = tray_boot(user_data)
-
-    assert expired_key not in tray.user_events
-    stored = json.loads(APP_CONFIG.USER_EVENTS_FILE_PATH.read_text(encoding="utf-8"))
-    assert expired_key not in stored["events"]
+    try:
+        assert expired_key not in tray.user_events
+        stored = json.loads(APP_CONFIG.USER_EVENTS_FILE_PATH.read_text(encoding="utf-8"))
+        assert expired_key not in stored["events"]
+    finally:
+        remove_tray_event_filter(tray)
 
 
 def test_boot_migrates_legacy_v1_store_to_v2_on_save(user_data):
@@ -87,14 +107,17 @@ def test_boot_migrates_legacy_v1_store_to_v2_on_save(user_data):
     _seed_events_file(legacy)
 
     tray = tray_boot(user_data)
-    assert tray.user_events["0000-01-01"]["recurrence"] == "yearly"
-    assert tray.user_events["1403-07-07"]["recurrence"] == "none"
+    try:
+        assert tray.user_events["0000-01-01"]["recurrence"] == "yearly"
+        assert tray.user_events["1403-07-07"]["recurrence"] == "none"
 
-    # Touch the store: the next save must write the versioned envelope.
-    tray.add_user_event(jdatetime.date(1404, 5, 5), "new one", "none", False)
-    raw = json.loads(APP_CONFIG.USER_EVENTS_FILE_PATH.read_text(encoding="utf-8"))
-    assert raw["version"] == event_io.EVENTS_STORE_VERSION
-    assert raw["events"]["1404-05-05"]["text"] == "new one"
+        # Touch the store: the next save must write the versioned envelope.
+        tray.add_user_event(jdatetime.date(1404, 5, 5), "new one", "none", False)
+        raw = json.loads(APP_CONFIG.USER_EVENTS_FILE_PATH.read_text(encoding="utf-8"))
+        assert raw["version"] == event_io.EVENTS_STORE_VERSION
+        assert raw["events"]["1404-05-05"]["text"] == "new one"
+    finally:
+        remove_tray_event_filter(tray)
 
 
 def test_add_replace_and_remove_event_flow(tray):
@@ -122,8 +145,7 @@ def test_add_replace_and_remove_event_flow(tray):
 
 
 def test_import_merges_and_cleans(tray, tmp_path):
-    past = jdatetime.date.today().replace(day=1) if jdatetime.date.today().day > 1 \
-        else jdatetime.date.today().replace(month=max(1, jdatetime.date.today().month - 1), day=28)
+    past = jdatetime.date.today() - datetime.timedelta(days=1)
     payload = {
         "version": event_io.EVENTS_STORE_VERSION,
         "events": {

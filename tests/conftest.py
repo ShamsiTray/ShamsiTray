@@ -16,12 +16,33 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PyQt6.QtCore import QCoreApplication  # noqa: E402 - after the platform env
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from config import APP_CONFIG  # noqa: E402
+from config import APP_CONFIG, Config  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def restore_active_palette():
+    """Put the active palette back the way the test found it.
+
+    The palette is process-global, and tests legitimately switch it - a tray
+    boot resolves "system" through ``_get_windows_theme()`` and leaves whatever
+    the host reports active. Unrestored, that decision leaks into every later
+    test, which is how parts of this suite came to pass or fail with the
+    developer's own Windows personalization. Nothing is forced here: each test
+    keeps the theme it selects, and only the leftovers are cleaned up.
+
+    ``current_palette`` is exactly the state ``set_theme`` writes, so restoring
+    the reference is precise - and keeps identity comparisons against
+    ``DARK_PALETTE`` / ``LIGHT_PALETTE`` honest.
+    """
+    before = Config.current_palette
+    yield
+    Config.current_palette = before
 
 
 @pytest.fixture(autouse=True)
@@ -91,3 +112,8 @@ def tray(qtbot, user_data, fake_startup_registry):
     icon = SystemTrayIcon(settings=JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH),
                           startup_registry=fake_startup_registry)
     yield icon
+    # The tray installs a native event filter on the application object, which
+    # outlives the test: without this every tray test leaves another live filter
+    # holding bound callbacks, and the boot timer it schedules can fire inside a
+    # LATER test's event loop.
+    QCoreApplication.instance().removeNativeEventFilter(icon.event_filter)
