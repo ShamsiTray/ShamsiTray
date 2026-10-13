@@ -57,6 +57,25 @@ def _surface(qtbot) -> DragSurface:
     return surface
 
 
+def _pin_screen(monkeypatch, virtual, available):
+    """Pin the screen lookup to a known desktop/work area, so the clamp maths is
+    assertable (and the taskbar strip is 40px wherever CI runs).
+
+    ``virtualGeometry`` is the whole desktop, taskbar strip included;
+    ``availableVirtualGeometry`` is the work area the dialog clamp respects.
+    """
+    from PyQt6.QtWidgets import QApplication
+
+    class FakeScreen:
+        def virtualGeometry(self):
+            return virtual
+
+        def availableVirtualGeometry(self):
+            return available
+
+    monkeypatch.setattr(QApplication, "primaryScreen", staticmethod(lambda: FakeScreen()))
+
+
 def test_drag_press_ignores_non_left_button(qtbot):
     surface = _surface(qtbot)
     event = press(surface, button=Qt.MouseButton.RightButton)
@@ -96,8 +115,9 @@ def test_drag_move_shifts_window_by_cursor_delta(qtbot):
 
 
 def test_drag_move_clamps_inside_screen(qtbot):
-    """The cursor point must stay ON screen during the move (screenAt is the
-    clamp anchor), while the dragged window is pushed past the edge."""
+    """The dragged window is clamped to the desktop while it is pushed past the
+    edge; on the single-screen offscreen desktop that is the geometry the
+    primary screen reports, available area included."""
     from PyQt6.QtWidgets import QApplication
     surface = _surface(qtbot)
     surface.handle_drag_press(press(surface, local=(10, 10)))
@@ -114,6 +134,78 @@ def test_drag_move_clamps_inside_screen(qtbot):
     surface.handle_drag_move(event)
     assert surface.x() <= geo.right() - surface.width()
     assert surface.y() == geo.bottom() - surface.height()  # keep_visible=None
+
+
+def test_drag_move_clamps_against_the_whole_desktop(qtbot, monkeypatch):
+    """The clamp anchored on the screen under the cursor, so the moment the
+    cursor crossed into the next monitor the window teleported to that screen's
+    left edge even while the window itself was still mostly on the first one.
+    It must span the virtual desktop instead."""
+    from PyQt6.QtCore import QEvent, QRect
+
+    desktop = QRect(0, 0, 3000, 1000)
+    _pin_screen(monkeypatch, desktop, desktop)
+
+    surface = _surface(qtbot)
+    surface.handle_drag_press(press(surface, local=(10, 10)))
+    # Far to the right of the single real screen: the desktop, not the screen
+    # under the cursor, decides where the window may land.
+    cursor = QPoint(5000, 500)
+    event = type(press(surface, local=(10, 10), global_pos=cursor))(
+        QEvent.Type.MouseMove, QPointF(10, 10), QPointF(cursor),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier)
+    surface.handle_drag_move(event)
+
+    assert surface.x() == 2999 - surface.width()  # desktop right() is inclusive
+
+
+def test_drag_move_keeps_a_dialog_above_the_taskbar(qtbot, monkeypatch):
+    """``virtualGeometry`` includes the taskbar strip, so a dialog clamped
+    "fully on screen" could still come to rest with its bottom buttons behind
+    the taskbar. The work area is where fully visible has to stop."""
+    from PyQt6.QtCore import QEvent, QRect
+
+    # A 1000x800 desktop with a 40px taskbar along its bottom edge.
+    _pin_screen(monkeypatch, QRect(0, 0, 1000, 800), QRect(0, 0, 1000, 760))
+
+    surface = _surface(qtbot)          # drag_bottom_keep_visible is None
+    surface.handle_drag_press(press(surface, local=(10, 10)))
+    cursor = QPoint(500, 9999)
+    event = type(press(surface, local=(10, 10), global_pos=cursor))(
+        QEvent.Type.MouseMove, QPointF(10, 10), QPointF(cursor),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier)
+    surface.handle_drag_move(event)
+
+    assert surface.y() == 759 - surface.height()  # the work area's bottom, not 799
+
+
+def test_drag_move_leaves_the_tool_window_clamp_on_the_desktop(qtbot, monkeypatch):
+    """The tool windows may hang below the bottom edge on purpose - only their
+    top 50px must stay reachable - so the taskbar strip is theirs to use and
+    their clamp keeps the whole desktop."""
+    from PyQt6.QtCore import QEvent, QRect
+
+    class ToolWindow(DragSurface):
+        drag_bottom_keep_visible = 50
+
+    _pin_screen(monkeypatch, QRect(0, 0, 1000, 800), QRect(0, 0, 1000, 760))
+
+    surface = ToolWindow()
+    qtbot.addWidget(surface)
+    surface.resize(300, 400)
+    surface.show()
+    surface.move(200, 200)
+    surface.handle_drag_press(press(surface, local=(10, 10)))
+    cursor = QPoint(500, 9999)
+    event = type(press(surface, local=(10, 10), global_pos=cursor))(
+        QEvent.Type.MouseMove, QPointF(10, 10), QPointF(cursor),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier)
+    surface.handle_drag_move(event)
+
+    assert surface.y() == 799 - 50  # the desktop's bottom edge, not the work area's
 
 
 def test_drag_release_ends_drag(qtbot):

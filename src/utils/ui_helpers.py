@@ -115,10 +115,12 @@ class FramelessDragMixin:
     strip of that many logical pixels (the calendar/tool windows drag by their
     title area only), ``None`` makes the whole blank surface draggable
     (dialogs). ``drag_bottom_keep_visible`` tunes the vertical clamp: ``None``
-    keeps the window fully inside the screen (dialogs), an int N keeps only the
-    top N px of the window reachable above the screen's bottom edge - the tool
-    windows' historical rule, letting most of the window hang below it without
-    ever losing it entirely. A card can never be lost off-screen.
+    keeps the window fully inside the desktop's AVAILABLE area, so a dialog's
+    bottom buttons never come to rest behind the taskbar (dialogs), while an int
+    N keeps only the top N px of the window reachable above the desktop's bottom
+    edge - the tool windows' historical rule, letting most of the window hang
+    below it (taskbar strip included) without ever losing it entirely. A card
+    can never be lost off-screen.
 
     Interactive children (buttons, inputs) consume their own mouse events, so a
     press on them never reaches these handlers and never starts a drag.
@@ -142,13 +144,29 @@ class FramelessDragMixin:
         if not (event.buttons() & Qt.MouseButton.LeftButton) or self._drag_position is None:
             return False
         new_pos = event.globalPosition().toPoint() - self._drag_position
-        screen = QApplication.screenAt(event.globalPosition().toPoint())
-        if screen is not None:
-            geo = screen.availableGeometry()
-            new_pos.setX(max(geo.left(), min(new_pos.x(), geo.right() - self.width())))
+        # Clamp against the whole virtual desktop, not the screen under the
+        # cursor: that screen flips as the cursor crosses a monitor boundary,
+        # and clamping to the new one teleports the window to its left edge
+        # while the window itself is still mostly on the old screen.
+        primary = QApplication.primaryScreen()
+        if primary is not None:
             keep_visible = self.drag_bottom_keep_visible
-            y_max = geo.bottom() - self.height() if keep_visible is None else geo.bottom() - keep_visible
-            new_pos.setY(max(geo.top(), min(new_pos.y(), y_max)))
+            if keep_visible is None:
+                # A dialog must stay wholly reachable, and the taskbar is not
+                # part of the desktop it may use: availableVirtualGeometry is
+                # the work area, still the union across monitors so a drag
+                # between them keeps spanning the desktop. Fall back when the
+                # platform reports nothing usable.
+                desktop = primary.availableVirtualGeometry()
+                if desktop.isNull():
+                    desktop = primary.virtualGeometry()
+            else:
+                # The tool windows may hang below the edge - only their top N px
+                # must stay reachable - so the taskbar strip is theirs to use.
+                desktop = primary.virtualGeometry()
+            new_pos.setX(max(desktop.left(), min(new_pos.x(), desktop.right() - self.width())))
+            y_max = desktop.bottom() - self.height() if keep_visible is None else desktop.bottom() - keep_visible
+            new_pos.setY(max(desktop.top(), min(new_pos.y(), y_max)))
             self.move(new_pos)
         event.accept()
         return True
