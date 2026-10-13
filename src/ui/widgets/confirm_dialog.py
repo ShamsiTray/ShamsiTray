@@ -87,7 +87,10 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
         """Center over ``parent`` (or the screen when there is no visible one),
         clamped to the screen so a dialog near an edge stays fully on it."""
         if parent is not None and parent.isVisible():
-            center = parent.geometry().center()
+            # mapToGlobal, not geometry(): geometry() is parent-relative for a
+            # child widget, so a dialog centered over one would land at that
+            # relative offset on the screen instead.
+            center = parent.mapToGlobal(parent.rect().center())
             self.move(center.x() - self.width() // 2,
                       center.y() - self.height() // 2)
         else:

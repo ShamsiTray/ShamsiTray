@@ -135,8 +135,11 @@ class ConfirmCard:
         main_layout.addLayout(button_row)
         # Width floor from the caller, raised to whatever the button row needs:
         # equal stretch shrinks every button to the same width, so one long
-        # caption («بعداً یادآوری کن") would clip all three buttons.
-        self.setFixedWidth(max(width, self._minimum_width_for_buttons()))
+        # caption («بعداً یادآوری کن") would clip all three buttons. The
+        # caller's floor is kept on the card: apply_notice re-raises the fixed
+        # width the same way once a replaced notice brings its own captions.
+        self._width_floor = width
+        self.setFixedWidth(max(self._width_floor, self._minimum_width_for_buttons()))
         self.choice: Optional[str] = None  # set to the clicked button's text
         # Default two-button flow keeps its named accessors (tests/callers).
         if actions is None:
@@ -213,6 +216,11 @@ class ConfirmCard:
         self.set_message(message)
         self.set_detail(detail)
         self.update_styles()
+        # The width was fixed once in __init__ from the captions present then,
+        # and a fixed width cannot grow through adjustSize: a replacement
+        # caption longer than those would clip. Re-raise the floor here the
+        # same way the constructor does.
+        self.setFixedWidth(max(self._width_floor, self._minimum_width_for_buttons()))
         self.adjustSize()
 
     def _minimum_width_for_buttons(self) -> int:

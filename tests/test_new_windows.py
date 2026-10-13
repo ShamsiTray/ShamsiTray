@@ -799,6 +799,25 @@ def test_confirm_card_is_a_mixin_not_a_widget(qtbot):
     assert not issubclass(ConfirmDialog, ConfirmOverlay)
 
 
+def test_apply_notice_regrows_the_fixed_width_for_a_longer_caption(qtbot):
+    """The card's width is FIXED once in __init__ from the captions present
+    then; a replaced notice carrying its own longer caption used to clip,
+    because a fixed width cannot grow through adjustSize."""
+    dialog = ConfirmDialog(None, "عنوان", "پیام", confirm_text="باشه", width=120)
+    qtbot.addWidget(dialog)
+    before = dialog.width()
+
+    # apply_notice is the card half's entry point; notify() would open a modal
+    # event loop the test cannot drive.
+    dialog.apply_notice("عنوان", "پیام",
+                        button_text="یک دکمه با عنوان بسیار طولانی‌تر از قبل")
+
+    needed = dialog._minimum_width_for_buttons()
+    assert needed > before                    # the regrow really is exercised
+    assert dialog.width() >= needed
+    assert dialog.width() >= before
+
+
 def test_confirm_dialog_still_paints_translucent_corners(qtbot):
     """WA_TranslucentBackground moved into the shared card; without it the rounded
     card gets square corners (invisible on a dialog, wrong over the calendar)."""
@@ -864,6 +883,29 @@ def test_confirm_dialog_exec_centered_sizes_and_centers_then_runs(qtbot, monkeyp
     center = parent.geometry().center()
     assert abs(dialog.x() + dialog.width() // 2 - center.x()) <= 1
     assert abs(dialog.y() + dialog.height() // 2 - center.y()) <= 1
+
+
+def test_confirm_dialog_centers_over_a_nested_child_widget(qtbot):
+    """A child widget's geometry() is parent-relative, so centering over one is
+    only right through mapToGlobal; a top-level parent hid that, because there
+    geometry() already is the widget's screen position."""
+    geo = QApplication.primaryScreen().availableGeometry()
+    window = QWidget()
+    qtbot.addWidget(window)
+    window.resize(600, 400)
+    window.move(geo.left() + 60, geo.top() + 40)
+    child = QWidget(window)
+    child.setGeometry(220, 120, 120, 80)  # well away from the window's origin
+    window.show()
+    qtbot.waitExposed(window)
+
+    dialog = ConfirmDialog(window, "ت", "م")
+    qtbot.addWidget(dialog)
+    dialog.center_over_parent(child)
+
+    expected = child.mapToGlobal(child.rect().center())
+    assert abs(dialog.x() + dialog.width() // 2 - expected.x()) <= 1
+    assert abs(dialog.y() + dialog.height() // 2 - expected.y()) <= 1
 
 
 def test_confirm_dialog_shows_detail_box_and_centers_content():
