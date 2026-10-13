@@ -293,7 +293,7 @@ class CenteredTextMenu(QMenu):
                 -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
             if action.menu() is not None:
                 self._paint_submenu_arrow(painter, geo, rtl, color)
-                zone.adjust(4, 0, 4, 0)
+                zone = self._arrow_aware_text_zone(zone)
                 if metrics.horizontalAdvance(text) > zone.width():
                     # Overflow safety net for unnaturally narrow menus: the
                     # caption cannot fit beside the arrow, so fall back to the
@@ -311,6 +311,18 @@ class CenteredTextMenu(QMenu):
                     continue
             painter.setPen(color)
             painter.drawText(zone, align, text)
+
+    @staticmethod
+    def _arrow_aware_text_zone(zone: QRect) -> QRect:
+        """Tighten the text zone around its centre where a submenu arrow sits.
+
+        ``QRect.adjust`` ADDS to each edge, so ``adjust(4, 0, 4, 0)`` would
+        shift the whole zone - and the centred caption drawn in it - 4px to the
+        right. The arrow is painted in the trailing padding gutter, outside this
+        zone, so the room it takes must come off both sides: the overflow check
+        becomes 8px stricter while the caption stays centred.
+        """
+        return zone.adjusted(4, 0, -4, 0)
 
     def _paint_submenu_arrow(self, painter: QPainter, row: QRect, rtl: bool,
                              color: QColor):
