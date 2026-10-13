@@ -200,6 +200,31 @@ def test_outside_dismissal_marker_is_consumed_once(qtbot, monkeypatch):
     assert window.consume_outside_click_dismissal() is False   # cleared on read
 
 
+def test_dismissal_freezes_the_tray_probe_verdict_at_dismissal_time(qtbot, monkeypatch):
+    """The verdict the tray click later consumes is the probe taken when the
+    dismissal was recorded: a cursor that has moved on by click time must not
+    change it."""
+    window = _visible_window(qtbot, pinned=False)
+    verdicts = [True]
+    window.cursor_over_tray_probe = lambda: verdicts[-1]
+
+    _lose_activation(window, monkeypatch)
+    verdicts[-1] = False  # the cursor has moved on by the time the click lands
+
+    assert window.consume_outside_click_dismissal() is True
+
+
+def test_dismissal_recorded_away_from_the_tray_does_not_count(qtbot, monkeypatch):
+    """A popup dismissed by a click elsewhere must not swallow a later tray
+    click: the overlay with the icon is judged when the dismissal is recorded."""
+    window = _visible_window(qtbot, pinned=False)
+    window.cursor_over_tray_probe = lambda: False
+
+    _lose_activation(window, monkeypatch)
+
+    assert window.consume_outside_click_dismissal() is False
+
+
 def test_stale_outside_dismissal_marker_expires(qtbot):
     window = _visible_window(qtbot, pinned=False)
     window._outside_dismissed_at = time.monotonic() - 5

@@ -14,6 +14,7 @@ It handles common functionality such as:
   ``CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED`` while they are not pinned.
 """
 import time
+from typing import Callable, Optional
 
 from PyQt6.QtCore import QEvent, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath
@@ -56,6 +57,14 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
         # When the last outside-click dismissal happened (see
         # consume_outside_click_dismissal).
         self._outside_dismissed_at = None
+        # Supplied by the controller: "is the cursor over the tray icon right
+        # now?". The answer is taken when a dismissal is RECORDED, not when the
+        # tray icon's click is delivered - the press hides the popup and that
+        # click arrives on the release up to a second later, by which time the
+        # cursor position can no longer tell this click's own press from a
+        # separate tray click.
+        self.cursor_over_tray_probe: Optional[Callable[[], bool]] = None
+        self._outside_dismissed_over_tray = False
         if self.TASKBAR_ICON:
             self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
             if APP_CONFIG.ICON_PATH.exists():
@@ -134,20 +143,34 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
             # genuinely foreign window - or nothing at all - dismisses the popup.
             active = QApplication.activeWindow()
             if active is None or not self._is_owned_by(active, self):
-                self._outside_dismissed_at = time.monotonic()
-                self.hide()
+                self._record_outside_dismissal()
+
+    def _record_outside_dismissal(self) -> None:
+        """Stamp the dismissal and the cursor-over-tray verdict at this moment."""
+        self._outside_dismissed_at = time.monotonic()
+        probe = self.cursor_over_tray_probe
+        # No probe means no better knowledge: keep the historical conservative
+        # reading, where the tray overlap is assumed (an invalid tray geometry
+        # used to count as over-tray too).
+        self._outside_dismissed_over_tray = probe() if probe is not None else True
+        self.hide()
 
     def consume_outside_click_dismissal(self, max_age_s: float = 1.0) -> bool:
-        """True once if the window was just hidden by losing activation.
+        """True once if the window was just dismissed from over the tray icon.
 
         Closing the popup with the tray icon deactivates it first (the mouse
         press hides it) and delivers the icon's click only afterwards (the
         release), so without this check that click reads as "open the calendar"
-        and instantly reopens what the same press just closed. The marker is
-        cleared on read, so the next click opens normally.
+        and instantly reopens what the same press just closed. The verdict is
+        the cursor-over-tray probe taken when the dismissal was RECORDED: by
+        the time the icon's click arrives, the cursor position can no longer
+        tell that click's own press from a separate tray click inside the age
+        window. Both the timestamp and the verdict are cleared on read, so the
+        next click opens normally.
         """
         at, self._outside_dismissed_at = self._outside_dismissed_at, None
-        return at is not None and (time.monotonic() - at) <= max_age_s
+        over_tray, self._outside_dismissed_over_tray = self._outside_dismissed_over_tray, False
+        return at is not None and (time.monotonic() - at) <= max_age_s and over_tray
 
     def paintEvent(self, event):
         if self.rect().isEmpty():

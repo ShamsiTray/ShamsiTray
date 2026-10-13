@@ -164,6 +164,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._clean_expired_events()
 
         self.calendar_widget = PersianCalendarWidget(self.holidays_cache, self.user_events)
+        # Evaluated when the calendar records an outside-click dismissal, so
+        # the tray click that follows can tell its own press from a separate
+        # tray click inside the marker's age window.
+        self.calendar_widget.cursor_over_tray_probe = self._cursor_is_over_tray
         self.calendar_widget.event_added.connect(self.add_user_event)
         self.calendar_widget.event_removed.connect(self.remove_user_event)
         if hasattr(self.calendar_widget, "event_removed_by_key"):
@@ -1052,16 +1056,23 @@ class SystemTrayIcon(QSystemTrayIcon):
             else:
                 self.show_calendar()
 
+    def _cursor_is_over_tray(self) -> bool:
+        """Whether the cursor is over the tray icon right now - an unknown tray
+        geometry counts as over the icon, the way it always has."""
+        tray_geometry = self.geometry()
+        return not tray_geometry.isValid() or tray_geometry.contains(QCursor.pos())
+
     def _tray_click_dismissed_the_popup(self) -> bool:
         """True when this tray click's own press dismissed the unpinned popup.
 
-        Only counted while the cursor is over the tray icon, so dismissing the
-        popup by clicking elsewhere and then clicking the icon still opens it.
+        The verdict comes from the dismissal itself, not from a cursor check at
+        click time: the press hides the popup and the icon's click is only
+        delivered on the release, up to a second later, so a separate tray
+        click inside that window has the cursor over the icon just the same.
+        A dismissal recorded away from the icon leaves the marker False, so
+        dismissing the popup elsewhere and then clicking the icon still opens.
         """
-        if not self.calendar_widget.consume_outside_click_dismissal():
-            return False
-        tray_geometry = self.geometry()
-        return not tray_geometry.isValid() or tray_geometry.contains(QCursor.pos())
+        return self.calendar_widget.consume_outside_click_dismissal()
 
     def show_calendar(self):
         # Stay on the month the user was browsing; the calendar snaps back to today
