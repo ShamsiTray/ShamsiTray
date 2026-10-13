@@ -62,15 +62,28 @@ def test_custom_checkbox_disabled_is_greyed_and_inert(qtbot):
     box.setEnabled(False)
     box.update_visuals()
     palette = APP_CONFIG.get_current_palette()
-    # Disabled state forces the unchecked glyph and grey colors.
-    assert box.icon_label.text() == APP_CONFIG.FAS.FA_SQUARE_REGULAR
+    # Disabled only greys the box: the glyph still has to agree with
+    # isChecked(), or a checked box that gets disabled draws an empty square
+    # while isChecked() stays True.
+    assert box.isChecked() is True
+    assert box.icon_label.text() == APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID
     assert palette["GREY_COLOR"] in box.icon_label.styleSheet()
     assert palette["GREY_COLOR"] in box.text_label.styleSheet()
+    assert palette["ACCENT_COLOR"] not in box.icon_label.styleSheet()
     seen = []
     box.toggled.connect(seen.append)
     box.mousePressEvent(_left_press(box))  # click on a disabled checkbox
     assert box.isChecked() is True          # unchanged
     assert seen == []                       # no toggled signal
+
+
+def test_custom_checkbox_disabled_unchecked_keeps_the_empty_square(qtbot):
+    box = CustomCheckbox("disabled")
+    qtbot.addWidget(box)
+    box.setEnabled(False)
+    box.update_visuals()
+    assert box.isChecked() is False
+    assert box.icon_label.text() == APP_CONFIG.FAS.FA_SQUARE_REGULAR
 
 
 def test_custom_checkbox_checked_glyph_is_accent(qtbot):
