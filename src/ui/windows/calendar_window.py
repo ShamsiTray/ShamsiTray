@@ -29,7 +29,8 @@ from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.go_to_date import GoToDateWindow
-from ui.widgets.event_input import EventInputWidget, recurrence_label
+from ui.widgets.event_input import (EventInputWidget, delete_confirmation_message,
+                                   recurrence_label)
 from ui.widgets.menu_widgets import MenuActionWidget
 from .base_window import BaseFramelessWindow
 
@@ -806,8 +807,11 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self._pending_remove_subjects = subjects
         # The question is the card's description line, the event text is what the
         # box is for - the same split the event manager's dialog uses. An event
-        # with no text simply has no box.
-        self._remove_overlay.set_message("این رویداد حذف شود؟")
+        # with no text simply has no box. The wording follows the KEYS the answer
+        # removes rather than the one event the box previews, so a recurring
+        # event's other occurrences are named before they go.
+        self._remove_overlay.set_message(
+            delete_confirmation_message([key for key, _text in subjects]))
         self._remove_overlay.set_detail(preview)
         self._present_overlay(self._remove_overlay)
 

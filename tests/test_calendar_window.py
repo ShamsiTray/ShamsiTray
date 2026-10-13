@@ -770,6 +770,35 @@ def test_delete_confirmation_without_event_text_shows_no_box(calendar):
     assert not overlay.detail_label.isVisible()
 
 
+def test_delete_ask_names_the_series_a_recurring_event_covers(calendar):
+    """A recurring key is one entry but many occurrences: reached from a day
+    row, the card has to ask about the whole series rather than read like a
+    single-event deletion."""
+    calendar.user_events = {"0000-00-10": {"text": "اجاره", "recurrence": "monthly",
+                                           "remove_after_finish": False}}
+    calendar._remove_event_by_key("0000-00-10")
+    overlay = calendar._remove_overlay
+    assert "ماهانه" in overlay.message_label.text()
+    assert "تمام تکرارهای آن حذف خواهند شد" in overlay.message_label.text()
+    assert overlay.detail_label.text() == "اجاره"
+
+
+def test_delete_ask_covers_every_event_a_date_level_delete_removes(calendar):
+    """The card previews one event, the answer removes the day's whole key set
+    (``remove_for_date``), so the question counts them and names the kinds
+    instead of asking about the event it happens to show."""
+    calendar.user_events = {
+        "1404-05-10": {"text": "امروز", "recurrence": "none", "remove_after_finish": False},
+        "0000-00-10": {"text": "اجاره", "recurrence": "monthly", "remove_after_finish": False},
+        "0000-05-10": {"text": "سالگرد", "recurrence": "yearly", "remove_after_finish": False},
+    }
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+    message = calendar._remove_overlay.message_label.text()
+    assert "۳ رویداد" in message
+    for label in ("بدون تکرار", "ماهانه", "سالانه"):
+        assert label in message
+
+
 def test_answering_the_delete_confirmation_tears_it_down(calendar):
     calendar._remove_event(jdatetime.date(1404, 5, 10))
     calendar._remove_overlay.confirm_button.click()

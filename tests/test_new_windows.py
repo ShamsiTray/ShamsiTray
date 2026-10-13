@@ -207,6 +207,26 @@ def test_manager_delete_declined_keeps_event(manager, monkeypatch):
     assert key in manager.controller.user_events
 
 
+def test_manager_delete_ask_names_the_series_a_recurring_key_covers(manager, monkeypatch):
+    """The dialog is asked from the key too, so a yearly event is confirmed as
+    the whole series the delete really removes - not as the single row it was
+    reached from."""
+    asked = {}
+
+    def fake_ask(parent, title, message, **kwargs):
+        asked.update(title=title, message=message, detail=kwargs.get("detail"))
+        return False
+
+    monkeypatch.setattr(ConfirmDialog, "ask", staticmethod(fake_ask))
+    manager.controller.user_events["0000-05-05"] = {"text": "سالگرد", "recurrence": "yearly",
+                                                    "remove_after_finish": False}
+    assert manager._confirm_delete("0000-05-05") is False
+    assert asked["title"] == "حذف رویداد"
+    assert "سالانه" in asked["message"]
+    assert "تمام تکرارهای آن حذف خواهند شد" in asked["message"]
+    assert asked["detail"] == "سالگرد"
+
+
 def test_manager_edit_updates_text_and_recurrence(manager):
     today = jdatetime.date.today()
     manager.controller.add_user_event(today, "قدیمی", "none", False)

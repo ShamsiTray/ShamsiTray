@@ -42,7 +42,8 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
 from config import APP_CONFIG
 from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.confirm_dialog import ConfirmDialog
-from ui.widgets.event_input import EventInputWidget, recurrence_label
+from ui.widgets.event_input import (EventInputWidget, delete_confirmation_message,
+                                   recurrence_label)
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
@@ -424,11 +425,13 @@ class EventManagerWindow(BaseFramelessWindow):
         """Ask before deleting; red must never delete without a question.
 
         Themed in-app dialog: the stock QMessageBox ignored the palette and
-        its wording was long-winded for a yes/no ask."""
+        its wording was long-winded for a yes/no ask. The question is built
+        from the key, so a recurring event is asked about as its whole series
+        rather than as the single row it was reached from."""
         text = str(self.user_events[key].get("text", ""))
         preview = text if len(text) <= 40 else text[:40] + "…"
         return ConfirmDialog.ask(
-            self, "حذف رویداد", "این رویداد حذف شود؟", detail=preview,
+            self, "حذف رویداد", delete_confirmation_message([key]), detail=preview,
             confirm_text="حذف", cancel_text="انصراف", danger=True)
 
     def _on_delete_requested(self, key: str):
