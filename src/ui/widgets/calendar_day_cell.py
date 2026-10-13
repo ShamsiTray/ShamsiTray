@@ -102,10 +102,12 @@ def _menu_stylesheet(palette: dict) -> str:
     the device-pixel grid, so the day menu's dividers come out the same thickness
     as the tray menu's instead of being drawn by QSS at a fractional position.
 
-    There are deliberately NO arrow subcontrol rules: handing the arrow back to
-    the style primitives proved invisible under some Windows styles/themes (the
-    primitive is drawn in a color the custom background swallows), so
-    CenteredTextMenu paints the indicator itself.
+    The arrow subcontrols ARE zeroed out here: CenteredTextMenu paints the
+    indicator itself (handing it back to the style primitives proved invisible
+    under some Windows styles/themes, where the primitive picks a color the
+    custom background swallows), and a primitive Qt still drew would land inside
+    the content rect next to the painted triangle, pulling the row's ink off the
+    centre the caption is placed at.
     """
     hover = palette["MENU_HOVER_COLOR"]
     hover_css = f"rgba({hover[0]}, {hover[1]}, {hover[2]}, {hover[3]})"
@@ -114,7 +116,10 @@ def _menu_stylesheet(palette: dict) -> str:
         f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_H}px; color: transparent; }}"
         f"QMenu::item:disabled {{ color: transparent; }}"
         f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}"
-        f"QMenu::separator {{ height: 11px; background-color: transparent; }}")
+        f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
+        # No image and no box: the submenu arrow Qt would draw is suppressed at
+        # its source, leaving the painter's triangle the only indicator.
+        "QMenu::left-arrow, QMenu::right-arrow { image: none; width: 0px; height: 0px; }")
 
 
 class ClickableLabel(QLabel):
