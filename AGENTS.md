@@ -26,7 +26,7 @@ ShamsiTray is a Python PyQt6 system-tray calendar app for Windows that displays 
       date_utils.py      # Jalali/Gregorian helpers, formatting, digit conversion, leap-year, validation
       asset_loader.py    # Font loading, asset verification
       logger.py          # Rotating file + console logging under %LOCALAPPDATA%\ShamsiTray\logs
-      native_events.py   # Windows WM_TIMECHANGE native event filtering (manual clock changes, DST)
+      native_events.py   # Windows WM_TIMECHANGE / WM_SETTINGCHANGE native event filtering (clock changes, live system theme)
       startup_registry.py  # Autostart Run-key access (read/write/delete) behind a fakeable seam
       ui_helpers.py      # Tray pixmap, shared combo/button/line-edit/scrollbar stylesheets, fit_combo_width
       json_settings.py   # JsonSettings — QSettings-compatible API backed by settings.json (atomic writes)
@@ -38,6 +38,7 @@ ShamsiTray is a Python PyQt6 system-tray calendar app for Windows that displays 
   output/                # Local-only installer output (gitignored; released installers attached to GitHub)
   tests/                 # pytest + pytest-qt suite (offscreen platform via tests/conftest.py)
   ruff.toml              # Ruff lint config (run by CI and locally)
+  .github/workflows/     # CI: version check + ruff + pytest on every push and PR
   ```
 
 **User data lives in `%LOCALAPPDATA%\ShamsiTray`** (NOT the registry):
@@ -76,8 +77,6 @@ pytest
 | `build/SetupScript.iss` | Inno Setup installer script (holiday seeding, uninstall cleanup) |
 | `build/details.txt` | Version resource for Windows exe properties |
 | `build/check_versions.py` | Release gate: asserts config.py / SetupScript.iss / details.txt versions agree |
-| `CHANGELOG.md` | Local-only release log (left untracked); the `[1.4.0]` entry is *Unreleased* — release notes are attached to the GitHub release |
-| `TODO.md` | Local-only living tracker (left untracked): v1.4 release checklist + backlog |
 | `README.md` / `README.fa.md` | User-facing docs (English / Farsi) |
 | `pytest.ini` | Test config: `testpaths = tests`, `pythonpath = src` |
 | `requirements.txt` | Pinned runtime deps (PyQt6, jdatetime, pywin32) |
@@ -99,13 +98,12 @@ pytest
 1. Bump `APP_VERSION` in `src/config.py`
 2. Update `MyAppVersion` in `build/SetupScript.iss` (must match)
 3. Update version resource in `build/details.txt`
-4. Update the local `CHANGELOG.md` (move the `Unreleased` entry to the new version)
-5. Commit, then build exe via PyInstaller (using `build/PyinstallerConfig.json`)
-6. Build installer via Inno Setup (using `build/SetupScript.iss`)
-7. Output: `output/ShamsiTraySetup-X.Y.Z.exe`
-8. Create annotated tag: `git tag -a vX.Y.Z -m "Release X.Y.Z"`
-9. Push: `git push && git push --tags`
-10. Attach installer + sha256 digest to the GitHub release
+4. Commit, then build exe via PyInstaller (using `build/PyinstallerConfig.json`)
+5. Build installer via Inno Setup (using `build/SetupScript.iss`)
+6. Output: `output/ShamsiTraySetup-X.Y.Z.exe`
+7. Create annotated tag: `git tag -a vX.Y.Z -m "Release X.Y.Z"`
+8. Push: `git push && git push --tags`
+9. Attach installer + sha256 digest to the GitHub release
 
 **Installer notes**:
 - **Autostart is NOT written by the installer** — the installer deliberately does NOT touch the `HKCU\...\CurrentVersion\Run` key; the app manages autostart itself.
@@ -120,10 +118,10 @@ pytest
 - **Imports**: stdlib → third-party → local (`from config import APP_CONFIG`)
 - **Logging**: Use `utils.logger.setup_logging(__name__)` in each module
 - **Error handling**: Try/except with user-facing `QMessageBox.critical()` for fatal errors
-- **Comments**: explain the constraint, not the change. A comment earns its place by saying why a non-obvious line has to be the way it is — Qt/Windows behaviour, an invariant, a compatibility default, a tradeoff — and it is written in the present tense. Anything that only narrates what a commit changed belongs in the commit message and the changelog, not in the source. Tests are the exception: their docstrings may name the behaviour they pin down.
+- **Comments**: explain the constraint, not the change. A comment earns its place by saying why a non-obvious line has to be the way it is — Qt/Windows behaviour, an invariant, a compatibility default, a tradeoff — and it is written in the present tense. Anything that only narrates what a commit changed belongs in the commit message and the release notes, not in the source. Tests are the exception: their docstrings may name the behaviour they pin down.
 - **Settings**: `JsonSettings` (JSON-backed, QSettings-compatible API) → `%LOCALAPPDATA%\ShamsiTray\settings.json`. Atomic writes (temp file + `os.replace`), tolerant of corrupt files.
 - **Persistence**: Use `utils/event_io.py` and `utils/holiday_io.py`; never write user data to the registry (legacy key is read-only migration source).
-- **Themes**: Defined in `Config.DARK_PALETTE` / `LIGHT_PALETTE`; switched via `Config.set_theme()`
+- **Themes**: Palettes in `Config.DARK_PALETTE` / `LIGHT_PALETTE`, applied via `Config.set_theme()` — which takes the *resolved* theme, not the preference: `Appearance/ThemeChoice` (`system` / `light` / `dark`, defaulting to `system`) is resolved first
 
 ---
 
@@ -175,7 +173,7 @@ pytest
 - Reply hygiene: every `QNetworkReply` is handled once (self-disconnecting `finished` handler), guarded with `isOpen()` before any `readAll()`, and released via `deleteLater()` — reading an aborted TLS transport is what makes Qt print `QIODevice::read (QSslSocket): device not open`. The installer download streams in `readyRead` chunks to a `<name>.exe.part` file (incremental sha256, atomic rename on verify) so the reply is never read post-close and RAM stays flat regardless of installer size.
 - Update test hooks (env vars, read at check time): `SHAMSITRAY_DEBUG_DATA_VERSION=<int>` overrides the local holiday-store version (set `0` to force a holiday update), `SHAMSITRAY_HOLIDAYS_URL=<url>` overrides the holiday update endpoint (e.g. a local `python -m http.server`).
 - `ConfirmDialog` is draggable from blank surfaces and auto-grows its fixed width so the widest button caption never clips. Inside the calendar it is replaced by `ConfirmOverlay`: same card, but a non-draggable child widget over the dimmed grid, parented and shown/hidden by the calendar
-- Theme: `_get_windows_theme()`, `_apply_theme()`; applies the global stylesheet and re-styles every open window
+- Theme: a three-way preference (`Appearance/ThemeChoice` — `system` follows Windows, `light`/`dark` pin it; `_theme_choice()`, `Config.THEME_CHOICES`, and a menu toggle that cycles all three). `_get_windows_theme()` resolves the theme that actually applies and `_apply_theme()` sets the global stylesheet and re-styles every open window
 
 ### `src/core/update_checker.py` (UpdateChecker)
 - Compares remote vs local app version; exposes `is_newer_version()`, `digest_hex()`, `DAY_MS`
@@ -196,7 +194,7 @@ pytest
 - `EventInput` (`EventInputWidget`): RTL event editor overlay with recurrence combo (plain, `fit_combo_width`, modes already used on the date dimmed via `set_disabled_recurrences` — a date holds at most one event per mode), auto-delete checkbox, reusable date-selector row, year-range clamping (1200–1600) + red border hint. The dimmed rows stay listed (the mode is a choice the date has spent, not a hidden one) and the combo never sits on one: both `set_data` and `set_disabled_recurrences` push the selection to the first usable mode, because the add path prefills «بدون تکرار» and that is row 0
 - `GoToDate` (`GoToDateWindow`): jump-to-month widget (Persian year 1200–1600, custom rounded bg)
 - `Checkbox` (`CustomCheckbox`, `IconCheckboxActionWidget`): FontAwesome-icon checkboxes
-- `ConfirmDialog` (`ConfirmDialog`): themed dialog — `ask` (yes/no), `choose` (three-way), `notify` (single button, optional `detail` line); used by update popup + all confirm flows; draggable, button-fit auto-width
+- `ConfirmDialog` (`ConfirmDialog`): themed dialog — `ask` (yes/no), `choose` (three-way), `notify` (single button, optional `detail` line); used by update popup + all confirm flows; draggable, button-fit auto-width. `notify(..., key=...)` opts a notice into single-instance replacement: a newer result of the same key re-words the notice already on screen instead of stacking a second window (the update round uses `UPDATE_CHECK_NOTICE_KEY`)
 - `ConfirmCard` (`ConfirmCard` / `ConfirmOverlay`): the shared card half of both surfaces — badge, title, message, detail box, buttons, painting. A **plain mixin**, not a widget base, so one card serves a `QDialog` and a `QWidget` child without giving either two QWidget branches; it sets `WA_TranslucentBackground` and delegates finishing to `_finish_choice()` (accept/reject on the dialog, hide on the overlay). `ConfirmOverlay` is persistent and fixed-*shape* (notice = 1 button, ask = 2), not fixed-content: the delete card raises its description line per question (`set_message`) and keeps the preview box for the event text alone, mirroring the event manager's dialog. Every overlay's `chosen` must be connected by the calendar - an overlay only hides itself, so an unconnected one leaves the dimmer up over a card that is already gone
 - `DownloadDialog` (`DownloadUpdateDialog`): themed installer-download progress card (determinate/busy, Persian digit counters, cancel signal wired to `UpdateChecker.cancel_download`)
 - `MenuWidgets` (`HoverWidget`, `MenuActionWidget`, `ThemeToggleActionWidget`): custom tray-menu action widgets with hover states
@@ -204,8 +202,8 @@ pytest
 ### `src/utils/`
 - `date_utils.py`: `to_persian_digits()`, `from_persian_digits()`, month/weekday name helpers, leap-year + days-in-month for both calendars, `validate_year_range()`, and the date-distance layer — `DateDistance` (frozen dataclass: `years`/`months`/`days` + signed `total_days`, with `is_today` and `has_calendar_units` derived - the latter False exactly when the breakdown would restate the total; both formatters are undefined for today and every caller branches on `is_today` first), `describe_date_distance()`, `format_distance_total()`, `format_distance_breakdown()`. The decomposition is largest-unit-first with per-step day clamping, so it is order-dependent and deliberately **not** a fixed conversion of the units into days
 - `asset_loader.py`: `verify_assets()`, `load_fonts()`
-- `logger.py`: `setup_logging()` — RotatingFileHandler (1MB × 3 backups) + console, millisecond timestamps
-- `native_events.py`: `TimeChangeEventFilter(QAbstractNativeEventFilter)` — handles Windows `WM_TIMECHANGE` (0x001E) as a pure detector; the controller coalesces bursts (`TIME_CHANGE_COALESCE_MS`) so a burst costs one refresh, and the raw per-message trace is DEBUG-only
+- `logger.py`: `setup_logging()` — RotatingFileHandler (1MB × 3 backups) + console, millisecond timestamps. `install_qt_message_handler()` mirrors Qt's own diagnostics into that log under `qt.<category>` loggers, drops the benign warnings in `_QT_BENIGN_WARNINGS` by severity (never by text alone), and lets a fatal terminate the process like Qt's default handler
+- `native_events.py`: `TimeChangeEventFilter(QAbstractNativeEventFilter)` — handles Windows `WM_TIMECHANGE` (0x001E) as a pure detector (the controller coalesces bursts via `TIME_CHANGE_COALESCE_MS`, so a burst costs one refresh; the raw per-message trace is DEBUG-only) and `WM_SETTINGCHANGE` (0x001A), filtered to the `ImmersiveColorSet` section — which is what lets the app follow the Windows light/dark setting live. The settings-change lParam string is read as a wchar walk capped at 32 chars, so a malformed payload cannot be walked arbitrarily far
 - `startup_registry.py`: `StartupRegistry` — autostart `Run`-key access (`read()` / `write()` / `delete()`) plus `RUN_KEY_PATH`. The controller's autostart policy goes through this seam so tests can drive it against an in-memory backend
 - `ui_helpers.py`: `create_tray_pixmap()` (DPI-aware), `paint_rounded_card()` + `FramelessDragMixin` (shared frameless drag AND mouse-event routing, with `drag_strip_height` / `drag_bottom_keep_visible` knobs), `YearRangeValidationMixin` (shared red-border year validation), `combo_stylesheet()` + button/line-edit/scrollbar stylesheets (`global_scrollbar_stylesheet()`, `nav_button_stylesheet()`), `fit_combo_width()`
 - `json_settings.py`: `JsonSettings` — QSettings-compatible API over `settings.json` (atomic writes, corrupt-file tolerance); a failed write keeps its keys dirty, so re-setting the same value retries the disk write instead of hitting the equal-value early return
@@ -227,10 +225,10 @@ pytest
 - Pathex includes `src/`
 
 **Inno Setup** (`build/SetupScript.iss`):
-- Modern wizard, x64 only
+- Modern wizard, x64 only, Windows 10 1809+ (`MinVersion=10.0.17763`, the oldest build PyQt6 6.x / Python 3.12 run on)
 - **Does NOT write the autostart `Run` key** (the app manages autostart itself)
 - Seeds `%LOCALAPPDATA%\ShamsiTray\holidays.json` with `onlyifdoesntexist` / `uninsneveruninstall`
-- Uninstaller: checks for running instance (tasklist), custom page with "remove user settings" checkbox clearing `%LOCALAPPDATA%\ShamsiTray` + legacy `HKCU\Software\ShamsiTray`
+- Uninstaller: checks for running instance (tasklist), custom page with "remove user settings" checkbox clearing `%LOCALAPPDATA%\ShamsiTray` + legacy `HKCU\Software\ShamsiTray`. A silent (`/VERYSILENT`) run never prompts or blocks on a live tray or a locked exe; at post-uninstall the install directory loses only the empty subdirectories Inno left behind, and goes itself only if that left it empty - files the uninstaller does not own are never force-deleted
 - Output: `output/ShamsiTraySetup-<version>.exe`
 
 ---
@@ -286,7 +284,7 @@ Conventions worth keeping when adding tests:
 - [ ] Hover day cell → tooltip with holiday/event details
 - [ ] Right-click day → add/edit/delete event (recurrence, auto-delete)
 - [ ] Tray context menu → Date Converter works both ways
-- [ ] Theme toggle (Dark/Light) persists across restarts
+- [ ] Theme toggle cycles System/Light/Dark and persists across restarts
 - [ ] Autostart toggle writes/removes registry `Run` key (via app, not installer)
 - [ ] Baseline: fresh machine → settings.json + holidays.json seeded in `%LOCALAPPDATA%\ShamsiTray`
 - [ ] Upgrade path: 1.3.1 → current (registry→JSON migration fires; holiday store seeds)
@@ -297,7 +295,11 @@ Conventions worth keeping when adding tests:
 
 ---
 
-## 9. Optional: Lint & Typecheck (Recommended)
+## 9. Lint, Typecheck & CI
+
+CI (`.github/workflows/ci.yml`) runs `python build/check_versions.py`,
+`ruff check` and `pytest` on a Windows runner for every pull request and every
+push to `main`. Locally, the same checks:
 
 ```powershell
 # Install
@@ -310,6 +312,9 @@ ruff format src/
 # Type check (once type hints are comprehensive)
 mypy src/
 ```
+
+`ruff format` and `mypy` stay local conveniences: the tree is not format-clean,
+so CI does not gate on either.
 
 ---
 
@@ -329,4 +334,3 @@ mypy src/
 - `experiment/xnightstar` branch preserves the abandoned xNightStar calendar experiment (forked at `v0.1.3`)
 - `assets/images/LogoEvolution/` is git-ignored design work; `build/` configs are tracked
 - Installers are never committed: they live in the git-ignored `output/` folder and are attached to GitHub releases
-- Track ongoing/planned work in the local `TODO.md`; update the local `CHANGELOG.md` per release — both stay out of version control
