@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG, Config
 from ui.windows.calendar_window import DayStyle, PersianCalendarWidget
+from ui.widgets import confirm_dialog as confirm_dialog_module
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.go_to_date import GoToDateWindow
 from utils.date_utils import to_persian_digits
@@ -561,7 +562,7 @@ def test_edit_onto_an_occupied_key_asks_before_touching_the_store(calendar):
     assert calendar._merge_overlay.isVisible()
     assert calendar.overlay_blocker.isVisible()
     assert calendar._pending_merge == ("1404-05-10", jdate, "0000-00-10",
-                                       "Doctor", "monthly", False)
+                                       "Doctor", "monthly", False, "Doctor")
     assert not calendar.event_input_widget.isVisible()
 
 
@@ -586,7 +587,7 @@ def test_clamped_month_edit_asks_merge_for_the_occupied_clamped_anchor(calendar)
     assert keyed == [] and generic == []
     assert calendar._merge_overlay.isVisible()
     assert calendar._pending_merge == ("1405-07-30", jdate, "0000-00-31",
-                                       "One-time", "monthly", False)
+                                       "One-time", "monthly", False, "One-time")
 
 
 def test_confirmed_merge_saves_against_the_occupied_key(calendar):
@@ -647,6 +648,36 @@ def test_unchanged_recurrence_never_asks_even_with_another_event_on_the_date(cal
 
     assert keyed == [("0000-00-10", jdate, "Pay bills", "monthly", False, "")]
     assert not calendar._merge_overlay.isVisible()
+
+
+def test_merge_ask_is_dropped_when_the_source_entry_changed(calendar, monkeypatch):
+    """The ask bound consent to the KEY, not to the entry the user saw, and the
+    store stays shared while it waits. A source re-worded under the same key
+    would have that change discarded by the parked edit, so the yes is dropped
+    and reported in the popup - not applied to content nobody approved."""
+    jdate = _two_events_on_one_date(calendar)
+    keyed, generic = _capture_updates(calendar)
+    calendar._show_event_input_for_specific(jdate, "1404-05-10",
+                                            calendar.user_events["1404-05-10"])
+    calendar._handle_event_saved("Doctor", "monthly", False)
+    assert calendar._pending_merge is not None
+
+    dialogs = []
+    monkeypatch.setattr(confirm_dialog_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: dialogs.append(a)))
+    # The entry changed under the same key while the ask was pending.
+    calendar.user_events["1404-05-10"]["text"] = "تغییر یافته"
+    calendar._merge_overlay.confirm_button.click()
+
+    assert keyed == [] and generic == []          # the consent applied to nothing
+    assert calendar._pending_merge is None
+    assert not calendar._merge_overlay.isVisible()
+    # Reported inside the popup: a top-level dialog would take the activation an
+    # unpinned calendar closes on.
+    assert dialogs == []
+    assert calendar._active_overlay is calendar._notice_overlay
+    assert calendar._notice_overlay.isVisible()
+    assert "ادغام" in calendar._notice_overlay.title_label.text()
 
 
 def test_hiding_the_calendar_drops_a_pending_merge(calendar):
@@ -760,6 +791,64 @@ def test_delete_confirmation_emits_only_once_per_confirmation(calendar):
     assert received == [jdatetime.date(1404, 5, 10)]
 
 
+def test_delete_ask_is_repeated_when_the_event_changed_under_it(calendar):
+    """The card names one event and the removal covers per-date entries, and the
+    ask waits while the rest of the app keeps writing. Deleting on the snapshot
+    would destroy content the user never saw, so the answer is revalidated and
+    the question put again from the live store."""
+    calendar.user_events = {"1404-05-10": {"text": "یادداشت مهم", "recurrence": "none",
+                                           "remove_after_finish": False}}
+    received = []
+    calendar.event_removed.connect(lambda j: received.append(j))
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+
+    # The entry was re-worded while the card was up.
+    calendar.user_events["1404-05-10"]["text"] = "چیزی دیگر"
+    calendar._remove_overlay.confirm_button.click()
+
+    assert received == []                                   # nothing deleted yet
+    assert calendar._active_overlay is calendar._remove_overlay
+    assert calendar._remove_overlay.detail_label.text() == "چیزی دیگر"
+    calendar._remove_overlay.confirm_button.click()          # the fresh question
+    assert received == [jdatetime.date(1404, 5, 10)]
+
+
+def test_delete_ask_is_repeated_when_an_event_joins_the_same_date(calendar):
+    """A date-level delete removes every entry sharing the visible date, so an
+    event added beside the one the card named belongs to the subject it asked
+    about - the question goes up again instead of deleting a set nobody saw."""
+    calendar.user_events = {"1404-05-10": {"text": "یادداشت", "recurrence": "none",
+                                           "remove_after_finish": False}}
+    received = []
+    calendar.event_removed.connect(lambda j: received.append(j))
+    calendar._remove_event(jdatetime.date(1404, 5, 10))
+
+    calendar.user_events["0000-05-10"] = {"text": "سالانه", "recurrence": "yearly",
+                                          "remove_after_finish": False}
+    calendar._remove_overlay.confirm_button.click()
+
+    assert received == []
+    assert calendar._active_overlay is calendar._remove_overlay
+
+
+def test_delete_ask_for_a_vanished_entry_is_dropped(calendar):
+    """The per-event row is validated too: by the time the answer arrives there
+    is nothing left to delete, so the request is dropped rather than put again
+    with an empty box."""
+    calendar.user_events = {"1404-05-10": {"text": "یادداشت", "recurrence": "none",
+                                           "remove_after_finish": False}}
+    removed = []
+    calendar.event_removed_by_key.connect(lambda k: removed.append(k))
+    calendar._remove_event_by_key("1404-05-10")
+
+    del calendar.user_events["1404-05-10"]
+    calendar._remove_overlay.confirm_button.click()
+
+    assert removed == []
+    assert calendar._active_overlay is None
+    assert not calendar._remove_overlay.isVisible()
+
+
 def test_a_second_delete_request_cannot_replace_the_pending_one(calendar):
     """Two context-menu clicks in a row: the first confirmation owns the answer,
     so the second date can never be the one deleted."""
@@ -794,7 +883,7 @@ def test_reopening_the_calendar_leaves_no_stale_overlay(calendar):
     calendar.hide()
     calendar.show()
     assert not calendar.overlay_blocker.isVisible()
-    assert not calendar._distance_overlay.isVisible()
+    assert not calendar._notice_overlay.isVisible()
     assert not calendar._remove_overlay.isVisible()
     assert calendar._active_overlay is None
 
@@ -957,7 +1046,7 @@ def test_day_style_defaults():
 def notice_lines(calendar):
     """The notice is an in-calendar overlay now, so read the live card's own text
     instead of intercepting a static call: what the user sees is the widget."""
-    return calendar._distance_overlay.detail_label.text().splitlines()
+    return calendar._notice_overlay.detail_label.text().splitlines()
 
 
 def test_distance_notice_leads_with_the_day_total_and_direction(calendar):
@@ -1023,7 +1112,7 @@ def test_distance_notice_is_an_in_calendar_overlay(calendar):
     draggable."""
     calendar.current_date = jdatetime.date(1404, 5, 10)
     calendar._show_date_distance(jdatetime.date(1404, 8, 20))
-    overlay = calendar._distance_overlay
+    overlay = calendar._notice_overlay
     assert overlay.parent() is calendar
     assert not overlay.isWindow()
     assert overlay.isVisible()
@@ -1049,9 +1138,9 @@ def test_distance_notice_dismissal_frees_the_grid(calendar):
     probe = calendar.mapToGlobal(QPoint(6, calendar.rect().center().y()))
     assert QApplication.widgetAt(probe) is calendar.overlay_blocker
 
-    calendar._distance_overlay.confirm_button.click()
+    calendar._notice_overlay.confirm_button.click()
 
-    assert not calendar._distance_overlay.isVisible()
+    assert not calendar._notice_overlay.isVisible()
     assert not calendar.overlay_blocker.isVisible()
     assert calendar._active_overlay is None
     # The real proof the grid is live again: the same point now reaches the grid.
@@ -1068,7 +1157,7 @@ def test_distance_notice_ignores_a_request_while_another_overlay_is_up(calendar)
 
 def test_distance_notice_ignores_a_missing_date(calendar):
     calendar._show_date_distance(None)
-    assert not calendar._distance_overlay.isVisible()
+    assert not calendar._notice_overlay.isVisible()
     assert calendar._active_overlay is None
 
 
@@ -1088,5 +1177,5 @@ def test_day_cells_are_wired_to_the_distance_action(calendar):
     target = calendar.day_labels[0][0]
     target.jalali_date = jdatetime.date(1404, 8, 20)
     target.distance_requested.emit(target.jalali_date)
-    assert calendar._distance_overlay.isVisible()
+    assert calendar._notice_overlay.isVisible()
     assert notice_lines(calendar)[0].endswith("مانده")
