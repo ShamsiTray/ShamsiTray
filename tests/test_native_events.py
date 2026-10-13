@@ -130,6 +130,22 @@ def test_settingchange_other_sections_are_ignored():
     assert seen == []
 
 
+def test_settingchange_section_is_read_with_a_cap_and_stops_at_the_terminator():
+    """An unbounded c_wchar_p read walks an unterminated payload arbitrarily
+    far, so the read is a wchar walk capped at 32 chars."""
+    # 64 wchar of 'A' with no terminator anywhere inside the buffer.
+    unterminated = (ctypes.c_wchar * 64)()
+    for i in range(64):
+        unterminated[i] = "A"
+    assert TimeChangeEventFilter._setting_change_section(
+        ctypes.addressof(unterminated)) == "A" * 32
+
+    # A real, terminated section still reads back whole.
+    buf = ctypes.create_unicode_buffer("ImmersiveColorSet")
+    assert TimeChangeEventFilter._setting_change_section(
+        ctypes.addressof(buf)) == "ImmersiveColorSet"
+
+
 def test_settingchange_null_lparam_is_safe():
     seen = []
     filt = TimeChangeEventFilter(lambda: seen.append("time"),
