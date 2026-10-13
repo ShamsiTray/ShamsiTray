@@ -500,7 +500,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.overlay_blocker.hide()
 
     def _on_day_clicked(self, jdate: Optional[jdatetime.date]):
-        if jdate and not self.event_input_widget.isVisible():
+        # A trailing cell of month 12 belongs to the following year, so a click
+        # there used to walk the view out of the range that navigation and
+        # go-to-date are clamped to; out-of-range clicks are ignored, the same
+        # refusal navigation makes.
+        if (jdate and not self.event_input_widget.isVisible()
+                and APP_CONFIG.SUPPORTED_MIN_YEAR <= jdate.year <= APP_CONFIG.SUPPORTED_MAX_YEAR):
             self.selected_date = jdate
             if jdate.month != self.display_date.month:
                 self.display_date = jdate
@@ -530,6 +535,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
         menu.exec(clamp_popup_to_work_area(menu, self.mapToGlobal(pos)))
 
     def _open_go_to_date_window(self):
+        if not self.isVisible():
+            # The calendar can be dismissed while this deferred creator is still
+            # queued (menu close, activation loss); building the go-to window
+            # over a hidden calendar would orphan its overlay blocker and show a
+            # popup nobody asked for.
+            return
         if self.go_to_window is not None and not self.go_to_window.isVisible():
             # Stale hidden instance from a previous open - discard it.
             self.go_to_window.deleteLater()
