@@ -905,6 +905,65 @@ def test_confirm_dialog_exec_centered_sizes_and_centers_then_runs(qtbot, monkeyp
     assert abs(dialog.y() + dialog.height() // 2 - center.y()) <= 1
 
 
+def test_confirm_dialog_refit_decides_the_geometry_once(qtbot):
+    """The replace/merge ask's preview used to open one line short on a real
+    Windows session at 125% scale: the sizing decided from pre-polish metrics,
+    the layout minimum grew after show(), and the next geometry pass - the
+    first drag - visibly re-flowed the dialog (with a Qt setGeometry warning).
+    The refit's contract: after it, both wrapped labels sit pinned at their
+    real need at the final width, the dialog height is the layout's own hint,
+    and nothing may re-flow the window afterwards."""
+    dialog = ConfirmDialog(
+        None, "رویداد تکراری", "برای این تاریخ از قبل رویدادی ثبت شده است؛ جایگزین شود؟",
+        detail="قرار دکتر - مراجعه برای چکاپ کامل و آزمایش خون و گرفتن نتیجه و بعد مراجعه آزمایشگاه",
+        confirm_text="جایگزینی", cancel_text="انصراف")
+    qtbot.addWidget(dialog)
+    dialog._refit()
+    lay = dialog.layout()
+    inner = dialog.width() - lay.contentsMargins().left() - lay.contentsMargins().right()
+    # Both pins equal the label's real need at the final fixed width...
+    assert dialog.message_label.minimumHeight() == dialog.message_label.heightForWidth(inner)
+    assert dialog.detail_label.minimumHeight() == dialog.detail_label.heightForWidth(inner)
+    # ...so the layout holds no vertical slack for a later re-activation to
+    # discover, and the dialog carries exactly the hint it decided on.
+    assert lay.minimumSize().height() == lay.sizeHint().height()
+    assert dialog.height() == lay.sizeHint().height()
+    # The presentation order in exec_centered: refit, then center over parent.
+    dialog.show()
+    before = dialog.size()
+    dialog.move(dialog.x() + 50, dialog.y() + 25)
+    QApplication.processEvents()
+    assert dialog.size() == before, "a move re-flowed the dialog after show"
+
+
+def test_apply_notice_refits_the_replacement_wording(qtbot):
+    """A replaced notice re-decides its geometry in place: the caption floor is
+    re-raised for the new captions, and the labels are re-pinned at THAT width.
+    adjustSize alone would take its hint from pins measured at the old width -
+    and a shorter replacement detail must not keep its predecessor's height."""
+    dialog = ConfirmDialog(None, "بروز است", "برنامه بروز است",
+                           detail="سطر یک\nسطر دو\nسطر سه")
+    qtbot.addWidget(dialog)
+    dialog._refit()
+    tall = dialog.detail_label.minimumHeight()
+    old_width = dialog.width()
+    # Offscreen falls back to a degenerate font, so caption length is scaled
+    # to clear the 340px fixed floor under THAT metric (the production
+    # Vazirmatn needs only a fraction of this) - the point is the floor
+    # re-raise, not any single caption's width.
+    long_caption = ("یک برچسب دکمه که به طور عمدی بسیار طولانی نوشته شده است " * 6).strip()
+    dialog.apply_notice("بررسی ناموفق بود", "بررسی ناموفق بود.",
+                        detail="خطا", button_text=long_caption)
+    lay = dialog.layout()
+    inner = dialog.width() - lay.contentsMargins().left() - lay.contentsMargins().right()
+    # The shorter detail re-measured to the smaller need, at the new width...
+    assert dialog.detail_label.minimumHeight() == dialog.detail_label.heightForWidth(inner)
+    assert dialog.detail_label.minimumHeight() < tall, "stale pin survived the replacement"
+    # ...and the longer caption raised the fixed width past its old value.
+    assert dialog.width() == dialog.maximumWidth()
+    assert dialog.width() > old_width
+
+
 def test_confirm_dialog_centers_over_a_nested_child_widget(qtbot):
     """A child widget's geometry() is parent-relative, so centering over one is
     only right through mapToGlobal; a top-level parent hid that, because there
