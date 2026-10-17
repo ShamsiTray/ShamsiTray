@@ -9,7 +9,7 @@ cells to handle date selection and event management.
 from typing import Optional
 
 import jdatetime
-from PyQt6.QtCore import QTimer, pyqtSignal, Qt
+from PyQt6.QtCore import QPoint, QTimer, pyqtSignal, Qt
 from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QCursor
 from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
 
@@ -21,9 +21,10 @@ from utils.date_utils import (
     format_jalali_numeric,
 )
 from utils.ui_helpers import clamp_popup_to_work_area
-from .menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_H,
-                           MENU_ITEM_PADDING_V, MenuActionWidget)
-from .tooltip import CustomTooltip
+from .menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
+                           MENU_ITEM_PADDING_TRAIL, MENU_ITEM_PADDING_V,
+                           MenuActionWidget)
+from .tooltip import TOOLTIP_DELAY_MS, CustomTooltip
 
 # Clipboard payloads of the «کپی تاریخ» submenu entries, built from the
 # right-clicked day's own Jalali date (the Gregorian half derives from it).
@@ -87,9 +88,11 @@ def _menu_stylesheet(palette: dict) -> str:
 
     The item rules mirror MenuActionWidget's own row look so the native
     «کپی تاریخ» rows and the custom add/remove-event rows read as one menu: the
-    same Vazirmatn 14px bold text, the same 15px/6px inner box (the widget's
-    layout margins) - hence the same 34px row height - and the same rounded
-    MENU_HOVER_COLOR hover (HoverWidget paints exactly this RGBA).
+    same Vazirmatn 14px bold text, the same 6px vertical pad (hence the same
+    row height) and the same rounded MENU_HOVER_COLOR hover (HoverWidget paints
+    exactly this RGBA). The horizontal pads deliberately differ from the
+    widget's 15px layout margins: the wider leading one is the submenu arrow's
+    own column (see menu_widgets' constants).
 
     The item text itself is drawn ``transparent`` here: QSS cannot center
     QMenu::item text (no text-align support) and Qt's stylesheet engine paints
@@ -113,7 +116,10 @@ def _menu_stylesheet(palette: dict) -> str:
     hover_css = f"rgba({hover[0]}, {hover[1]}, {hover[2]}, {hover[3]})"
     return (
         f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; }}"
-        f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_H}px; color: transparent; }}"
+        # CSS shorthand top/right/bottom/left: the wider arrow column on the
+        # physical left, the leading side under RTL.
+        f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_TRAIL}px "
+        f"{MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_LEAD}px; color: transparent; }}"
         f"QMenu::item:disabled {{ color: transparent; }}"
         f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}"
         f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
@@ -152,7 +158,7 @@ class ClickableLabel(QLabel):
     def enterEvent(self, event):
         super().enterEvent(event)
         if self._tooltip_text and not self._context_menu_open:
-            self._tooltip_timer.start(500)
+            self._tooltip_timer.start(TOOLTIP_DELAY_MS)
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
@@ -359,8 +365,13 @@ class ClickableLabel(QLabel):
         copy_menu.close()
 
     def _flash_copied_feedback(self):
-        """Brief «کپی شد» confirmation, matching the converter's copy feedback."""
-        CustomTooltip.instance().flash_tooltip("کپی شد", QCursor.pos())
+        """Brief «کپی شد» confirmation, anchored to the copied day cell rather
+        than the cursor: after a context-menu pick the cursor sits over the
+        dismissed menu, which may lie outside the calendar popup entirely. The
+        cell's own rect keeps the flash over the calendar; the singleton's
+        screen-edge flip still recovers bottom-row cells."""
+        CustomTooltip.instance().flash_tooltip(
+            "کپی شد", self.mapToGlobal(QPoint(self.width() // 2, self.height())))
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()

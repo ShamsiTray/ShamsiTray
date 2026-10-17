@@ -10,9 +10,10 @@ from config import APP_CONFIG
 from tests.qt_mousing import press
 from ui.widgets.calendar_day_cell import (ClickableLabel, DISTANCE_ACTION_TEXT,
                                           _menu_stylesheet)
-from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_H,
-                                     MENU_ITEM_PADDING_V, SUBMENU_ARROW_SIZE)
-from ui.widgets.tooltip import CustomTooltip
+from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
+                                     MENU_ITEM_PADDING_TRAIL,
+                                     MENU_ITEM_PADDING_V)
+from ui.widgets.tooltip import TOOLTIP_DELAY_MS, CustomTooltip
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -70,7 +71,9 @@ def test_enter_starts_timer_only_with_text(qtbot, cell):
     cell.setToolTip("holiday reason")
     cell.enterEvent(None)
     assert cell._tooltip_timer.isActive()
-    assert cell._tooltip_timer.remainingTime() > 0  # ~500ms, minus jitter
+    # The grid waits the same delay the event manager's tooltips do: one shared
+    # value, so the two surfaces cannot drift apart.
+    assert cell._tooltip_timer.interval() == TOOLTIP_DELAY_MS
 
 
 def test_leave_stops_timer_and_hides_shared_tooltip(qtbot, cell):
@@ -425,9 +428,13 @@ def _two_event_cell(qtbot):
 
 
 def _submenu_rows(menu, title):
-    """The rows of one named submenu, in the order they were added."""
+    """The text rows of one named submenu, in the order they were added.
+
+    Hairline divider rows carry no text and belong to the spacing, not the
+    captions, so callers compare against the visible texts alone.
+    """
     action = next(a for a in menu.actions() if a.menu() is not None and a.text() == title)
-    return [a.text() for a in action.menu().actions()]
+    return [a.text() for a in action.menu().actions() if a.text()]
 
 
 def test_a_multi_event_day_offers_one_row_per_event(qtbot, open_menu):
@@ -668,7 +675,9 @@ def test_copy_actions_put_the_right_clicked_day_on_clipboard(qtbot, cell, open_m
 def test_copied_feedback_shows_immediately(qtbot, cell, open_menu):
     """«کپی شد» must appear the instant a copy action is triggered — no
     timer, no waiting for the menu teardown (clipboard first, flash at
-    once). The flash duration itself is unchanged."""
+    once). The flash duration itself is unchanged, and the flash anchors to
+    the copied day's cell, not to the cursor: after a context-menu pick the
+    cursor can sit over a menu dismissed outside the calendar popup."""
     cell.setText("۵")
     menu = open_menu(cell)
     copy_menu = _copy_title_action(menu).menu()
@@ -678,6 +687,10 @@ def test_copied_feedback_shows_immediately(qtbot, cell, open_menu):
     # No qtbot.wait anywhere before this assert: synchronous visibility.
     assert tooltip.isVisible()
     assert tooltip._label.text() == "کپی شد"
+    # The singleton places the widget at anchor + (4, +12), so the flash
+    # geometry spells out where the anchor went: the cell's bottom edge.
+    anchor = cell.mapToGlobal(QPoint(cell.width() // 2, cell.height()))
+    assert tooltip.pos() == anchor + QPoint(4, 12)
     qtbot.wait(700)  # the flash hides itself after ~600ms
 
 
@@ -712,7 +725,8 @@ def test_copy_submenu_uses_the_shared_menu_styling(qtbot, cell, open_menu):
         # item text is transparent there because QSS cannot center QMenu::item
         # text (no text-align support): CenteredTextMenu paints the glyphs.
         assert (f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px "
-                f"{MENU_ITEM_PADDING_H}px; color: transparent; }}") in ss
+                f"{MENU_ITEM_PADDING_TRAIL}px {MENU_ITEM_PADDING_V}px "
+                f"{MENU_ITEM_PADDING_LEAD}px; color: transparent; }}") in ss
         assert "QMenu::item:disabled { color: transparent; }" in ss
         # hover: same color and rounded shape as HoverWidget paints
         assert f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}" in ss
@@ -834,6 +848,15 @@ def _grab(menu: QMenu) -> QImage:
     return image
 
 
+def _content_rect(row: QRect, rtl: bool = True) -> QRect:
+    """A day-menu row's content box, read direction-aware from the shared
+    pads: the wider arrow column is the leading pad (physical left under
+    RTL), the mirrored side under LTR."""
+    lead = MENU_ITEM_PADDING_LEAD if rtl else MENU_ITEM_PADDING_TRAIL
+    trail = MENU_ITEM_PADDING_TRAIL if rtl else MENU_ITEM_PADDING_LEAD
+    return row.adjusted(lead, MENU_ITEM_PADDING_V, -trail, -MENU_ITEM_PADDING_V)
+
+
 def test_qss_item_text_is_transparent_so_the_painter_never_doubles_it(qtbot):
     """The production stylesheet must draw NO item glyphs itself — otherwise
     CenteredTextMenu's centered glyphs would land on top of QSS's left-
@@ -869,12 +892,10 @@ def test_qss_item_text_is_transparent_so_the_painter_never_doubles_it(qtbot):
 def test_native_copy_rows_render_centered_text(qtbot, dark_palette, cell, open_menu):
     """THE requirement: the three «کپی تاریخ» entries and the title row render
     with visually centered text. Leaf rows: ink centered in the content rect.
-    Title row: text centered in the arrow-aware zone (the painted arrow lives
-    in the leading padding gutter; that zone's trims are RTL-tuned, so the ink
-    settles within the row tolerance of the content rect's centre), never
-    overlapping the self-painted arrow. Glyph color is the palette text
-    color. (The old QSS rendering drew all of these left-aligned at the
-    padding edge.)"""
+    Title row: centered there too - one anchor for the whole column - never
+    overlapping the self-painted arrow, which the tuck keeps clear of even a
+    flush caption. Glyph color is the palette text color. (The old QSS
+    rendering drew all of these left-aligned at the padding edge.)"""
     cell.setText("۵")
     palette = dark_palette
     bg = palette["BACKGROUND_COLOR"]
@@ -894,12 +915,18 @@ def test_native_copy_rows_render_centered_text(qtbot, dark_palette, cell, open_m
         if not row.text():
             continue  # the hairline separators; their QSS line is checked elsewhere
         geo = copy_menu.actionGeometry(row)
-        ink = _ink_bbox(img_copy, geo, bg)
+        # The pads deliberately differ (the leading one is the arrow column's
+        # width), so the content rect - not the row - is the anchor: centered
+        # ink sits half that pad difference right of the row's own centre,
+        # uniformly for every row in the menu.
+        content = _content_rect(geo)
+        band = QRect(content.left(), geo.top(), content.width(), geo.height())
+        ink = _ink_bbox(img_copy, band, bg)
         assert ink is not None, f"no text rendered for {row.text()}"
-        left_gap = ink.left() - geo.left()
-        right_gap = geo.right() - ink.right()
-        assert abs(left_gap - right_gap) <= 3, \
-            f"{row.text()} not centered: Lgap={left_gap} Rgap={right_gap}"
+        assert abs(ink.center().x() - content.center().x()) <= 3, \
+            f"{row.text()} not centered in the content rect: ink={ink} content={content}"
+        assert ink.left() >= content.left() - 1 and ink.right() <= content.right() + 1, \
+            f"{row.text()} left its content rect: ink={ink} content={content}"
         # vertical band unchanged vs the QSS-drawn text (same content box)
         assert abs(ink.center().y() - geo.center().y()) <= 3
         # glyph core is the palette TEXT_COLOR, not an invented color
@@ -910,8 +937,7 @@ def test_native_copy_rows_render_centered_text(qtbot, dark_palette, cell, open_m
     # gutter (under RTL the arrow lives left of the content rect)
     img_menu = menu.grab().toImage()
     title_geo = menu.actionGeometry(_copy_title_action(menu))
-    content = title_geo.adjusted(MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,
-                                 -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
+    content = _content_rect(title_geo)
     gutter = QRect(title_geo.left(), title_geo.top(),
                    content.left() - title_geo.left(), title_geo.height())
     arrow = _ink_bbox(img_menu, gutter, bg)
@@ -929,10 +955,9 @@ def test_native_copy_rows_render_centered_text(qtbot, dark_palette, cell, open_m
 
 def test_qt_own_submenu_indicator_stays_suppressed(qtbot, cell, open_menu):
     """The shared stylesheet zeroes Qt's own arrow subcontrols, so the row's
-    only indicator is the painted triangle. Left alone, the primitive lands in
-    the strip right after that triangle - inside the content rect, as a dark
-    blob the palette does not own - which also drags the caption's ink off the
-    centre the RTL row is tuned to."""
+    only indicator is the tucked painted triangle. Left alone, the primitive
+    lands in the strip right after it - inside the content rect, as a dark
+    blob the palette does not own, beside the caption's ink."""
     cell.setText("۵")
     palette = APP_CONFIG.get_current_palette()
     bg = palette["BACKGROUND_COLOR"]
@@ -941,18 +966,16 @@ def test_qt_own_submenu_indicator_stays_suppressed(qtbot, cell, open_menu):
     img_menu = menu.grab().toImage()
 
     title_geo = menu.actionGeometry(_copy_title_action(menu))
-    content = title_geo.adjusted(MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,
-                                 -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
+    content = _content_rect(title_geo)
     gutter = QRect(title_geo.left(), title_geo.top(),
                    content.left() - title_geo.left(), title_geo.height())
     arrow = _ink_bbox(img_menu, gutter, bg)
     assert arrow is not None, "the self-painted submenu arrow vanished"
-    # The gap between the painted triangle and the zone the caption is drawn in
-    # is the primitive's landing strip: it must stay background.
-    zone = CenteredTextMenu._arrow_aware_text_zone(content)
+    # The strip between the tucked arrow and the content edge - where a
+    # revived primitive would land - must stay background.
     gap = QRect(arrow.right() + 1, title_geo.top(),
-                zone.left() - arrow.right() - 1, title_geo.height())
-    assert gap.width() > 0, f"test setup: the arrow must clear the text zone: {gap}"
+                content.left() - arrow.right() - 1, title_geo.height())
+    assert gap.width() > 0, f"test setup: the arrow must clear the content edge: {gap}"
     assert _ink_bbox(img_menu, gap, bg) is None, "Qt's own submenu indicator is back"
     menu.close()
 
@@ -1008,11 +1031,9 @@ def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot, dark_pal
     never touches the caption, and the caption keeps all of its glyphs inside
     the content rect.
 
-    The caption's centering is deliberately NOT asserted here: the menus are
-    laid out RTL only, and the arrow-aware zone is tuned for that direction, so
-    an LTR row inherits the same unmirrored trim (its centering assertion is
-    the RTL one above). What the direction must not change is the geometry: the
-    arrow is drawn in the trailing gutter in the row's text color, it costs the
+    Centering itself is direction-agnostic - every caption centers on its
+    content rect - so this test pins what direction must not change: the arrow
+    is drawn in the trailing gutter in the row's text color, it costs the
     caption neither its box nor its glyphs, and Qt's own suppressed indicator
     does not come back beside it."""
     palette = dark_palette
@@ -1023,15 +1044,13 @@ def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot, dark_pal
     m.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
     sub = m.addMenu("کپی تاریخ")
     sub.addAction("هر دو")
-    # Room for the caption inside its arrow-aware zone, the way the day menu's
-    # custom widget rows give it room. Without it this row falls into the
-    # clipped overflow path, which has its own test.
+    # Room for the caption inside its content rect. Without it this row
+    # slides into the clipped overhang path, which has its own test.
     m.setMinimumWidth(200)
     img = _grab(m)
 
     title_geo = m.actionGeometry(next(a for a in m.actions() if a.menu() is not None))
-    content = title_geo.adjusted(MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,
-                                 -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
+    content = _content_rect(title_geo, rtl=False)
     # The arrow lives in the trailing padding gutter (right of the content
     # rect under LTR); the text must stay inside the content rect.
     gutter = QRect(content.right() + 1, title_geo.top(),
@@ -1050,24 +1069,107 @@ def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot, dark_pal
     advance = QFontMetrics(m.font()).horizontalAdvance(sub.title())
     assert advance - ink.width() <= 4, \
         f"LTR caption is clipped: advance={advance} ink={ink}"
-    # The trimmed zone is headroom, not the arrow's box: with Qt's own
-    # indicator suppressed by the shared stylesheet, the gap between that zone
-    # and the painted arrow holds no ink.
-    zone = CenteredTextMenu._arrow_aware_text_zone(content)
-    gap = QRect(zone.right() + 1, title_geo.top(),
-                arrow.left() - zone.right() - 1, title_geo.height())
-    assert gap.width() > 0, f"test setup: the arrow must clear the text zone: {gap}"
+    # With Qt's own indicator suppressed by the shared stylesheet, the strip
+    # between the content rect and the painted arrow holds no ink.
+    gap = QRect(content.right() + 1, title_geo.top(),
+                arrow.left() - content.right() - 1, title_geo.height())
+    assert gap.width() > 0, f"test setup: the arrow must clear the content edge: {gap}"
     assert _ink_bbox(img, gap, bg) is None, "Qt's own submenu indicator is back"
     # the indicator uses the row's own text color, not an invented one
     assert _close(_lightest_pixel(img, arrow), QColor(palette["TEXT_COLOR"]))
 
 
-def test_overlong_title_falls_back_to_a_clipped_arrow_aware_zone(qtbot, monkeypatch):
-    """Safety net for captions wider than their row: the glyphs fall back to
-    the arrow-aware zone and are CLIPPED to it, so they can never run under
-    the indicator. Natural menus always size themselves past their captions,
-    so the too-narrow row is injected through the geometry query — the only
-    way to pin this painter branch deterministically."""
+def test_row_filling_submenu_title_renders_complete(qtbot, dark_palette):
+    """The reported regression: a submenu title whose caption exactly fills
+    its row («ویرایش رویداد» on a multi-event day) must render EVERY glyph.
+    Such a caption is centered on its content rect and rides flush by
+    construction - an earlier clip to a 14px-tighter zone once cut it down to
+    «رایش». QMenu sizes a row to its own caption, so the real day menu
+    reliably produces this exact-width shape offscreen too."""
+    palette = dark_palette
+    bg = palette["BACKGROUND_COLOR"]
+    caption = "ویرایش رویداد"
+    m = CenteredTextMenu()
+    qtbot.addWidget(m)
+    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+    sub = m.addMenu(caption)
+    sub.addAction("رویداد یک")
+    m.popup(QPoint(30, 30))
+    img = m.grab().toImage()
+    m.close()
+
+    title_geo = m.actionGeometry(next(a for a in m.actions() if a.menu() is not None))
+    content = _content_rect(title_geo)
+    # The arrow still lives in the leading padding gutter (RTL).
+    gutter = QRect(title_geo.left(), title_geo.top(),
+                   content.left() - title_geo.left(), title_geo.height())
+    arrow = _ink_bbox(img, gutter, bg)
+    assert arrow is not None, "the self-painted submenu arrow vanished"
+    text_zone_img = QRect(content.left(), title_geo.top(),
+                          content.width(), title_geo.height())
+    ink = _ink_bbox(img, text_zone_img, bg)
+    assert ink is not None, "title text did not render"
+    advance = QFontMetrics(m.font()).horizontalAdvance(caption)
+    # Complete: the ink covers the caption's own advance (tolerated bearings),
+    # flush against the content edges and uncut.
+    assert advance - ink.width() <= 4, \
+        f"row-filling title is clipped: advance={advance} ink={ink}"
+    assert abs(ink.center().x() - content.center().x()) <= 5, \
+        f"title not centered on the content anchor: ink={ink} content={content}"
+    # Content-clipped, so no glyph can reach the arrow's gutter.
+    assert ink.left() >= content.left() - 1, f"ink escaped the content rect: {ink}"
+
+
+def test_row_filling_title_clears_the_tucked_arrow(qtbot, dark_palette):
+    """The cramped feel came from geometry QMenu leaves no control over: the
+    widest caption defines its row, so its ink rides flush against the content
+    edge every time. The arrow leans inside its own leading column now - a 26px
+    leading pad against the 16px trailing one - so that flush ink keeps the
+    column's slack: the arrow's ink ends short of the column's middle and the
+    content edge waits beyond it."""
+    palette = dark_palette
+    bg = palette["BACKGROUND_COLOR"]
+    caption = "ویرایش رویداد"
+    m = CenteredTextMenu()
+    qtbot.addWidget(m)
+    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+    sub = m.addMenu(caption)
+    sub.addAction("رویداد یک")
+    m.popup(QPoint(30, 30))
+    img = m.grab().toImage()
+    m.close()
+
+    title_geo = m.actionGeometry(next(a for a in m.actions() if a.menu() is not None))
+    content = _content_rect(title_geo)
+    advance = QFontMetrics(m.font()).horizontalAdvance(caption)
+    assert content.width() == advance, \
+        f"test setup: the title must fill its row: content={content} advance={advance}"
+    gutter = QRect(title_geo.left(), title_geo.top(),
+                   content.left() - title_geo.left(), title_geo.height())
+    arrow = _ink_bbox(img, gutter, bg)
+    assert arrow is not None, "the self-painted submenu arrow vanished"
+    text_zone_img = QRect(content.left(), title_geo.top(),
+                          content.width(), title_geo.height())
+    ink = _ink_bbox(img, text_zone_img, bg)
+    assert ink is not None, "title text did not render"
+    # The ride-flush-caption clearance the arrow column exists to provide: a
+    # row-filling title comfortably clears the indicator and true spare-width
+    # titles clear it by far more.
+    gap = ink.left() - arrow.right()
+    assert gap >= 10, \
+        f"the arrow column failed to keep a flush title clear: gap={gap}"
+
+
+def test_overlong_title_clips_to_the_content_rect(qtbot, monkeypatch):
+    """Safety net for captions genuinely wider than their row: the glyphs are
+    centered on and clipped to the FULL content rect - the plain rows' own
+    target - so they can never run under the tucked indicator, and the
+    overhang sheds only what the row cannot hold. Natural menus always size
+    their rows past their captions, so the too-narrow row is injected through
+    the geometry query - the only way to pin this painter branch
+    deterministically."""
     palette = APP_CONFIG.get_current_palette()
     bg = palette["BACKGROUND_COLOR"]
     caption = "کپی تاریخ و زمان"
@@ -1092,8 +1194,7 @@ def test_overlong_title_falls_back_to_a_clipped_arrow_aware_zone(qtbot, monkeypa
     m.close()
 
     title_geo = m.actionGeometry(next(a for a in m.actions() if a.menu() is not None))
-    content = title_geo.adjusted(MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,
-                                 -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
+    content = _content_rect(title_geo, rtl=False)
     advance = QFontMetrics(m.font()).horizontalAdvance(caption)
     assert advance > content.width(), "test setup: the injected row must overflow"
     gutter = QRect(content.right() + 1, title_geo.top(),
@@ -1105,13 +1206,10 @@ def test_overlong_title_falls_back_to_a_clipped_arrow_aware_zone(qtbot, monkeypa
     ink = _ink_bbox(img, text_zone_img, bg)
     assert ink is not None, "overflow title text did not render"
     assert ink.right() < arrow.left(), "overflow glyphs reached the arrow gutter"
-    # Centered in the zone the painter actually clips to: the arrow-aware zone
-    # (whose trims are RTL-tuned, hence the deliberate off-centre placement)
-    # minus the arrow box on the trailing side, where the arrow sits under LTR.
-    clip_zone = CenteredTextMenu._arrow_aware_text_zone(content)
-    clip_zone.setRight(clip_zone.right() - SUBMENU_ARROW_SIZE)
-    assert abs(ink.center().x() - clip_zone.center().x()) <= 5, \
-        f"overflow text not centered in the clipped zone: ink={ink}"
+    # The clip anchors on the content rect (the plain rows' rule): the
+    # tuned trims only place captions that fit them, they never ration glyphs.
+    assert abs(ink.center().x() - content.center().x()) <= 5, \
+        f"overflow text not centered in the content rect: ink={ink} content={content}"
 
 
 def test_copy_submenu_has_no_custom_mouse_intercepting_widget(qtbot, cell, open_menu):

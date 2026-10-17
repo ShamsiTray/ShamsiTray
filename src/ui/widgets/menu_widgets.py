@@ -18,12 +18,23 @@ from utils.ui_helpers import nudge_popup_inside_work_area
 
 # The day-cell menu's item box, shared by the QSS rules in
 # calendar_day_cell._menu_stylesheet and by CenteredTextMenu's painter so the
-# native rows and the painted text cannot drift apart: the same 15px/6px inner
-# box MenuActionWidget uses as its layout margins (hence the same 34px row
-# height), and the same 12px arrow box CenteredTextMenu paints its submenu
-# indicator into. These values ARE the menu's existing conventions.
-MENU_ITEM_PADDING_H = 15
+# native rows and the painted text cannot drift apart. The two horizontal pads
+# deliberately differ: the LEADING one is the submenu arrow's own column, the
+# trailing one just the far chrome - QMenu makes the widest caption's row
+# exactly its own width, so its ink rides flush against the content edge and a
+# wider gutter is the ONLY way its arrow gap can grow. The painter mirrors the
+# pads for LTR rows; on the QSS side the reading is side-only either way, the
+# item text is transparent and the arrows none, so the pads set nothing but
+# the rows' size budget. (MenuActionWidget's tray rows keep their own 15px
+# layout margins; the day menu is the one the air grew for.) The 6px vertical
+# pad is the shared row height convention.
+MENU_ITEM_PADDING_LEAD = 26
+MENU_ITEM_PADDING_TRAIL = 16
 MENU_ITEM_PADDING_V = 6
+# The submenu indicator sits this deep inside the arrow column: its 8px-wide
+# ink ends short of the column's middle, a row-filling title's glyphs wait the
+# column's slack beyond it, and the row's leading edge the same stretch before.
+SUBMENU_ARROW_TUCK = 8
 SUBMENU_ARROW_SIZE = 12
 
 
@@ -240,21 +251,23 @@ class CenteredTextMenu(QMenu):
 
     So the work is split: the shared stylesheet still paints the frame, item box
     and hover, but its item text is ``color: transparent``, and this class paints
-    the glyphs afterwards, centered in the item's content rect (the same 15px/6px
-    box the QSS padding defines). Separator lines are painted here too, on the
-    device-pixel grid via ``paint_device_snapped_hairline``, so the day menu's
-    dividers match the tray menu's instead of being drawn by QSS.
+    the glyphs afterwards, centered in the item's content rect (the box the QSS
+    padding defines; the constants' note explains its two sides). Separator
+    lines are painted here on the device-pixel grid via
+    ``paint_device_snapped_hairline``, so the day menu's dividers match the
+    tray menu's instead of being drawn by QSS.
 
     Rows that open a submenu also get their indicator from this painter. Handing
     the arrow back to the style primitives via bare ``QMenu::right-arrow`` /
     ``::left-arrow`` rules proved undrawable in the wild (some platform styles
     render no visible primitive for them, and any primitive they do draw picks
     its own color, not the palette's), so the arrow is painted here: a small
-    triangle centered in the row's TRAILING padding gutter, in the text colors.
+    triangle tucked toward the row's leading padding edge, in the text colors.
     The shared stylesheet zeroes Qt's own arrow subcontrols, so that primitive
-    cannot come back and double the triangle, and the caption is drawn in the
-    arrow-aware text zone (see ``_arrow_aware_text_zone``) rather than in the
-    full content rect.
+    cannot come back and double the triangle. Every caption centers on its
+    item's content rect - one anchor for the whole column - and even a
+    row-filling caption keeps the arrow column's slack clear of the indicator
+    by construction (the constants' note carries the full rationale).
 
     Behavior is untouched by construction: no mouse handling, no hover state, no
     custom rows - hover-to-open, hover background, keyboard navigation, RTL
@@ -290,55 +303,45 @@ class CenteredTextMenu(QMenu):
             color = QColor(palette["TEXT_COLOR"] if action.isEnabled()
                            else palette["GREY_COLOR"])
             geo = self.actionGeometry(action)
-            zone = geo.adjusted(
-                MENU_ITEM_PADDING_H, MENU_ITEM_PADDING_V,
-                -MENU_ITEM_PADDING_H, -MENU_ITEM_PADDING_V)
+            # The arrow's column is always the row's leading pad - the physical
+            # left under RTL, the mirrored right under LTR - so the content
+            # rect leans on the direction-correct side of the row.
+            if rtl:
+                lead, trail = MENU_ITEM_PADDING_LEAD, MENU_ITEM_PADDING_TRAIL
+            else:
+                lead, trail = MENU_ITEM_PADDING_TRAIL, MENU_ITEM_PADDING_LEAD
+            content = geo.adjusted(lead, MENU_ITEM_PADDING_V,
+                                   -trail, -MENU_ITEM_PADDING_V)
             if action.menu() is not None:
                 self._paint_submenu_arrow(painter, geo, rtl, color)
-                zone = self._arrow_aware_text_zone(zone)
-                if metrics.horizontalAdvance(text) > zone.width():
-                    # Overflow safety net for unnaturally narrow menus: the
-                    # caption cannot fit beside the arrow, so fall back to the
-                    # arrow-aware zone and clip to it - glyphs can never reach
-                    # the gutter, but stay as visible as the space allows.
-                    if rtl:
-                        zone.setLeft(zone.left() + SUBMENU_ARROW_SIZE)
-                    else:
-                        zone.setRight(zone.right() - SUBMENU_ARROW_SIZE)
-                    painter.save()
-                    painter.setClipRect(zone)
-                    painter.setPen(color)
-                    painter.drawText(zone, align, text)
-                    painter.restore()
-                    continue
+            # Every caption homes on ONE anchor - its row's content-rect
+            # centre - so the whole column reads as one evenly centered set;
+            # arrow clearance needs no per-row ink inset (the constants' note
+            # carries that rationale).
+            advance = metrics.horizontalAdvance(text)
+            if advance > content.width():
+                # Overhang safety net (only injected geometry produces a row
+                # narrower than its caption): the glyphs are centered and
+                # clipped to the content rect, reaching neither gutter.
+                painter.save()
+                painter.setClipRect(content)
+                painter.setPen(color)
+                painter.drawText(content, align, text)
+                painter.restore()
+                continue
             painter.setPen(color)
-            painter.drawText(zone, align, text)
-
-    @staticmethod
-    def _arrow_aware_text_zone(zone: QRect) -> QRect:
-        """Tighten the text zone beside where a submenu arrow is painted.
-
-        ``QRect.adjust`` ADDS to each edge, and the trims here are deliberately
-        asymmetric: 10px off the LEADING edge, 4px off the trailing one. That is
-        the RTL look this app is built for - the caption's ink settles a couple
-        of pixels past the content rect's geometric centre, on the side away
-        from the arrow - and it is not mirrored for LTR rows, which ShamsiTray
-        never lays out. The arrow itself is painted in the trailing padding
-        gutter, outside this zone, so these trims are headroom for the overflow
-        check (14px stricter) rather than the arrow's own box.
-        """
-        return zone.adjusted(10, 0, -4, 0)
+            painter.drawText(content, align, text)
 
     def _paint_submenu_arrow(self, painter: QPainter, row: QRect, rtl: bool,
                              color: QColor):
-        """The submenu indicator: a small triangle centered in the row's trailing
-        padding gutter (left edge under RTL, right edge under LTR), vertically
+        """The submenu indicator: a small triangle tucked toward the row's
+        leading padding edge (left under RTL, right under LTR), vertically
         centered in the row and painted in the row's own text color."""
         half = SUBMENU_ARROW_SIZE / 3.0  # an 8x8 triangle in the 12px arrow box
         row_f = QRectF(row)
         center_y = row_f.center().y()
-        gutter_center_x = (row_f.left() + MENU_ITEM_PADDING_H / 2.0 if rtl
-                           else row_f.right() - MENU_ITEM_PADDING_H / 2.0)
+        gutter_center_x = (row_f.left() + SUBMENU_ARROW_TUCK if rtl
+                           else row_f.right() - SUBMENU_ARROW_TUCK)
         path = QPainterPath()
         if rtl:  # points left, toward the trailing edge the popup opens from
             path.moveTo(gutter_center_x - half, center_y)

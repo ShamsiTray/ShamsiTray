@@ -23,30 +23,6 @@ def _click(target, x, y):
     QTest.mouseClick(target, Qt.MouseButton.LeftButton, pos=QPoint(x, y))
 
 
-def test_arrow_aware_text_zone_trims_the_leading_edge_more():
-    """The arrow-aware zone is lopsided by design: 10px off the leading edge,
-    4px off the trailing one.
-
-    ``QRect.adjust`` ADDS to each edge, so these trims are the overflow check's
-    bound rather than the arrow's box - the arrow is painted in the trailing
-    padding gutter, outside the zone - and the extra leading trim is what
-    settles the caption's ink on the RTL side of the row. It is not mirrored
-    for LTR rows because ShamsiTray never lays one out."""
-    from PyQt6.QtCore import QRect
-    from ui.widgets.menu_widgets import CenteredTextMenu
-
-    zone = QRect(10, 0, 100, 20)
-    inset = CenteredTextMenu._arrow_aware_text_zone(zone)
-    assert inset.left() == zone.left() + 10
-    assert inset.right() == zone.right() - 4
-    assert inset.width() == zone.width() - 14
-    # Vertically untouched: only the row's ends carry the indicator.
-    assert inset.top() == zone.top() and inset.bottom() == zone.bottom()
-    # Lopsided trims move the centre by half their difference, and the caption
-    # settles there by design rather than by accident.
-    assert inset.center().x() == zone.center().x() + 3
-
-
 @pytest.fixture()
 def checkbox_menu(qapp):
     menu = QMenu()
