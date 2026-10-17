@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from tests.qt_mousing import press
-from ui.widgets.calendar_day_cell import (ClickableLabel, DISTANCE_ACTION_TEXT,
+from ui.widgets.calendar_day_cell import (ClickableLabel, CopyDateMenu,
+                                          DISTANCE_ACTION_TEXT,
                                           _menu_stylesheet)
 from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
                                      MENU_ITEM_PADDING_TRAIL,
@@ -665,8 +666,6 @@ def test_copy_actions_put_the_right_clicked_day_on_clipboard(qtbot, cell, open_m
 
     cell.setText("۵")
     cell.jalali_date = jdatetime.date(jy, jm, jd)
-    menu = open_menu(cell)
-    copy_menu = _copy_title_action(menu).menu()
     clipboard = QApplication.clipboard()
     jalali_text = format_jalali_numeric(cell.jalali_date)
     gregorian_text = format_gregorian_numeric(cell.jalali_date)
@@ -681,35 +680,96 @@ def test_copy_actions_put_the_right_clicked_day_on_clipboard(qtbot, cell, open_m
         "هر دو": f"{jalali_text}\n{gregorian_text}",
         "هر دو کامل": f"{jalali_full}\n{gregorian_full}",
     }
-    for action in copy_menu.actions():
-        if not action.text():
-            continue  # the hairline separator rows carry no copy mode
+    # One menu per mode: a copy morphs its row and greys the others until
+    # _finish_copy ends the hold, so every mode needs its own fresh menu.
+    for label, payload in expected.items():
+        menu = open_menu(cell)
+        copy_menu = _copy_title_action(menu).menu()
+        action = next(action for action in copy_menu.actions()
+                      if action.text() == label)
         action.trigger()
-        assert clipboard.text() == expected[action.text()]
-    # let the last flash's own 600ms hide timer expire cleanly
-    qtbot.wait(700)
+        assert clipboard.text() == payload
+        copy_menu._finish_copy()
 
 
 def test_copied_feedback_shows_immediately(qtbot, cell, open_menu):
-    """«کپی شد» must appear the instant a copy action is triggered — no
-    timer, no waiting for the menu teardown (clipboard first, flash at
-    once). The flash duration itself is unchanged, and the flash anchors to
-    the copied day's cell, not to the cursor: after a context-menu pick the
-    cursor can sit over a menu dismissed outside the calendar popup."""
+    """The triggered row morphs the instant it fires — no timer, no waiting
+    for the menu teardown (clipboard first, morph at once) — and no tooltip
+    flash appears anywhere in the copy path."""
     cell.setText("۵")
     menu = open_menu(cell)
     copy_menu = _copy_title_action(menu).menu()
     tooltip = CustomTooltip.instance()
     assert not tooltip.isVisible()
-    copy_menu.actions()[0].trigger()
+    action = copy_menu.actions()[0]
+    action.trigger()
     # No qtbot.wait anywhere before this assert: synchronous visibility.
-    assert tooltip.isVisible()
-    assert tooltip._label.text() == "کپی شد"
-    # The singleton places the widget at anchor + (4, +12), so the flash
-    # geometry spells out where the anchor went: the cell's bottom edge.
-    anchor = cell.mapToGlobal(QPoint(cell.width() // 2, cell.height()))
-    assert tooltip.pos() == anchor + QPoint(4, 12)
-    qtbot.wait(700)  # the flash hides itself after ~600ms
+    assert action.text() == "✓ کپی شد"
+    assert action.data() == "copy_done"
+    assert all(not other.isEnabled()
+               for other in copy_menu.actions() if other is not action
+               and not other.isSeparator())
+    assert not tooltip.isVisible()
+    copy_menu._finish_copy()
+
+
+def test_copied_row_paints_the_accent_pill(qtbot, dark_palette):
+    """The morph must show up in ink, not only in action data: the copied row
+    gains an accent pill reaching its full row (past the content rect, into
+    the arrow gutter), its caption core flips to ACCENT_COLOR while the other
+    copy rows grey out."""
+    palette = dark_palette
+    parent = QMenu()
+    qtbot.addWidget(parent)
+    m = CopyDateMenu(parent)
+    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+    copied = m.add_copy_action("تاریخ شمسی", "jalali")
+    m.addSeparator()
+    other = m.add_copy_action("هر دو", "both")
+    qtbot.addWidget(m)
+
+    bg = palette["BACKGROUND_COLOR"]
+    gutters = []
+    for action in (copied, other):
+        geo = m.actionGeometry(action)
+        # x = 8 sits inside the pill's 2px inset but before the content rect
+        # (26px lead pad): pill territory no caption can reach.
+        gutters.append(QPoint(geo.left() + 8, geo.center().y()))
+    base = _grab(m)
+    for point in gutters:
+        assert _close(base.pixelColor(point.x(), point.y()), QColor(bg), tol=4), \
+            "pre-morph gutter is not flat background"
+
+    m.show_copied_row(copied)
+    img = _grab(m)
+    geo = m.actionGeometry(copied)
+    content = _content_rect(geo)
+    # the expected blend of the pill over the flat background (alpha 36/255)
+    accent = QColor(palette["ACCENT_COLOR"])
+    bgc = QColor(bg)
+    alpha = 36 / 255
+    expected = QColor(
+        int(bgc.red() + (accent.red() - bgc.red()) * alpha),
+        int(bgc.green() + (accent.green() - bgc.green()) * alpha),
+        int(bgc.blue() + (accent.blue() - bgc.blue()) * alpha))
+    probe = img.pixelColor(gutters[0].x(), gutters[0].y())
+    assert _close(probe, expected, tol=4), \
+        f"the copied row's pill is missing at its gutter: {probe.name()} vs {expected.name()}"
+    # caption core flips to accent...
+    ink = _ink_bbox(img, content, bg)
+    assert ink is not None, "no caption after the morph"
+    assert _close(_lightest_pixel(img, ink), accent)
+    # ...and a non-copied row keeps the plain caption color with no pill
+    other_content = _content_rect(m.actionGeometry(other))
+    probe2 = img.pixelColor(gutters[1].x(), gutters[1].y())
+    assert _close(probe2, QColor(bg), tol=4), \
+        "the untouched row grew a pill"
+    ink2 = _ink_bbox(img, other_content, bg)
+    assert ink2 is not None, "no caption on the untouched row"
+    # greyed out while the hold runs - that is "the other copy rows grey out"
+    assert _close(_lightest_pixel(img, ink2), QColor(palette["GREY_COLOR"]))
+    m._finish_copy()
 
 
 def test_copy_submenu_uses_the_shared_menu_styling(qtbot, cell, open_menu):
@@ -1251,9 +1311,10 @@ def test_copy_requires_a_jalali_date(qtbot, cell):
     cell.jalali_date = None
     menu = QMenu()
     qtbot.addWidget(menu)
+    action = menu.addAction("تاریخ شمسی")
     clipboard = QApplication.clipboard()
     before = clipboard.text()
-    cell._copy_date_and_close(menu, "jalali")
+    cell._copy_date_and_close(menu, "jalali", action)
     assert clipboard.text() == before
     assert not menu.isVisible()  # the menu is still closed first
 

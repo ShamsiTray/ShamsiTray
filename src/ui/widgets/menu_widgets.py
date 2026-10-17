@@ -300,9 +300,20 @@ class CenteredTextMenu(QMenu):
                 # repaint of a leaked menu would otherwise dereference freed
                 # memory). Only separators and text rows are measured here.
                 continue
-            color = QColor(palette["TEXT_COLOR"] if action.isEnabled()
-                           else palette["GREY_COLOR"])
             geo = self.actionGeometry(action)
+            copy_done = action.data() == "copy_done"
+            if copy_done:
+                # The copied row is the copy feedback: a soft accent pill
+                # behind the whole row, its caption flipped to accent.
+                highlight = QColor(palette["ACCENT_COLOR"])
+                highlight.setAlpha(36)
+                shape = QPainterPath()
+                shape.addRoundedRect(QRectF(geo.adjusted(2, 2, -2, -2)), 6, 6)
+                painter.fillPath(shape, highlight)
+            color = QColor(
+                palette["ACCENT_COLOR"] if copy_done else
+                palette["TEXT_COLOR"] if action.isEnabled() else
+                palette["GREY_COLOR"])
             # The arrow's column is always the row's leading pad - the physical
             # left under RTL, the mirrored right under LTR - so the content
             # rect leans on the direction-correct side of the row.

@@ -9,8 +9,8 @@ cells to handle date selection and event management.
 from typing import Optional
 
 import jdatetime
-from PyQt6.QtCore import QPoint, QTimer, pyqtSignal, Qt
-from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QCursor
+from PyQt6.QtCore import QTimer, pyqtSignal, Qt
+from PyQt6.QtGui import QAction, QContextMenuEvent, QKeyEvent, QMouseEvent, QCursor
 from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
@@ -31,6 +31,10 @@ from .tooltip import TOOLTIP_DELAY_MS, CustomTooltip
 _COPY_MODES = ("jalali", "jalali_full", "gregorian", "gregorian_full", "both", "both_full")
 
 _COPY_ACTION_TEXTS = ("تاریخ شمسی", "تاریخ شمسی کامل", "تاریخ میلادی", "تاریخ میلادی کامل", "هر دو", "هر دو کامل")
+
+# How long the morphed «کپی شد» row holds before both menus close: long enough
+# to be read, short enough to still feel like the click answered.
+COPY_MORPH_MS = 450
 
 # Its own group, after «کپی تاریخ»: this asks a question about the day rather
 # than acting on it, so it reads as a separate kind of row.
@@ -126,6 +130,68 @@ def _menu_stylesheet(palette: dict) -> str:
         # No image and no box: the submenu arrow Qt would draw is suppressed at
         # its source, leaving the painter's triangle the only indicator.
         "QMenu::left-arrow, QMenu::right-arrow { image: none; width: 0px; height: 0px; }")
+
+
+class CopyDateMenu(CenteredTextMenu):
+    """Copy submenu that keeps its copied row's feedback visible briefly."""
+
+    def __init__(self, parent_menu: QMenu):
+        super().__init__(parent_menu)
+        self._copy_rows = []
+        self._reset_timer = QTimer(self)
+        self._reset_timer.setSingleShot(True)
+        self._reset_timer.timeout.connect(self._finish_copy)
+
+    def add_copy_action(self, text: str, mode: str) -> QAction:
+        action = self.addAction(text)
+        action.setData(mode)
+        self._copy_rows.append((action, text, action.isEnabled(), mode))
+        return action
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        # A plain QMenu closes the popup when a row activates; triggering the
+        # action here, before Qt's own release handling, keeps the submenu open
+        # for the morphed row to be seen.
+        action = self.actionAt(event.pos())
+        if (event.button() == Qt.MouseButton.LeftButton and action is not None
+                and not action.isSeparator() and action.isEnabled()):
+            action.trigger()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        # The same keep-open semantics for the keyboard path.
+        if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Space):
+            action = self.activeAction()
+            if action is not None and not action.isSeparator() and action.isEnabled():
+                action.trigger()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def show_copied_row(self, action: QAction):
+        """Morph the triggered row into the copied state: the row itself is
+        the feedback - accent caption on a soft pill, every other row greyed -
+        and after ``COPY_MORPH_MS`` the menus close as the natural end of the
+        interaction. A second copy during the hold restarts it, never stacks."""
+        action.setText("✓ کپی شد")
+        action.setData("copy_done")
+        for other, _text, _enabled, _mode in self._copy_rows:
+            other.setEnabled(other is action)
+        self.update()
+        self._reset_timer.start(COPY_MORPH_MS)
+
+    def _finish_copy(self):
+        self._reset_timer.stop()
+        self.close()
+        self.parentWidget().close()
+        # Restoring happens while nothing is on screen, so a reopened menu
+        # (another context-menu open builds a fresh one anyway) arrives pristine.
+        for action, text, enabled, mode in self._copy_rows:
+            action.setText(text)
+            action.setData(mode)
+            action.setEnabled(enabled)
 
 
 class ClickableLabel(QLabel):
@@ -296,23 +362,24 @@ class ClickableLabel(QLabel):
             normalize_hover()
 
     def _build_copy_date_menu(self, parent_menu: QMenu) -> QMenu:
-        """Add the «کپی تاریخ» submenu to the day menu as a PLAIN Qt submenu.
+        """Add the «کپی تاریخ» submenu as a plain Qt submenu of QActions.
 
-        ``addMenu`` gives Qt full ownership of the row: hover-to-open, open/close,
+        ``addMenu`` still gives Qt ownership of the row: hover-to-open, open/close,
         keyboard navigation, the submenu arrow, RTL mirroring and screen-edge
         placement are all native - no custom row widget and no click fallback (a
-        hand-rolled arrow row proved unreliable at exactly these). The popup still
-        gets the shared menu stylesheet, so it keeps the rounded palette-colored
-        look of its parent, and its direction is pinned to the parent's
-        (top-level popup windows do not reliably inherit it on every platform).
+        hand-rolled arrow row proved unreliable at exactly these). The popup is
+        built as a ``CopyDateMenu`` - a ``CenteredTextMenu``, so its rows' text is
+        centered like the custom add/remove rows - and handed to ``addMenu``,
+        because a class swap is impossible after ``addMenu(title)`` constructed
+        the popup internally. It gets the shared menu stylesheet and its
+        direction is pinned to the parent's (top-level popup windows do not
+        reliably inherit it on every platform).
 
-        The three entries are separated by hairline separators so they read as
-        distinct options. The popup is a ``CenteredTextMenu`` so its rows' text is
-        centered like the custom add/remove rows; it is built first and handed to
-        ``addMenu`` because a class swap is impossible after ``addMenu(title)``
-        constructed the popup internally.
+        The entries are separated by hairline separators so they read as
+        distinct options. ``CopyDateMenu`` intercepts only leaf-row activation,
+        so it can keep the submenu open briefly while the copied row is morphed.
         """
-        copy_menu = CenteredTextMenu(parent_menu)
+        copy_menu = CopyDateMenu(parent_menu)
         copy_menu.setTitle("کپی تاریخ")
         parent_menu.addMenu(copy_menu)
         copy_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
@@ -321,9 +388,10 @@ class ClickableLabel(QLabel):
         for index, (mode, text) in enumerate(zip(_COPY_MODES, _COPY_ACTION_TEXTS)):
             if index:
                 copy_menu.addSeparator()
-            action = copy_menu.addAction(text)
+            action = copy_menu.add_copy_action(text, mode)
             action.triggered.connect(
-                lambda checked=False, mode=mode: self._copy_date_and_close(copy_menu, mode))
+                lambda checked=False, mode=mode, action=action:
+                self._copy_date_and_close(copy_menu, mode, action))
         return copy_menu
 
     def _add_event_rows_submenu(self, parent_menu: QMenu, title: str, rows,
@@ -352,8 +420,9 @@ class ClickableLabel(QLabel):
                 lambda checked=False, k=key, e=entry: on_row(k, e))
         return submenu
 
-    def _copy_date_and_close(self, copy_menu: QMenu, mode: str):
-        """Copy the right-clicked day's date(s) and close the menus.
+    def _copy_date_and_close(self, copy_menu: CopyDateMenu, mode: str,
+                             action: QAction):
+        """Copy the right-clicked day's date(s), then morph the triggered row.
 
         The payload always comes from ``self.jalali_date`` - the day the user
         actually right-clicked - never from today's date.
@@ -363,19 +432,7 @@ class ClickableLabel(QLabel):
             copy_menu.close()
             return
         QApplication.clipboard().setText(_copy_text_for_mode(mode, jdate))
-        # The feedback is a non-activating ToolTip window, so showing it while the
-        # popup dismisses cannot steal focus or swallow the closing menu's grab.
-        self._flash_copied_feedback()
-        copy_menu.close()
-
-    def _flash_copied_feedback(self):
-        """Brief «کپی شد» confirmation, anchored to the copied day cell rather
-        than the cursor: after a context-menu pick the cursor sits over the
-        dismissed menu, which may lie outside the calendar popup entirely. The
-        cell's own rect keeps the flash over the calendar; the singleton's
-        screen-edge flip still recovers bottom-row cells."""
-        CustomTooltip.instance().flash_tooltip(
-            "کپی شد", self.mapToGlobal(QPoint(self.width() // 2, self.height())))
+        copy_menu.show_copied_row(action)
 
     def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
         menu.close()
