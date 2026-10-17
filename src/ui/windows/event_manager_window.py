@@ -35,6 +35,7 @@ from typing import Dict, Optional
 
 import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
                              QPushButton, QScrollArea, QStackedWidget, QVBoxLayout,
                              QWidget)
@@ -44,6 +45,7 @@ from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.event_input import (EventInputWidget, delete_confirmation_message,
                                    recurrence_label)
+from ui.widgets.tooltip import TooltipButton, TooltipLabel
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
@@ -64,9 +66,9 @@ logger = setup_logging(__name__)
 _MONTH_ANY = 0  # «همه ماه‌ها» filter value
 _TYPE_PAST = "past"  # «گذشته» filter value: only already-passed one-time events
 
-# Badge on rows whose one-time event is flagged to delete itself once its
+# Marker on rows whose one-time event is flagged to delete itself once its
 # date has passed (the «حذف پس از گذشت تاریخ» checkbox in the editor).
-AUTO_DELETE_BADGE = "حذف خودکار"
+AUTO_DELETE_MARKER = "حذف خودکار"
 AUTO_DELETE_TOOLTIP = "این رویداد پس از گذشت تاریخ به‌صورت خودکار حذف می‌شود"
 
 
@@ -96,7 +98,7 @@ def _event_anchor_month(key: str) -> Optional[int]:
 
 
 class EventRow(QFrame):
-    """One event inside the manager list: date badge, text, edit/delete buttons."""
+    """One event inside the manager list: title, date line, icon actions."""
     edit_requested = pyqtSignal(str)
     delete_requested = pyqtSignal(str)
 
@@ -104,74 +106,103 @@ class EventRow(QFrame):
         super().__init__(parent)
         self.key = key
         self._expired = is_expired_one_time
+        # Only a one-time event can carry the flag (the editor drops it for a
+        # recurring one), so the marker below has exactly one meaning.
+        self._auto_delete = (recurrence_of_key(key) == RECURRENCE_NONE
+                             and bool(entry.get("remove_after_finish", False)))
         self.setObjectName("EventRow")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 8, 12, 8)
-        row.setSpacing(10)
+        row.setContentsMargins(14, 10, 10, 10)
+        row.setSpacing(6)
 
-        date_box = QVBoxLayout()
-        date_box.setSpacing(0)
-        self.date_label = QLabel(_event_date_label(key))
-        self.date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.date_label.setObjectName("EventDateLabel")
-        date_box.addWidget(self.date_label)
-        if recurrence_of_key(key) != RECURRENCE_NONE:
-            badge = QLabel(recurrence_label(recurrence_of_key(key)))
-            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            badge.setObjectName("EventRecurrenceBadge")
-            date_box.addWidget(badge)
-        elif entry.get("remove_after_finish", False):
-            # The event will silently disappear once its date passes - say so,
-            # or the row looks like every other one-time event until it doesn't.
-            badge = QLabel(AUTO_DELETE_BADGE)
-            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            badge.setObjectName("EventAutoDeleteBadge")
-            badge.setToolTip(AUTO_DELETE_TOOLTIP)
-            date_box.addWidget(badge)
-        row.addLayout(date_box)
+        # Pin to the right regardless of the text's own direction (an English
+        # title would otherwise jump to the left in this RTL row).
+        right = (Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignAbsolute
+                 | Qt.AlignmentFlag.AlignVCenter)
 
+        text_box = QVBoxLayout()
+        text_box.setSpacing(2)
         self.text_label = QLabel(str(entry.get("text", "")))
         self.text_label.setWordWrap(True)
         self.text_label.setObjectName("EventTextLabel")
-        row.addWidget(self.text_label, 1)
+        self.text_label.setAlignment(right)
+        text_box.addWidget(self.text_label)
 
-        self.edit_button = QPushButton("ویرایش")
-        self.edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.delete_button = QPushButton("حذف")
-        self.delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        row.addWidget(self.edit_button)
-        row.addWidget(self.delete_button)
+        # The date line spells the recurrence out («هر سال - ۵ مهر»), so the row
+        # carries no second badge repeating it. Only the auto-delete marker has
+        # nowhere else to live - without it the row looks like any other
+        # one-time event until it silently disappears.
+        self.date_label = TooltipLabel()
+        self.date_label.setTextFormat(Qt.TextFormat.RichText)
+        self.date_label.setObjectName("EventDateLabel")
+        self.date_label.setAlignment(right)
+        if self._auto_delete:
+            self.date_label.setToolTip(AUTO_DELETE_TOOLTIP)
+        text_box.addWidget(self.date_label)
+        row.addLayout(text_box, 1)
+
+        self.edit_button = TooltipButton(APP_CONFIG.FAS.FA_PEN)
+        self.edit_button.setToolTip("ویرایش")
+        self.delete_button = TooltipButton(APP_CONFIG.FAS.FA_TRASH)
+        self.delete_button.setToolTip("حذف")
+        for button in (self.edit_button, self.delete_button):
+            button.setFixedSize(34, 34)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.addWidget(button)
+        # The buttons' own text is a private-use glyph, which is all a screen
+        # reader could make of it; the name says what the icon means. The themed
+        # tooltip is what shows it here.
+        self.edit_button.setAccessibleName("ویرایش")
+        self.delete_button.setAccessibleName("حذف")
+        # The trash glyph is red, so the tooltip that explains it uses the same
+        # colour: this is the row's only destructive action, and the warning
+        # should land before the click does. Edit changes nothing on its own and
+        # stays neutral.
+        self.delete_button.TOOLTIP_TONE = "danger"
+
+        self._tooltip_widgets = (self.date_label, self.edit_button, self.delete_button)
 
         self.edit_button.clicked.connect(lambda: self.edit_requested.emit(self.key))
         self.delete_button.clicked.connect(lambda: self.delete_requested.emit(self.key))
         self.update_styles()
 
+    def cancel_pending_tooltip(self):
+        """Drop this row's tooltips; the list calls it whenever it scrolls."""
+        for widget in self._tooltip_widgets:
+            widget.cancel_pending_tooltip()
+
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
+        font = APP_CONFIG.FONT_FAMILY
         self.setStyleSheet(
             f"QFrame#EventRow {{ background-color: {palette['INPUT_BG_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 10px; }}"
+            f"QFrame#EventRow:hover {{ border-color: {palette['SCROLLBAR_HANDLE_COLOR']}; }}"
             f"QFrame#EventRow QLabel {{ border: none; background: transparent; }}")
-        date_color = palette['GREY_COLOR'] if self._expired else palette['ACCENT_COLOR']
-        self.date_label.setStyleSheet(
-            f"color: {date_color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold;")
-        for child in self.findChildren(QLabel):
-            if child.objectName() == "EventRecurrenceBadge":
-                child.setStyleSheet(
-                    f"color: {palette['GREY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 11px;")
-            elif child.objectName() == "EventAutoDeleteBadge":
-                child.setStyleSheet(
-                    f"color: {palette['HOLIDAY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 11px;")
+
         self.text_label.setStyleSheet(
             f"color: {palette['GREY_COLOR'] if self._expired else palette['TEXT_COLOR']}; "
-            f"font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold;")
+            f"font-family: '{font}'; font-size: 14px; font-weight: bold;")
+
+        date_color = palette['GREY_COLOR'] if self._expired else palette['ACCENT_COLOR']
+        meta = f"<span style='color:{date_color}; font-weight:bold'>{_event_date_label(self.key)}</span>"
+        if self._auto_delete:
+            meta += (f"<span style='color:{palette['GREY_COLOR']}'> · </span>"
+                     f"<span style='color:{palette['HOLIDAY_COLOR']}'>{AUTO_DELETE_MARKER}</span>")
+        self.date_label.setText(meta)
+        self.date_label.setStyleSheet(f"font-family: '{font}'; font-size: 12px;")
+
+        red = QColor(palette['HOLIDAY_COLOR'])
+        red_hover = f"rgba({red.red()}, {red.green()}, {red.blue()}, 40)"
+        icon_base = (f"font-family: '{APP_CONFIG.FONT_AWESOME_FAMILY}'; font-size: 14px; "
+                     "border: none; border-radius: 17px; background: transparent;")
         self.edit_button.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px 12px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QPushButton:hover {{ border-color: {palette['ACCENT_COLOR']}; color: {palette['ACCENT_COLOR']}; }}")
+            f"QPushButton {{ color: {palette['GREY_COLOR']}; {icon_base} }}"
+            f"QPushButton:hover {{ color: {palette['TEXT_COLOR']}; background-color: {palette['HOVER_BG']}; }}")
         self.delete_button.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {palette['HOLIDAY_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: 5px 12px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-            f"QPushButton:hover {{ border-color: {palette['HOLIDAY_COLOR']}; }}")
+            f"QPushButton {{ color: {palette['HOLIDAY_COLOR']}; {icon_base} }}"
+            f"QPushButton:hover {{ background-color: {red_hover}; }}")
 
 
 class EventManagerWindow(BaseFramelessWindow):
@@ -274,6 +305,7 @@ class EventManagerWindow(BaseFramelessWindow):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidget(self.list_container)
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self._dismiss_row_tooltips)
 
         self.empty_label = QLabel("رویدادی یافت نشد.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -346,6 +378,9 @@ class EventManagerWindow(BaseFramelessWindow):
 
     def refresh_list(self):
         """Rebuild the event rows from the live store, applying search + filters."""
+        # The rows about to be rebuilt may be the ones a hover tooltip belongs
+        # to; a row that is deleted would otherwise leave its tooltip floating.
+        self._dismiss_row_tooltips()
         # Both sides of the comparison are normalized: pasting Arabic-Indic digits or
         # typing Arabic yeh/kaf must find the stored Persian text instead of
         # silently matching nothing.
@@ -418,6 +453,18 @@ class EventManagerWindow(BaseFramelessWindow):
             self.count_label.setText(f"{to_persian_digits(total)} رویداد" if total else "")
         self.content_stack.setCurrentWidget(self.empty_label if shown == 0 else self.scroll_area)
         self._restyle_dynamic_children()
+
+    def _dismiss_row_tooltips(self):
+        """Drop the rows' hover tooltips when the list moves under them.
+
+        A wheel scroll slides a row out from under a stationary cursor without
+        an enter/leave pair, so nothing else would tell the row (or its pending
+        timer) that the cursor is no longer pointing at it. Each row drops only
+        what it owns, leaving a «کپی شد» flash alone - the shared tooltip has one
+        window for the whole app.
+        """
+        for row in self.list_container.findChildren(EventRow):
+            row.cancel_pending_tooltip()
 
     # --- mutations ---
 

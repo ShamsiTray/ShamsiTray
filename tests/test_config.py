@@ -152,7 +152,7 @@ def test_font_awesome_free_covers_every_used_glyph(qtbot):
     metrics = QFontMetrics(font)
     for name in ("FA_SQUARE_REGULAR", "FA_SQUARE_CHECK_SOLID", "FA_SUN_SOLID",
                  "FA_MOON_SOLID", "FA_XMARK", "FA_MINUS", "FA_TRASH",
-                 "FA_ARROWS_ROTATE", "FA_DOWNLOAD", "FA_UPLOAD",
+                 "FA_PEN", "FA_ARROWS_ROTATE", "FA_DOWNLOAD", "FA_UPLOAD",
                  "FA_CIRCLE_EXCLAMATION", "FA_CIRCLE_INFO", "FA_WIFI",
                  "FA_SAVE", "FA_CLOCK"):
         glyph = ord(getattr(APP_CONFIG.FAS, name))

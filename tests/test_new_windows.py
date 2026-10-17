@@ -15,7 +15,8 @@ from ui.widgets.confirm_card import ConfirmCard
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.tooltip import CustomTooltip
-from ui.windows.event_manager_window import EventManagerWindow, _event_date_label
+from ui.windows.event_manager_window import (AUTO_DELETE_MARKER, AUTO_DELETE_TOOLTIP,
+                                             EventManagerWindow, _event_date_label)
 from utils.event_io import recurrence_of_key as _event_recurrence
 from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.event_input import EventInputWidget
@@ -1316,9 +1317,11 @@ def test_manager_and_viewer_combos_match_the_working_converter_recipe(manager):
         window.close()
 
 
-# --- auto-delete badge on rows flagged to remove after their date ---
+# --- auto-delete marker on rows flagged to remove after their date ---
 
 def test_manager_rows_mark_auto_delete_events(manager):
+    """A flagged row says so in its date line and explains it on hover; every
+    other one-time row stays plain."""
     today = jdatetime.date.today()
     key = make_event_key(today, RECURRENCE_NONE)
     manager.controller.add_user_event(today, "یک‌بار مصرف", "none", False)
@@ -1329,9 +1332,83 @@ def test_manager_rows_mark_auto_delete_events(manager):
     rows = [manager.rows_layout.itemAt(i).widget()
             for i in range(manager.rows_layout.count() - 1)
             if manager.rows_layout.itemAt(i).widget() is not None]
-    badges = [row.findChild(QLabel, "EventAutoDeleteBadge") for row in rows]
     assert len(rows) == 2
-    assert [badge is not None for badge in badges].count(True) == 1
+    marked = [AUTO_DELETE_MARKER in row.date_label.text() for row in rows]
+    assert marked.count(True) == 1
+    # The explanation rides the themed tooltip, stored rather than handed to Qt.
+    assert [row.date_label._tooltip_text for row in rows].count(AUTO_DELETE_TOOLTIP) == 1
+
+
+def test_manager_row_actions_are_themed_icon_buttons(manager):
+    """Edit/delete are icon buttons: the glyph is the button's text, the tooltip
+    is the app's own (never Qt's, which would be an unthemed box) and the
+    accessible name is what the icon means for a screen reader."""
+    manager.controller.add_user_event(jdatetime.date.today(), "رویداد", "none", False)
+    manager.refresh_list()
+    row = manager.rows_layout.itemAt(0).widget()
+
+    assert row.edit_button.text() == APP_CONFIG.FAS.FA_PEN
+    assert row.delete_button.text() == APP_CONFIG.FAS.FA_TRASH
+    assert row.edit_button._tooltip_text == "ویرایش"
+    assert row.edit_button.toolTip() == ""
+    assert row.edit_button.accessibleName() == "ویرایش"
+    assert row.delete_button.accessibleName() == "حذف"
+    # Only the destructive action is coloured.
+    assert row.edit_button.TOOLTIP_TONE == "neutral"
+    assert row.delete_button.TOOLTIP_TONE == "danger"
+
+
+def test_the_delete_tooltip_is_the_warning_colour(manager):
+    """The trash glyph is red, and so is the tooltip that explains it - the
+    warning should land before the click does."""
+    manager.controller.add_user_event(jdatetime.date.today(), "رویداد", "none", False)
+    manager.refresh_list()
+    button = manager.rows_layout.itemAt(0).widget().delete_button
+    QCursor.setPos(button.mapToGlobal(button.rect().center()))
+
+    button._show_custom_tooltip()
+
+    palette = APP_CONFIG.get_current_palette()
+    assert CustomTooltip.instance().isVisible()
+    assert palette["HOLIDAY_COLOR"] in CustomTooltip.instance()._label.styleSheet()
+
+
+def test_scrolling_the_list_dismisses_row_tooltips(manager, qtbot):
+    """A wheel scroll slides a row out from under a stationary cursor without an
+    enter/leave pair, so the list drops the tooltips itself."""
+    today = jdatetime.date.today()
+    for offset in range(25):
+        manager.controller.add_user_event(today + datetime.timedelta(days=offset),
+                                          f"رویداد {offset}", "none", False)
+    manager.refresh_list()
+    qtbot.wait(10)  # let the scroll area lay out so the bar has a range to move in
+
+    row = manager.rows_layout.itemAt(0).widget()
+    button = row.edit_button
+    button._tooltip_timer.start(5000)                      # a hover still counting down
+    CustomTooltip.instance().show_tooltip("ویرایش", QPoint(50, 50), owner=button)
+    assert CustomTooltip.instance().isVisible()
+
+    manager.scroll_area.verticalScrollBar().setValue(40)
+
+    assert not CustomTooltip.instance().isVisible()
+    assert not button._tooltip_timer.isActive()
+
+
+def test_rebuilding_the_list_drops_a_row_tooltip(manager):
+    """Every filter change rebuilds the rows, and a row that is deleted would
+    otherwise leave its tooltip floating over the list."""
+    manager.controller.add_user_event(jdatetime.date.today(), "رویداد", "none", False)
+    manager.refresh_list()
+    button = manager.rows_layout.itemAt(0).widget().edit_button
+    button._tooltip_timer.start(5000)
+    CustomTooltip.instance().show_tooltip("ویرایش", QPoint(50, 50), owner=button)
+
+    manager.refresh_list()
+
+    assert not button._tooltip_timer.isActive()
+    assert not CustomTooltip.instance().isVisible()
+
 
 
 # --- confirmation dialog: quotes, choose/notify ---
