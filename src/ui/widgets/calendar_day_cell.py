@@ -333,8 +333,10 @@ class ClickableLabel(QLabel):
         Both submenus list exactly the same rows - one per event of the day,
         folded onto a single line by ``_event_menu_label`` - and differ only in
         what a row does, so they share this builder instead of carrying two
-        copies of it. ``rows`` is the ``(key, entry)`` list for the day and
-        ``on_row(key, entry)`` runs when a row is triggered.
+        copies of it. Rows are separated by the same hairline dividers the copy
+        submenu uses, so each event reads as its own option. ``rows`` is the
+        ``(key, entry)`` list for the day and ``on_row(key, entry)`` runs when a
+        row is triggered.
         """
         submenu = CenteredTextMenu(parent_menu)
         submenu.setTitle(title)
@@ -342,7 +344,9 @@ class ClickableLabel(QLabel):
         submenu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
         submenu.setLayoutDirection(parent_menu.layoutDirection())
 
-        for key, entry in rows:
+        for index, (key, entry) in enumerate(rows):
+            if index:
+                submenu.addSeparator()
             action = submenu.addAction(_event_menu_label(entry))
             action.triggered.connect(
                 lambda checked=False, k=key, e=entry: on_row(k, e))
