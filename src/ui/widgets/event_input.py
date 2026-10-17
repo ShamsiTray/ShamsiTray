@@ -436,10 +436,8 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         # - yearly («هر سال، ۵ مرداد»): no year -> only the year disabled
         # The shared QSS :disabled rules supply the muted fill/text/border.
         self.year_input.setEnabled(is_one_time)
-        self.year_input.setToolTip("" if is_one_time else "برای رویداد تکرارشونده نیازی به سال نیست")
         monthly = mode == RECURRENCE_MONTHLY
         self.month_combo.setEnabled(not monthly)
-        self.month_combo.setToolTip("برای رویداد ماهانه فقط روز مهم است" if monthly else "")
         self._apply_year_style()
 
     def _on_save(self):
