@@ -164,7 +164,7 @@ pytest
 - Calendar popup: month navigation, day cells with holiday/event indicators, go-to-date (right-click year), reopens on last-browsed month; left-click tray toggles the whole calendar. Unpinned it is a flyout rather than a pinned tool window: losing activation closes it, and the tray click that dismissed it does not reopen it (its press closed the popup, so its release only finishes the toggle).
 - Event management: add/edit/delete with recurrence (`none`/`monthly`/`yearly`), auto-delete (one-time only), expired-event cleanup at startup and at midnight; every store mutation routes through `core/event_service.py`. A date can hold several events (they are told apart by key), so the day's menu edits and deletes one event at a time, and adding replaces only the event of the same recurrence
 - Import: the file is reconciled against the store first; when it would replace existing events a themed confirm shows the count and a preview, and the whole import applies as ONE atomic save
-- Right-clicking a day offers «کپی تاریخ» (Jalali / Gregorian / both) with a brief «کپی شد» flash
+- Right-clicking a day offers «کپی تاریخ» (Jalali / Gregorian / both): the triggered row itself is the feedback — it morphs into «✓ کپی شد» in accent color over a soft accent pill while the other copy rows grey out, and after 450 ms both menus close and the rows restore (`CopyDateMenu` intercepts only leaf-row activation, so Qt keeps owning hover, keyboard, RTL mirroring, the arrow and placement); nothing floats over the desktop — the tooltip `flash_tooltip` remains to the converter window's own copy feedback only
 - Right-clicking a day also offers «فاصله تا امروز» in its own group: a themed in-calendar overlay whose box carries the signed day total and direction, the Jalali y/m/d breakdown (omitted under one month, where it would restate the total verbatim - `DateDistance.has_calendar_units`), and the day's own date («تاریخ امروز است.» when the day is today). Measured from the calendar's `current_date`, so it cannot disagree with the grid
 - Date converter: Shamsi ↔ Gregorian with copy-to-clipboard and live red border for out-of-range years. Its «فاصله زمانی» line breaks the gap down in **Jalali** via the shared `describe_date_distance()`, so it and the calendar notice cannot disagree
 - Timers: minute tick, midnight rollover (`ms_until_midnight` + 500 ms buffer via `schedule_next_midnight_check`), Windows time-change handling via `TimeChangeEventFilter`
@@ -283,6 +283,7 @@ Conventions worth keeping when adding tests:
 - [ ] Calendar: month nav, today button, go-to-date (right-click year), reopens on last-browsed month
 - [ ] Hover day cell → tooltip with holiday/event details
 - [ ] Right-click day → add/edit/delete event (recurrence, auto-delete)
+- [ ] Copy a date from a day menu: the copied row morphs to «✓ کپی شد» (accent pill, other rows greyed), the menus hold ~450 ms then close — no tooltip anywhere
 - [ ] Tray context menu → Date Converter works both ways
 - [ ] Theme toggle cycles System/Light/Dark and persists across restarts
 - [ ] Autostart toggle writes/removes registry `Run` key (via app, not installer)
