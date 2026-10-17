@@ -172,7 +172,7 @@ pytest
 - Update reliability: `UpdateChecker.check_concluded(bool)` ends every round — success stamps `Updates/LastCheckMs`, failure schedules an automatic-check retry every 10 minutes (max 3 per session, `AUTO_CHECK_RETRY_DELAY_MS`/`AUTO_CHECK_MAX_RETRIES` in `app_controller.py`). The retry verdict reads the round snapshot `_round_was_manual`, not the live manual flag (already consumed by `round_finished`, which fires first) — a failed manual round reports to the user and stops there.
 - Reply hygiene: every `QNetworkReply` is handled once (self-disconnecting `finished` handler), guarded with `isOpen()` before any `readAll()`, and released via `deleteLater()` — reading an aborted TLS transport is what makes Qt print `QIODevice::read (QSslSocket): device not open`. The installer download streams in `readyRead` chunks to a `<name>.exe.part` file (incremental sha256, atomic rename on verify) so the reply is never read post-close and RAM stays flat regardless of installer size.
 - Update test hooks (env vars, read at check time): `SHAMSITRAY_DEBUG_DATA_VERSION=<int>` overrides the local holiday-store version (set `0` to force a holiday update), `SHAMSITRAY_HOLIDAYS_URL=<url>` overrides the holiday update endpoint (e.g. a local `python -m http.server`).
-- `ConfirmDialog` is draggable from blank surfaces and auto-grows its fixed width so the widest button caption never clips. Inside the calendar it is replaced by `ConfirmOverlay`: same card, but a non-draggable child widget over the dimmed grid, parented and shown/hidden by the calendar
+- `ConfirmDialog` is draggable from blank surfaces and auto-grows its fixed width so the widest button caption never clips. Its geometry is decided once, at presentation time (`_refit()`): after the width lands on the button captions, the wrapped message AND detail labels are pinned to their real `heightForWidth` at that width and the size is taken from the layout hint — sizing (or re-wording a notice) from pre-polish metrics left the replace/merge ask one line short until the first drag visibly re-flowed the window. Inside the calendar it is replaced by `ConfirmOverlay`: same card, but a non-draggable child widget over the dimmed grid, parented and shown/hidden by the calendar
 - Theme: a three-way preference (`Appearance/ThemeChoice` — `system` follows Windows, `light`/`dark` pin it; `_theme_choice()`, `Config.THEME_CHOICES`, and a menu toggle that cycles all three). `_get_windows_theme()` resolves the theme that actually applies and `_apply_theme()` sets the global stylesheet and re-styles every open window
 
 ### `src/core/update_checker.py` (UpdateChecker)
@@ -289,6 +289,7 @@ Conventions worth keeping when adding tests:
 - [ ] Baseline: fresh machine → settings.json + holidays.json seeded in `%LOCALAPPDATA%\ShamsiTray`
 - [ ] Upgrade path: 1.3.1 → current (registry→JSON migration fires; holiday store seeds)
 - [ ] Update check: manual «بررسی بروزرسانی» works; event manager import/export works
+- [ ] Replace/merge ask with a long event title: the preview box is fully visible the moment the dialog opens (125% scale), no grow-on-drag, no `setGeometry` warning
 - [ ] Tutorial shows on first run only
 - [ ] Installer: installs, creates start menu entry, autostart managed by app
 - [ ] Uninstaller: removes files, optionally removes settings

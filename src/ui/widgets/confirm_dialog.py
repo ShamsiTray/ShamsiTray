@@ -128,7 +128,7 @@ class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
         are presented cannot diverge between them. Returns the QDialog exec()
         result code.
         """
-        self.adjustSize()
+        self._refit()
         self.center_over_parent(parent)
         return self.exec()
 

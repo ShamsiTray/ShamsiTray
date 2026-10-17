@@ -180,6 +180,42 @@ class ConfirmCard:
         if height > 0:
             self.message_label.setFixedHeight(height)
 
+    def _pin_detail_height(self):
+        """Fit the detail box exactly around its wrapped text.
+
+        The same wrapped-hint overshoot ``_pin_message_height`` solves for the
+        message, in the preview box: a detail measured before the QSS font is
+        polished (or at a not-yet-final width) leaves the window one line
+        short and the preview clipped until some later geometry pass re-flows
+        the card - visibly, on a shown dialog, at the first drag.
+        """
+        if not self.detail_label.text():
+            return
+        self.detail_label.ensurePolished()
+        margins = self.layout().contentsMargins()
+        inner_width = self.width() - margins.left() - margins.right()
+        height = self.detail_label.heightForWidth(inner_width)
+        if height > 0:
+            self.detail_label.setFixedHeight(height)
+
+    def _refit(self):
+        """Decide the card's geometry once, from live QSS metrics.
+
+        ``setFixedWidth`` lands on the button captions first, then the wrapped
+        labels are pinned to their real ``heightForWidth`` at that width and
+        the size is taken from the layout hint. Measuring anything before the
+        QSS font is polished leaves fixed widths and pinned heights computed
+        from a different font than the one that renders - the layout minimum
+        then grows after show() and the next geometry pass visibly re-flows
+        the window. ``exec_centered`` and ``apply_notice`` call this, so every
+        presentation path makes the same decisions in the same order.
+        """
+        self.ensurePolished()
+        self.setFixedWidth(max(self._width_floor, self._minimum_width_for_buttons()))
+        self._pin_message_height()
+        self._pin_detail_height()
+        self.adjustSize()
+
     def set_message(self, text: str) -> None:
         """Refill the headline, releasing the height pinned for the old wording.
 
@@ -192,9 +228,16 @@ class ConfirmCard:
         self._pin_message_height()
 
     def set_detail(self, text: str) -> None:
-        """Refill the detail box, hiding it when there is nothing to show."""
+        """Refill the detail box, hiding it when there is nothing to show.
+
+        The pin is a ``setFixedHeight``; clearing it to 0 before re-measuring
+        keeps the previous wording's height from surviving into the new one,
+        the same rule ``set_message`` applies to its own pin.
+        """
+        self.detail_label.setFixedHeight(0)
         self.detail_label.setText(text)
         self.detail_label.setVisible(bool(text))
+        self._pin_detail_height()
 
     def apply_notice(self, title: str, message: str, *, detail: str = "",
                      danger: bool = False, glyph: Optional[str] = None,
@@ -216,12 +259,13 @@ class ConfirmCard:
         self.set_message(message)
         self.set_detail(detail)
         self.update_styles()
-        # The width was fixed once in __init__ from the captions present then,
-        # and a fixed width cannot grow through adjustSize: a replacement
-        # caption longer than those would clip. Re-raise the floor here the
-        # same way the constructor does.
-        self.setFixedWidth(max(self._width_floor, self._minimum_width_for_buttons()))
-        self.adjustSize()
+        # Refit rather than adjustSize: the new captions and wording need both
+        # the width re-raised (a fixed width cannot grow through adjustSize,
+        # and a replacement caption can outgrow the constructor's captions)
+        # and the heights re-pinned once that width is final - with only the
+        # width re-raised, adjustSize would take its hint from pins measured
+        # at the old width.
+        self._refit()
 
     def _minimum_width_for_buttons(self) -> int:
         """Dialog width at which no button caption ever clips.
