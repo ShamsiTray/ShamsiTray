@@ -153,8 +153,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _cancel_day_tooltips(self):
         """Kill every pending cell tooltip (and hide the shared tooltip window).
 
-        Closing a day-cell context menu re-arms the cell under the cursor, and
-        500ms later its tooltip would pop on top of whatever opened in between
+        Closing a day-cell context menu re-arms the cell under the cursor, and a
+        hover delay later its tooltip pops on top of whatever opened in between
         - reported floating over the event editor (holiday reason over the
         add-event panel) and over the delete confirmation alike. Called whenever
         a modal surface opens over the grid and when the window itself hides."""
@@ -655,7 +655,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # keep floating above the editor overlay (right-click opens the menu
         # without ever leaving the cell, so nothing else dismisses it).
         # Pending cell timers are cancelled too: the menu close re-armed one,
-        # and it would pop the holiday tooltip over this editor 500ms later.
+        # and it would pop the holiday tooltip over this editor a hover delay
+        # later.
         self._cancel_day_tooltips()
         self.editing_date = jdate
         self._editing_event_key = None
