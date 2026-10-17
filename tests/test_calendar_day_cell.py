@@ -459,6 +459,24 @@ def test_multi_event_rows_carry_the_text_and_its_recurrence(qtbot, open_menu):
     assert _submenu_rows(menu, "حذف رویداد") == ["Doctor", "Pay bills (ماهانه)"]
 
 
+def test_multi_event_submenus_hairline_separate_their_rows(qtbot, open_menu):
+    """The copy submenu separates its entries with hairline dividers so each
+    reads as one distinct option; the per-event rows read the same way - one
+    divider between neighbours, none at the list edges."""
+    _host, cell = _two_event_cell(qtbot)
+    menu = open_menu(cell)
+
+    for title in ("ویرایش رویداد", "حذف رویداد"):
+        action = next(a for a in menu.actions()
+                      if a.menu() is not None and a.text() == title)
+        rows = action.menu().actions()
+        texts = [a for a in rows if a.text()]
+        assert [a.text() for a in texts] == ["Doctor", "Pay bills (ماهانه)"]
+        separators = [a for a in rows if a.isSeparator()]
+        assert len(separators) == 1
+        assert rows.index(separators[0]) == rows.index(texts[0]) + 1
+
+
 def test_choosing_an_event_to_edit_emits_that_key(qtbot, open_menu):
     """The row the user picked decides which event the editor opens - not the day."""
     _host, cell = _two_event_cell(qtbot)
