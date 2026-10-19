@@ -38,6 +38,13 @@ def test_default_state_is_today_jalali_to_gregorian(window):
     assert window.day_combo.currentText() == to_persian_digits(str(today.day))
 
 
+def test_open_does_not_focus_the_year_field(window, qtbot):
+    """Like the app's other windows, the converter opens with no field claiming
+    focus; the prefilled year stays inert until the user actually clicks it."""
+    qtbot.wait(150)  # the old steal fired 100 ms after show - outlast it
+    assert window.focusWidget() is not window.year_input
+
+
 def test_convert_known_jalali_date(window):
     set_jalali_input(window, "۱۴۰۳", 0, "۱")
     window._convert_date()

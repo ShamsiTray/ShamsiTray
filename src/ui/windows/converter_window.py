@@ -9,7 +9,7 @@ dynamic day/month population, and calculates elapsed time from the present.
 import datetime
 
 import jdatetime
-from PyQt6.QtCore import Qt, QTimer, QRegularExpression
+from PyQt6.QtCore import Qt, QRegularExpression
 from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
 from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
 
@@ -91,10 +91,6 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         disabled buttons.
         """
         self.convert_button.setEnabled(self._year_is_submittable())
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        QTimer.singleShot(100, self.year_input.setFocus)
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
