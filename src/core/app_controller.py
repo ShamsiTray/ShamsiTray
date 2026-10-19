@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
 import jdatetime
-from PyQt6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl
+from PyQt6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl, Qt
 from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
 from PyQt6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QWidgetAction
 
@@ -1241,6 +1241,11 @@ class SystemTrayIcon(QSystemTrayIcon):
             window = factory()
             setattr(self, window_attr, window)
             window.show()
+        elif window.windowState() & Qt.WindowState.WindowMinimized:
+            # A minimized window still reports visible; activateWindow alone
+            # never restores it on Windows.
+            window.showNormal()
+        window.raise_()
         window.activateWindow()
         return window
 

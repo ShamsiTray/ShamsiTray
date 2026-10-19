@@ -1377,6 +1377,33 @@ def test_open_holiday_viewer_reuses_window(tray, qtbot):
     window.close()
 
 
+def test_open_restores_a_minimized_window(tray, qtbot):
+    """A minimized tool window still reports visible, so re-opening it must
+    restore it instead of leaving it in the taskbar."""
+    tray._open_event_manager()
+    window = tray.event_manager_window
+    qtbot.addWidget(window)
+    window.showMinimized()
+    tray._open_event_manager()
+    assert not (window.windowState() & Qt.WindowState.WindowMinimized)
+    assert window.isVisible()
+    window.close()
+
+
+def test_open_activates_a_background_window(tray, qtbot, monkeypatch):
+    """Opening a window that is already up re-raises and re-activates it
+    instead of doing nothing (the offscreen platform cannot observe real
+    focus, so the opener's calls are spied)."""
+    tray._open_holiday_viewer()
+    window = tray.holiday_viewer_window
+    qtbot.addWidget(window)
+    calls = []
+    monkeypatch.setattr(window, "raise_", lambda: calls.append("raise"))
+    monkeypatch.setattr(window, "activateWindow", lambda: calls.append("activate"))
+    tray._open_holiday_viewer()
+    assert calls == ["raise", "activate"]
+    window.close()
+
 def test_refresh_event_manager_when_visible(tray):
     class FakeManager:
         def __init__(self):
