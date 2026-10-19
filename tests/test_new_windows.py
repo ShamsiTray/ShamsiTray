@@ -16,7 +16,8 @@ from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.tooltip import CustomTooltip
 from ui.windows.event_manager_window import (AUTO_DELETE_MARKER, AUTO_DELETE_TOOLTIP,
-                                             EventManagerWindow, _event_date_label)
+                                             BOTTOM_PAD_PX, EventManagerWindow,
+                                             _event_date_label)
 from utils.event_io import recurrence_of_key as _event_recurrence
 from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.event_input import EventInputWidget
@@ -62,6 +63,64 @@ def test_manager_lists_all_events(manager):
     manager.refresh_list()
     rows = manager.rows_layout.count() - 1  # trailing stretch
     assert rows == 3
+
+
+def test_rows_align_with_the_header_and_clear_track_and_footer(manager):
+    """The scrollbar's track is chrome on the margin line: the rows keep an
+    8px gutter by it (left edge, this RTL window) and stay flush with the
+    search field's margin line on the right; scrolled to the bottom, the last
+    card and the thumb both stop at the same pad above the footer, and at
+    scroll-top the thumb still opens aligned with the first card."""
+    manager.controller.add_user_event(jdatetime.date.today(), "یادداشت امروز", "none", False)
+    for day in range(1, 12):
+        key = make_event_key(jdatetime.date(1405, 1, day))
+        manager.controller.user_events[key] = {"text": f"رویداد {day}", "recurrence": "none",
+                                               "remove_after_finish": False}
+    manager.refresh_list()
+    manager.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+    QApplication.processEvents()
+
+    sb = manager.scroll_area.verticalScrollBar()
+    row_first = manager.rows_layout.itemAt(0).widget()
+    first_left = row_first.mapTo(manager, QPoint(0, 0)).x()
+    track_edge = sb.mapTo(manager, QPoint(0, 0)).x() + sb.width()
+    assert first_left - track_edge == 8          # gutter by the track
+
+    search_right = (manager.search_input.mapTo(manager, QPoint(0, 0)).x()
+                    + manager.search_input.width())
+    row_right = first_left + row_first.width()
+    assert row_right == search_right             # flush with the header line
+
+    sb.setValue(sb.maximum())
+    QApplication.processEvents()
+    viewport = manager.scroll_area.viewport()
+    last = manager.rows_layout.itemAt(manager.rows_layout.count() - 2).widget()
+    viewport_bottom = viewport.mapTo(manager, QPoint(0, 0)).y() + viewport.height()
+    last_bottom = last.mapTo(manager, QPoint(0, 0)).y() + last.height()
+    assert viewport_bottom - last_bottom == BOTTOM_PAD_PX   # pad above the footer
+
+    # Both bottom insets are the one constant: the content pad and the
+    # track's bottom margin (the thumb must arrive with the last card, not
+    # sail past it).
+    assert manager.rows_layout.contentsMargins().bottom() == BOTTOM_PAD_PX
+    assert f"margin: 0px 0px {BOTTOM_PAD_PX}px 0px" in manager.scroll_area.styleSheet()
+    from PyQt6.QtWidgets import QStyle, QStyleOptionSlider
+    opt = QStyleOptionSlider()
+    sb.initStyleOption(opt)
+    thumb = sb.style().subControlRect(QStyle.ComplexControl.CC_ScrollBar, opt,
+                                      QStyle.SubControl.SC_ScrollBarSlider, sb)
+    sb_y = sb.mapTo(manager, QPoint(0, 0)).y()
+    assert last_bottom == sb_y + thumb.bottom() + 1
+
+    # Top margin stays zero: back at value 0 the thumb opens on the first
+    # card's top edge.
+    sb.setValue(0)
+    QApplication.processEvents()
+    opt = QStyleOptionSlider()
+    sb.initStyleOption(opt)
+    thumb = sb.style().subControlRect(QStyle.ComplexControl.CC_ScrollBar, opt,
+                                      QStyle.SubControl.SC_ScrollBarSlider, sb)
+    assert row_first.mapTo(manager, QPoint(0, 0)).y() == sb_y + thumb.y()
 
 
 def test_manager_count_label_reflects_active_filter(manager):
