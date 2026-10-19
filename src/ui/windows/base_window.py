@@ -10,6 +10,8 @@ It handles common functionality such as:
 - Mouse events for dragging the frameless window.
 - Translucent background.
 - A taskbar presence for tool windows (see ``TASKBAR_ICON``).
+- A hover driver that repairs Qt's mouse delivery for windows opened from the
+  tray (see the class docstring).
 - Optional popup semantics for windows that opt in with
   ``CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED`` while they are not pinned.
 """
@@ -21,9 +23,10 @@ from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from config import APP_CONFIG
-from utils.ui_helpers import FramelessDragMixin
+from utils.ui_helpers import FramelessDragMixin, HoverDriverMixin
 
-class BaseFramelessWindow(FramelessDragMixin, QWidget):
+
+class BaseFramelessWindow(HoverDriverMixin, FramelessDragMixin, QWidget):
     """A base class for frameless windows with custom drag and paint logic.
 
     Subclasses set ``TASKBAR_ICON = True`` to opt into a real top-level window
@@ -36,6 +39,13 @@ class BaseFramelessWindow(FramelessDragMixin, QWidget):
     routing: the top ``DRAGGABLE_AREA_HEIGHT`` pixels act as the grab strip, and
     the window keeps its historical vertical clamp (only the top 50 px must stay
     above the screen's bottom edge).
+
+    The hover driver (``_sync_hover``) repairs Qt's mouse delivery for windows
+    opened by a tray click: that click's release never reaches Qt, so Qt keeps
+    believing a button is held and hover stops responding to plain moves. It is
+    mixed in from ``ui_helpers.HoverDriverMixin`` - which the QDialog hosts
+    (``ConfirmDialog``, ``DownloadUpdateDialog``) inherit too - and its full
+    mechanism is documented there.
     """
     TASKBAR_ICON = False
     drag_strip_height = APP_CONFIG.DRAGGABLE_AREA_HEIGHT
