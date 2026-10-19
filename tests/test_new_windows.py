@@ -847,6 +847,22 @@ def test_confirm_dialog_still_paints_translucent_corners(qtbot):
     assert dialog.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
 
+def test_confirm_dialog_carries_the_hover_driver(qtbot):
+    """The update popup can surface right after tray interaction left Qt's
+    mouse state stale, so the dialog shares the windows' hover repair: armed
+    by show, disarmed by hide, like every frameless surface."""
+    dialog = ConfirmDialog(None, "بروزرسانی", "نسخه جدید آماده است")
+    qtbot.addWidget(dialog)
+    dialog._hover_timer.setInterval(10 ** 9)  # ticks fire only when a test calls them
+    dialog.show()
+    qtbot.waitExposed(dialog)
+
+    assert dialog._hover_timer.isActive()
+
+    dialog.hide()
+    assert not dialog._hover_timer.isActive()
+
+
 def test_confirm_dialog_ask_returns_button_choice(qtbot, monkeypatch):
     widget = EventInputWidget()
     monkeypatch.setattr(ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Accepted)

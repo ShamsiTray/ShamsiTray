@@ -36,11 +36,17 @@ from PyQt6.QtWidgets import QApplication, QDialog
 
 from config import APP_CONFIG
 from ui.widgets.confirm_card import ConfirmCard
-from utils.ui_helpers import FramelessDragMixin
+from utils.ui_helpers import FramelessDragMixin, HoverDriverMixin
 
 
-class ConfirmDialog(FramelessDragMixin, ConfirmCard, QDialog):
-    """A themed modal ask: icon badge, title, short message, detail box, buttons."""
+class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
+    """A themed modal ask: icon badge, title, short message, detail box, buttons.
+
+    ``HoverDriverMixin`` gives it the same tray-click hover repair every
+    frameless window has: the update popup can appear right after a tray
+    interaction left Qt's mouse state stale, and its buttons must react to the
+    very first hover without a priming click.
+    """
 
     # The open notice opened under a replacement key, and that key. A newer
     # result of the SAME key re-words this dialog instead of stacking a second

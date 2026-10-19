@@ -1,10 +1,18 @@
-"""Tests for ui.windows.base_window: the shared frameless window base."""
+"""Tests for ui.windows.base_window: the shared frameless window base.
+
+The hover driver these tests exercise lives on ``utils.ui_helpers``
+(``HoverDriverMixin``) and reaches this window - and the QDialog hosts
+(``ConfirmDialog``, ``DownloadUpdateDialog``) - through the mixins."""
+import sys
 import time
+
+import pytest
 
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt
 from PyQt6.QtWidgets import QApplication, QWidget
 
 import ui.windows.base_window as base_window_module
+import utils.ui_helpers as ui_helpers_module
 from config import APP_CONFIG
 from ui.windows.base_window import BaseFramelessWindow
 
@@ -264,3 +272,265 @@ def test_unpinning_an_ordinary_window_never_dismisses_it(qtbot, monkeypatch):
     window.set_always_on_top(False)
 
     assert window.isVisible()
+
+
+# --- hover driver ---------------------------------------------------------------------------
+
+def _fake_qapp(monkeypatch, *, under=None, buttons=Qt.MouseButton.NoButton):
+    """Stand in for the module's QApplication on the driver's tick path."""
+    class _App:
+        @staticmethod
+        def widgetAt(_pos):
+            return under
+
+        @staticmethod
+        def mouseButtons():
+            return buttons
+
+        @staticmethod
+        def screens():
+            return ()  # the capture sweep is out of scope for hover tests
+
+    monkeypatch.setattr(ui_helpers_module, "QApplication", _App)
+
+
+def _fake_cursor(monkeypatch, pos):
+    monkeypatch.setattr(ui_helpers_module.QCursor, "pos", staticmethod(lambda: pos))
+
+
+def _hover_window(qtbot, position=None):
+    """A shown window whose driver ticks only when the test calls for them."""
+    window = BaseFramelessWindow()
+    qtbot.addWidget(window)
+    if position is not None:
+        window.move(*position)
+    window._hover_timer.setInterval(10 ** 9)  # ticks are driven by hand
+    window.show()
+    qtbot.waitExposed(window)
+    return window
+
+
+class _FakeUnder:
+    """A widget under the cursor with controllable hover state."""
+
+    def __init__(self, host):
+        self._host = host
+        self.hovered = False
+
+    def window(self):
+        return self._host
+
+    def underMouse(self):
+        return self.hovered
+
+
+def test_show_arms_and_hide_disarms_the_hover_driver(qtbot):
+    window = _hover_window(qtbot)
+    assert window._hover_timer.isActive()
+    window.hide()
+    assert not window._hover_timer.isActive()
+
+
+def test_next_show_resets_leftover_driver_bookkeeping(qtbot):
+    """Every open starts fresh: the prewarm show must never hand the real open
+    spent budgets or hover verdicts left over from the previous one."""
+    window = _hover_window(qtbot)
+    window._stale_repairs = 3
+    window._capture_checks = 17
+    window._was_inside = True
+    window._healthy_ticks = 4
+
+    window.hide()
+    window.show()
+
+    assert window._hover_timer.isActive()
+    assert window._stale_repairs == 0
+    assert window._capture_checks == 0
+    assert not window._was_inside
+    assert window._healthy_ticks == 0
+
+
+def test_hover_tick_feeds_a_move_at_the_real_cursor(qtbot, monkeypatch):
+    window = _hover_window(qtbot)
+    pos = window.mapToGlobal(QPoint(60, 60))
+    _fake_cursor(monkeypatch, pos)
+    _fake_qapp(monkeypatch, under=window)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    fed = []
+    monkeypatch.setattr(window, "_feed_mouse_move", lambda local: fed.append(local))
+
+    window._sync_hover()
+
+    assert fed == [window.mapFromGlobal(pos)]
+    assert window._was_inside
+
+
+def test_stationary_hovered_widget_is_not_refed(qtbot, monkeypatch):
+    """Once the widget under a still cursor carries hover state, feeding is
+    done - the driver never spams moves while nothing changes."""
+    window = _hover_window(qtbot)
+    under = _FakeUnder(window)
+    _fake_cursor(monkeypatch, window.mapToGlobal(QPoint(60, 60)))
+    _fake_qapp(monkeypatch, under=under)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    fed = []
+    monkeypatch.setattr(window, "_feed_mouse_move", lambda local: fed.append(local))
+
+    window._sync_hover()
+    under.hovered = True
+    window._sync_hover()
+
+    assert len(fed) == 1
+
+
+def test_cursor_leaving_the_window_parks_the_hover(qtbot, monkeypatch):
+    """Qt ignores moves outside the window, so the parked move on the inert
+    corner is what clears the hover the cursor just walked out of."""
+    window = _hover_window(qtbot)
+    _fake_cursor(monkeypatch, window.mapToGlobal(QPoint(60, 60)))
+    _fake_qapp(monkeypatch, under=window)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    fed = []
+    monkeypatch.setattr(window, "_feed_mouse_move", lambda local: fed.append(local))
+
+    window._sync_hover()  # establish "inside"
+    outside = window.mapToGlobal(QPoint(60, 60)) + QPoint(400, 0)
+    _fake_cursor(monkeypatch, outside)
+    _fake_qapp(monkeypatch, under=None)
+    window._sync_hover()
+
+    assert fed[-1] == ui_helpers_module._INERT_FEED_POS
+    assert not window._was_inside
+
+    window._sync_hover()  # already parked: leaving again sends nothing
+    assert len(fed) == 2
+
+
+def test_foreign_toplevel_under_the_cursor_is_not_fed(qtbot, monkeypatch):
+    """A menu, tooltip or dialog of this process under the cursor serves its
+    own hover; the driver must not steal events it needs."""
+    window = _hover_window(qtbot)
+    _fake_cursor(monkeypatch, window.mapToGlobal(QPoint(60, 60)))
+    _fake_qapp(monkeypatch, under=QWidget())
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    fed = []
+    monkeypatch.setattr(window, "_feed_mouse_move", lambda local: fed.append(local))
+
+    window._sync_hover()
+
+    assert fed == []
+    assert not window._was_inside
+
+
+def test_physically_held_button_pauses_the_driver(qtbot, monkeypatch):
+    """While a real button is down (a drag mid-flight) the driver must not
+    touch Qt's mouse bookkeeping at all."""
+    window = _hover_window(qtbot)
+    _fake_cursor(monkeypatch, window.mapToGlobal(QPoint(60, 60)))
+    _fake_qapp(monkeypatch, under=window, buttons=Qt.MouseButton.LeftButton)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: True)
+    touched = []
+    for name in ("_release_stray_capture", "_feed_mouse_move", "_reset_stale_qt_buttons"):
+        monkeypatch.setattr(window, name, lambda *a, _n=name: touched.append(_n))
+
+    window._sync_hover()
+
+    assert touched == []
+    assert not window._was_inside
+
+
+def test_stale_qt_buttons_are_repaired_on_the_third_tick(qtbot, monkeypatch):
+    """The tray click's release never reaches Qt: after three ticks of
+    Qt-says-down / OS-says-none the driver sends the synthetic releases."""
+    window = _hover_window(qtbot)
+    _fake_qapp(monkeypatch, under=None, buttons=Qt.MouseButton.LeftButton)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    repairs = []
+    monkeypatch.setattr(window, "_reset_stale_qt_buttons", lambda: repairs.append(1))
+
+    window._sync_hover()
+    window._sync_hover()
+    assert repairs == []
+
+    window._sync_hover()
+    assert repairs == [1]
+    assert window._stale_repairs == 1
+
+
+def test_repair_attempts_are_capped_and_the_driver_then_converges(qtbot, monkeypatch):
+    """Synthetic releases that never unstick Qt must not run forever: after
+    the repair budget is spent, the driver accepts the state and stops."""
+    window = _hover_window(qtbot)
+    _fake_qapp(monkeypatch, under=None, buttons=Qt.MouseButton.LeftButton)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    repairs = []
+    monkeypatch.setattr(window, "_reset_stale_qt_buttons", lambda: repairs.append(1))
+
+    for _ in range(100):
+        window._sync_hover()
+
+    assert len(repairs) == window.HOVER_STALE_REPAIR_MAX
+    assert not window._hover_timer.isActive()
+
+
+def test_clean_ticks_converge_the_driver(qtbot, monkeypatch):
+    """Enough clean ticks prove Qt's mouse state is healed; ordinary OS mouse
+    moves carry hover from there, so the driver stops polling."""
+    window = _hover_window(qtbot)
+    under = _FakeUnder(window)
+    under.hovered = True
+    _fake_cursor(monkeypatch, window.mapToGlobal(QPoint(60, 60)))
+    _fake_qapp(monkeypatch, under=under)
+    monkeypatch.setattr(window, "_query_os_buttons", lambda: False)
+    fed = []
+    monkeypatch.setattr(window, "_feed_mouse_move", lambda local: fed.append(local))
+
+    for _ in range(window.HOVER_CONVERGE_TICKS):
+        window._sync_hover()
+
+    assert not window._hover_timer.isActive()
+    # The open's initial feed, then nothing: a stationary hovered widget is
+    # not refed, and every tick still counts clean toward convergence.
+    assert fed == [window.mapFromGlobal(QPoint(60, 60))]
+
+
+def test_capture_sweep_is_gated_by_budget(qtbot):
+    """After HOVER_CAPTURE_TICKS the sweep stops checking entirely."""
+    window = _hover_window(qtbot)
+    window._capture_checks = window.HOVER_CAPTURE_TICKS
+
+    window._release_stray_capture()
+
+    assert window._capture_checks == window.HOVER_CAPTURE_TICKS
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only Win32 capture")
+def test_offscreen_prewarm_show_never_spends_the_capture_budget(qtbot):
+    """The controller pre-warms a hidden copy of the calendar far off-screen;
+    its capture sweep must stay untouched for the later real open."""
+    window = _hover_window(qtbot, position=(-10000, -10000))
+
+    for _ in range(20):
+        window._release_stray_capture()
+
+    assert window._capture_checks == 0
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only Win32 capture")
+def test_capture_release_is_scoped_to_this_window(qtbot, monkeypatch):
+    """Only the window's own capture is dropped - a menu's modal loop holding
+    the capture must survive the sweep."""
+    window = _hover_window(qtbot)
+    releases = []
+    monkeypatch.setattr(ui_helpers_module, "_win32_capture_hwnd", lambda: 1234)
+    monkeypatch.setattr(ui_helpers_module, "_win32_release_capture",
+                        lambda: releases.append(1))
+
+    window._release_stray_capture()
+    assert window._capture_checks == 1
+    assert releases == []
+
+    ours = int(window.winId())
+    monkeypatch.setattr(ui_helpers_module, "_win32_capture_hwnd", lambda: ours)
+    window._release_stray_capture()
+    assert releases == [1]

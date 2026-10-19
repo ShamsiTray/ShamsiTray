@@ -26,6 +26,21 @@ def test_dialog_initial_state_is_busy(qtbot):
     assert dialog.progress.isTextVisible() is False
 
 
+def test_dialog_carries_the_hover_driver(qtbot):
+    """The dialog is a frameless surface too, so the tray-click hover repair
+    reaches it: armed by show, disarmed by hide."""
+    dialog = DownloadUpdateDialog("1.4.0")
+    qtbot.addWidget(dialog)
+    dialog._hover_timer.setInterval(10 ** 9)  # ticks fire only when a test calls them
+    dialog.show()
+    qtbot.waitExposed(dialog)
+
+    assert dialog._hover_timer.isActive()
+
+    dialog.hide()
+    assert not dialog._hover_timer.isActive()
+
+
 def test_set_progress_switches_to_determinate(qtbot):
     dialog = DownloadUpdateDialog("1.4.0")
     qtbot.addWidget(dialog)

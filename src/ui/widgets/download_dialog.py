@@ -28,8 +28,8 @@ from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QProgressBar,
 
 from config import APP_CONFIG
 from utils.date_utils import to_persian_digits
-from utils.ui_helpers import (FramelessDragMixin, danger_button_stylesheet,
-                              paint_rounded_card)
+from utils.ui_helpers import (FramelessDragMixin, HoverDriverMixin,
+                              danger_button_stylesheet, paint_rounded_card)
 
 _MB = 1024.0 * 1024.0
 
@@ -39,8 +39,11 @@ def _mb_str(value: int) -> str:
     return to_persian_digits(f"{value / _MB:.1f}")
 
 
-class DownloadUpdateDialog(FramelessDragMixin, QDialog):
-    """Frameless themed progress card for the installer download."""
+class DownloadUpdateDialog(HoverDriverMixin, FramelessDragMixin, QDialog):
+    """Frameless themed progress card for the installer download.
+
+    Carries the same tray-click hover repair as the other frameless surfaces
+    (``HoverDriverMixin``), so its cancel button reacts before any click."""
 
     canceled = pyqtSignal()
 

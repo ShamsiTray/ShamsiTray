@@ -5,15 +5,20 @@ UI Helper Functions
 This module contains utility functions related to creating or manipulating
 UI elements, such as dynamically drawing pixmaps or building shared stylesheets.
 """
+import ctypes
+import sys
 from typing import Optional
 
-from PyQt6.QtCore import QPoint, QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
+from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer
+from PyQt6.QtGui import QColor, QCursor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle, QStyleOptionComboBox,
                              QStylePainter)
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits
+from utils.logger import setup_logging
+
+logger = setup_logging(__name__)
 
 # Gap kept between a popup menu and the edge of the work area, in logical
 # pixels. Qt already flips or shifts a popup that would not fit, so nothing ever
@@ -201,6 +206,247 @@ class FramelessDragMixin:
         if self.handle_drag_release(event):
             return
         super().mouseReleaseEvent(event)
+
+
+# The virtual-key codes of the mouse buttons the hover driver cross-checks
+# against Windows (VK_LBUTTON, VK_RBUTTON, VK_MBUTTON). GetAsyncKeyState sets
+# the 0x8000 bit of its answer for every key that is physically down.
+_MOUSE_BUTTON_VKS = (0x01, 0x02, 0x04)
+
+# A corner of a window where nothing lives (an inert spot on the drag strip):
+# the target of the synthetic button releases and of the parked-cursor move.
+_INERT_FEED_POS = QPoint(2, 2)
+
+
+def _win32_capture_hwnd() -> int:
+    """(Windows) The window that currently holds the mouse capture, or 0.
+
+    Capture is thread-scoped, so this only answers for the GUI thread."""
+    user32 = ctypes.windll.user32
+    user32.GetCapture.restype = ctypes.c_void_p
+    return user32.GetCapture() or 0
+
+
+def _win32_release_capture() -> None:
+    """(Windows) Release the calling thread's mouse capture."""
+    ctypes.windll.user32.ReleaseCapture()
+
+
+class HoverDriverMixin:
+    """Repairs Qt's mouse delivery for frameless surfaces opened by a tray click.
+
+    Such a click's press hides (or opens) the popup and its release never
+    reaches Qt, which then keeps believing a button is held; while it does,
+    enter/leave and ``:hover`` stop responding to plain mouse moves - tooltips
+    arm late and the cursor seems dead until the user clicks once. The mixin
+    polls for a bounded stretch after every ``show()``: it cross-checks Qt's
+    button state against the OS (Win32 ``GetAsyncKeyState``), gives Qt the
+    synthetic releases a real click would have sent, feeds the cursor's real
+    position into Qt's mouse pipeline as ordinary moves, and stops as soon as
+    the state has healed - ordinary mouse moves carry hover from there.
+
+    Mix it into any Qt window next to ``FramelessDragMixin`` with the mixin
+    first in the bases (``class W(HoverDriverMixin, FramelessDragMixin,
+    QWidget)``); the cooperative ``__init__``, ``showEvent`` and ``hideEvent``
+    chain to whatever follows, and the whole thing parks the repair state per
+    open so a host never manages it. Also used by the QDialog hosts
+    (``ConfirmDialog``, ``DownloadUpdateDialog``) - the update popup can appear
+    from a silent auto-check right after a tray interaction left the state
+    stale, and its buttons deserve hover too.
+    """
+    # Ticks are only spent while the window is visible and the driver has not
+    # converged yet - roughly the first third of a second after each open - so
+    # a long-lived window pays nothing once it is healed.
+    HOVER_TICK_MS = 30
+    HOVER_STALE_BUTTON_TICKS = 3   # ~90 ms of Qt-says-down / OS-says-none
+    HOVER_STALE_REPAIR_MAX = 3     # repair attempts per open before giving up
+    HOVER_CAPTURE_TICKS = 15       # ~450 ms budget for the stray-capture sweep
+    HOVER_CONVERGE_TICKS = 5       # clean ticks before the driver stops polling
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Per-open driver state (see _sync_hover). showEvent resets all of it,
+        # so a prewarm show never shares its verdicts with a later real open.
+        self._last_fed_cursor = None
+        self._was_inside = False
+        self._stale_button_ticks = 0
+        self._stale_repairs = 0
+        self._healthy_ticks = 0
+        self._capture_checks = 0
+        self._feeding = False
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setInterval(self.HOVER_TICK_MS)
+        self._hover_timer.timeout.connect(self._sync_hover)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._reset_hover_driver()
+        self._hover_timer.start()
+
+    def hideEvent(self, event):
+        self._hover_timer.stop()
+        super().hideEvent(event)
+
+    def _reset_hover_driver(self) -> None:
+        """Start a fresh open: clear hover bookkeeping and the per-open budgets.
+
+        The off-screen prewarm show runs through here too, deliberately - the
+        prewarm's state must never hand a spent budget to the real open."""
+        self._last_fed_cursor = None
+        self._was_inside = False
+        self._stale_button_ticks = 0
+        self._stale_repairs = 0
+        self._healthy_ticks = 0
+        self._capture_checks = 0
+
+    def _sync_hover(self) -> None:
+        """One driver tick: repair Qt's mouse state, then feed the cursor in."""
+        if not self.isVisible():
+            return
+        if self._mouse_button_physically_down():
+            return  # mid-click / drag: real events are flowing, leave them alone
+        self._release_stray_capture()
+        cursor = QCursor.pos()
+        under = QApplication.widgetAt(cursor)
+        if under is None:
+            # The cursor is over a foreign window or no window. Qt ignores
+            # moves outside this window, so if it just left, park the pointer
+            # on the inert corner to un-hover what it left hovered.
+            if self._was_inside:
+                self._was_inside = False
+                self._last_fed_cursor = None
+                self._feed_mouse_move(_INERT_FEED_POS)
+        elif under.window() is self:
+            # Feed when the cursor moved, or when Qt still has no hover state
+            # for the widget under it (e.g. right after a stuck-button reset) -
+            # that is what makes hover respond without ever being clicked.
+            if cursor != self._last_fed_cursor or not under.underMouse():
+                self._last_fed_cursor = cursor
+                self._feed_mouse_move(self.mapFromGlobal(cursor))
+            self._was_inside = True
+        # else: another top-level of this process (menu, tooltip, dialog) is
+        # under the cursor; it serves its own hover, so none is fed here.
+        if self._healthy_ticks >= self.HOVER_CONVERGE_TICKS:
+            self._hover_timer.stop()
+
+    def _mouse_button_physically_down(self) -> bool:
+        """Whether a mouse button is REALLY held, as the OS reports it.
+
+        ``QApplication.mouseButtons()`` can be stale after a tray click (see
+        the class docstring): Qt keeps claiming a button is held although the
+        OS moved on. When the two disagree for ``HOVER_STALE_BUTTON_TICKS`` in
+        a row, give Qt the synthetic releases a real click would have sent.
+        The OS answer is returned either way - False is what clears this tick
+        to feed hover moves.
+
+        Convergence is gauged here: every tick whose states agree (or where a
+        physical button truly is down, so real events flow) proves Qt's mouse
+        bookkeeping healed or irrelevant; enough of those in a row stop the
+        driver in ``_sync_hover``.
+        """
+        qt_down = QApplication.mouseButtons() != Qt.MouseButton.NoButton
+        os_down = self._query_os_buttons()
+        if qt_down and not os_down:
+            if self._stale_repairs < self.HOVER_STALE_REPAIR_MAX:
+                self._stale_button_ticks += 1
+                self._healthy_ticks = 0
+                if self._stale_button_ticks >= self.HOVER_STALE_BUTTON_TICKS:
+                    self._stale_button_ticks = 0
+                    self._stale_repairs += 1
+                    self._reset_stale_qt_buttons()
+            else:
+                # The synthetic releases never unstuck it. Re-sending them
+                # would only spin; accept the state instead - the tick counts
+                # toward convergence, and hover feeding works either way.
+                self._healthy_ticks += 1
+            return False
+        if os_down:
+            # A genuine press Qt knows about (or will in a moment): real
+            # events are flowing, so hover is not this driver's business.
+            self._stale_button_ticks = 0
+            self._healthy_ticks = 0
+            return True
+        self._stale_button_ticks = 0
+        self._healthy_ticks += 1
+        return False
+
+    def _query_os_buttons(self) -> bool:
+        """OS-level truth about pressed mouse buttons.
+
+        Only Windows can answer honestly here - and only Windows suffers the
+        tray-click quirk. Elsewhere mirror Qt, which keeps the mismatch (and
+        with it the repair) unreachable but every tick healthy."""
+        if sys.platform != "win32":
+            return QApplication.mouseButtons() != Qt.MouseButton.NoButton
+        try:
+            get_state = ctypes.windll.user32.GetAsyncKeyState
+            return bool(any(get_state(vk) & 0x8000 for vk in _MOUSE_BUTTON_VKS))
+        except Exception as e:
+            logger.warning(f"Mouse-state probe failed; falling back to Qt's record: {e}")
+            return QApplication.mouseButtons() != Qt.MouseButton.NoButton
+
+    def _reset_stale_qt_buttons(self) -> None:
+        """Send Qt the releases it missed, at the window's inert corner.
+
+        Nothing lives there that a release could trigger, but Qt's mouse
+        bookkeeping gets the complete click it never saw."""
+        held = QApplication.mouseButtons()
+        self._last_fed_cursor = None  # re-report the cursor once Qt's state is clean
+        try:
+            from PyQt6.QtTest import QTest
+            handle = self.windowHandle()
+            if handle is None:
+                return
+            for button in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton,
+                           Qt.MouseButton.MiddleButton):
+                if held & button:
+                    QTest.mouseRelease(handle, button,
+                                       Qt.KeyboardModifier.NoModifier, _INERT_FEED_POS)
+        except Exception as e:
+            logger.warning(f"Could not reset Qt mouse state: {e}")
+
+    def _feed_mouse_move(self, local: QPoint) -> None:
+        """Deliver one synthetic mouse move to this window at ``local``.
+
+        ``QTest.mouseMove`` posts through the window system interface without
+        touching the real pointer - the same pipeline real moves travel, which
+        is what enter/leave and :hover resolve from."""
+        handle = self.windowHandle()
+        if handle is None or self._feeding:
+            return
+        self._feeding = True
+        try:
+            from PyQt6.QtTest import QTest
+            QTest.mouseMove(handle, local)
+        except Exception as e:
+            logger.warning(f"Could not feed mouse move: {e}")
+        finally:
+            self._feeding = False
+
+    def _release_stray_capture(self) -> None:
+        """Windows: drop the mouse capture THIS window still holds (e.g. from
+        the tray menu that just closed). Checked briefly after each open.
+
+        Scoped to the window's own handle: a capture another surface of this
+        process holds (an open menu's modal loop) is doing its job and must
+        survive this sweep."""
+        if sys.platform != "win32" or self._capture_checks >= self.HOVER_CAPTURE_TICKS:
+            return
+        if not self._shown_on_screen():
+            return  # the off-screen prewarm: no capture work, and no budget spent
+        self._capture_checks += 1
+        try:
+            held = _win32_capture_hwnd()
+            if held and held == int(self.winId()):
+                _win32_release_capture()
+        except Exception as e:
+            logger.warning(f"Capture check failed: {e}")
+
+    def _shown_on_screen(self) -> bool:
+        """Whether some screen's work area actually shows this window."""
+        frame = self.frameGeometry()
+        return any(frame.intersects(screen.availableGeometry())
+                   for screen in QApplication.screens())
 
 
 class YearRangeValidationMixin:
