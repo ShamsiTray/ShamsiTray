@@ -363,6 +363,14 @@ def test_scrollbar_stylesheet_shape_and_hover(palette):
     assert "add-line" in style  # arrow buttons removed
 
 
+def test_scrollbar_stylesheet_bottom_margin_is_caller_driven(palette):
+    """The shared rules default to a full track; a caller with a content pad
+    passes the pad in and both bottoms shorten together."""
+    from utils.ui_helpers import global_scrollbar_stylesheet
+    assert "margin: 0px 0px 0px 0px" in global_scrollbar_stylesheet(palette)
+    assert "margin: 0px 0px 10px 0px" in scrollbar_stylesheet(palette, bottom_margin=10)
+
+
 def test_line_edit_stylesheet_variants(palette):
     plain = line_edit_stylesheet(palette)
     assert "QLineEdit:hover" in plain

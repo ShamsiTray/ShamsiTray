@@ -97,6 +97,14 @@ def _event_anchor_month(key: str) -> Optional[int]:
     return parsed[1]  # None for monthly events -> they match any month filter
 
 
+# One value owns both bottom insets: the row column's pad and the scrollbar
+# track's bottom margin. They must move together - otherwise the last card
+# stops 10px above the footer while the thumb's end oversails it at max
+# scroll (the pad shortens the content, but the track still spans the full
+# viewport).
+BOTTOM_PAD_PX = 10
+
+
 class EventRow(QFrame):
     """One event inside the manager list: title, date line, icon actions."""
     edit_requested = pyqtSignal(str)
@@ -297,7 +305,13 @@ class EventManagerWindow(BaseFramelessWindow):
 
         self.list_container = QWidget()
         self.rows_layout = QVBoxLayout(self.list_container)
-        self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        # The scrollbar track hangs in the window's left margin line; its
+        # gutter is the row column's only horizontal inset, and the right
+        # edge stays flush with the header's margin line (a mirrored inset
+        # misaligned the list with the header for its whole height). The
+        # bottom pad and the track's matching margin both come from
+        # BOTTOM_PAD_PX.
+        self.rows_layout.setContentsMargins(8, 0, 0, BOTTOM_PAD_PX)
         self.rows_layout.setSpacing(8)
         self.rows_layout.addStretch(1)
 
@@ -697,7 +711,8 @@ class EventManagerWindow(BaseFramelessWindow):
         ghost_style = ghost_button_stylesheet(palette)
         self.import_button.setStyleSheet(ghost_style)
         self.export_button.setStyleSheet(ghost_style)
-        self.scroll_area.setStyleSheet("QScrollArea { background: transparent; }" + scrollbar_stylesheet(palette))
+        self.scroll_area.setStyleSheet("QScrollArea { background: transparent; }"
+                                       + scrollbar_stylesheet(palette, bottom_margin=BOTTOM_PAD_PX))
         self.list_container.setStyleSheet("background: transparent;")
         self._restyle_dynamic_children()
         self.event_input_widget.update_styles()

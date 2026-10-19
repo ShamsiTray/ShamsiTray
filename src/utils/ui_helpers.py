@@ -672,7 +672,8 @@ def danger_button_stylesheet(palette: dict) -> str:
         f"QPushButton:pressed {{ background-color: {base.darker(140).name()}; }}")
 
 
-def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: int) -> str:
+def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: int,
+                     bottom_margin: int = 0) -> str:
     """Core rounded-scrollbar rules shared by every scrollbar in the app.
 
     ``selector`` is ``QScrollBar`` for plain scroll areas and
@@ -680,10 +681,13 @@ def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: in
     is painted with ``SCROLLBAR_GROOVE_COLOR`` so the track reads as one round
     pill, the handle is a rounded bar that lights up in the accent color on
     hover and press, and the corner arrow buttons are removed entirely.
+    ``bottom_margin`` insets the track's bottom edge so the thumb stops where
+    the content pad ends; the top stays untouched, so at scroll-top the thumb
+    still opens aligned with the first card.
     """
     radius = width // 2
     return (
-        f"{selector}:vertical {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: {width}px; margin: 0px; border-radius: {radius}px; }}"
+        f"{selector}:vertical {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: {width}px; margin: 0px 0px {bottom_margin}px 0px; border-radius: {radius}px; }}"
         f"{selector}::handle:vertical {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: {radius}px; min-height: {min_handle}px; }}"
         f"{selector}::handle:vertical:hover {{ background-color: {palette['ACCENT_COLOR']}; }}"
         f"{selector}::handle:vertical:pressed {{ background-color: {palette['ACCENT_COLOR']}; }}"
@@ -691,14 +695,17 @@ def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: in
         f"{selector}::add-page:vertical, {selector}::sub-page:vertical {{ background: none; }}")
 
 
-def scrollbar_stylesheet(palette: dict, *, width: int = 10) -> str:
+def scrollbar_stylesheet(palette: dict, *, width: int = 10,
+                         bottom_margin: int = 0) -> str:
     """Shared vertical QScrollBar style for the scroll areas of the tool windows.
 
     Same round pill look the combo-box popups already used (grooved round
     track, rounded handle) plus the accent-color hover reaction that every
-    scrollbar in the app now shares.
+    scrollbar in the app now shares. ``bottom_margin`` stops the thumb at the
+    caller's content bottom pad instead of letting it run to the track's end.
     """
-    return _scrollbar_rules(palette, width=width, selector="QScrollBar", min_handle=24)
+    return _scrollbar_rules(palette, width=width, selector="QScrollBar",
+                            min_handle=24, bottom_margin=bottom_margin)
 
 
 def global_scrollbar_stylesheet(palette: dict) -> str:
