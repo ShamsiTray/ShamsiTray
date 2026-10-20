@@ -37,8 +37,7 @@ import jdatetime
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton, QScrollArea, QStackedWidget, QVBoxLayout,
-                             QWidget)
+                             QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from config import APP_CONFIG
 from ui.widgets.checkbox import CustomCheckbox
@@ -55,10 +54,11 @@ from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             next_occurrence_jdate, parse_event_key,
                             recurrence_of_key)
 from utils.logger import setup_logging
-from utils.ui_helpers import (SCROLL_BOTTOM_PAD_PX, accent_button_stylesheet,
-                              center_combo_items, combo_stylesheet,
-                              fit_combo_width, ghost_button_stylesheet,
-                              line_edit_stylesheet, scrollbar_stylesheet)
+from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
+                              accent_button_stylesheet, center_combo_items,
+                              combo_stylesheet, fit_combo_width,
+                              ghost_button_stylesheet, line_edit_stylesheet,
+                              scrollbar_stylesheet)
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -316,7 +316,7 @@ class EventManagerWindow(BaseFramelessWindow):
         self.rows_layout.setSpacing(8)
         self.rows_layout.addStretch(1)
 
-        self.scroll_area = QScrollArea()
+        self.scroll_area = ReservedRailScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidget(self.list_container)
