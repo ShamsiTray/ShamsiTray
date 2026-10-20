@@ -4,18 +4,18 @@ the shared stylesheet builders."""
 import pytest
 from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPixmap
-from PyQt6.QtWidgets import QComboBox, QWidget
+from PyQt6.QtWidgets import QApplication, QComboBox, QWidget
 
 from config import APP_CONFIG
 from tests.qt_mousing import press, release
 from utils.ui_helpers import (MENU_EDGE_MARGIN, DigitsFirstCombo, FramelessDragMixin,
-                              accent_button_stylesheet, center_combo_items,
-                              clamp_popup_to_work_area, combo_stylesheet,
-                              create_tray_pixmap, danger_button_stylesheet,
-                              error_line_edit_stylesheet, fit_combo_width,
-                              ghost_button_stylesheet, line_edit_stylesheet,
-                              nudge_popup_inside_work_area, paint_rounded_card,
-                              scrollbar_stylesheet,
+                              ReservedRailScrollArea, accent_button_stylesheet,
+                              center_combo_items, clamp_popup_to_work_area,
+                              combo_stylesheet, create_tray_pixmap,
+                              danger_button_stylesheet, error_line_edit_stylesheet,
+                              fit_combo_width, ghost_button_stylesheet,
+                              line_edit_stylesheet, nudge_popup_inside_work_area,
+                              paint_rounded_card, scrollbar_stylesheet,
                               window_title_button_stylesheets)
 
 
@@ -471,6 +471,71 @@ def test_controller_global_stylesheet_delegates_to_ui_helpers(palette):
     from config import APP_CONFIG
     assert SystemTrayIcon._build_global_stylesheet() == \
         global_scrollbar_stylesheet(APP_CONFIG.get_current_palette())
+
+
+# --- ReservedRailScrollArea ------------------------------------------------------
+
+def test_reserved_rail_scroll_area_keeps_the_rail_reserved_and_quiet(qtbot, palette):
+    """The rail column stays reserved across the scrollability threshold (the
+    viewport can never reflow by its width) while the rail's paint follows
+    the scrollbar's range: hidden sheet when empty, theme paint when full."""
+    area = ReservedRailScrollArea()
+    qtbot.addWidget(area)
+    area.resize(320, 200)
+    area.setWidgetResizable(True)
+    content = QWidget()
+    content.setMinimumHeight(500)
+    area.setWidget(content)
+    area.setStyleSheet(scrollbar_stylesheet(palette, bottom_margin=10))
+    area.show()
+    QApplication.processEvents()
+    scrollbar = area.verticalScrollBar()
+    assert scrollbar.isVisible()
+    assert scrollbar.styleSheet() == ""
+
+    reserved_width = scrollbar.width()
+    viewport_width = area.viewport().width()
+    assert scrollbar.width() > 0
+
+    # Now the content fits - the rail keeps its column but paints nothing.
+    # Sheet presence alone is not the proof: an empty range renders the
+    # handle across the whole track, so the override must cover the handle
+    # as well (the paint below pins that).
+    content.setMinimumHeight(40)
+    QApplication.processEvents()
+    assert scrollbar.maximum() == 0
+    assert scrollbar.styleSheet() == ReservedRailScrollArea._RAIL_HIDDEN_SHEET
+    assert scrollbar.width() == reserved_width
+    assert area.viewport().width() == viewport_width
+    pm = QPixmap(area.size())
+    area.render(pm)
+    img = pm.toImage()
+    rail = img.width() - 5   # the 10px rail's column (offscreen renders LTR)
+    hidden = {img.pixelColor(rail, y).name() for y in (40, 120, 190)}
+    assert not hidden & {palette['SCROLLBAR_GROOVE_COLOR'],
+                         palette['SCROLLBAR_HANDLE_COLOR']}
+
+    # And crossing back re-opens the theme paint (with no redundant restyle
+    # churn, covered by the styleSheet-equality guard in the hook).
+    content.setMinimumHeight(500)
+    QApplication.processEvents()
+    assert scrollbar.maximum() > 0
+    assert scrollbar.styleSheet() == ""
+
+
+def test_reserved_rail_scroll_area_starts_hidden_for_a_never_scrollable_list(qtbot):
+    """rangeChanged never fires when the range stays (0, 0), so the initial
+    hidden sheet is what keeps an always-short list from showing a groove."""
+    area = ReservedRailScrollArea()
+    qtbot.addWidget(area)
+    area.resize(120, 80)
+    area.setWidgetResizable(True)
+    area.setWidget(QWidget())
+    area.show()
+    QApplication.processEvents()
+    assert area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+    assert area.verticalScrollBar().styleSheet() == \
+        ReservedRailScrollArea._RAIL_HIDDEN_SHEET
 
 
 def test_nav_button_stylesheet_variants(palette):

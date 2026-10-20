@@ -11,7 +11,7 @@ from typing import Optional
 
 from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QCursor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
-from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle,
+from PyQt6.QtWidgets import (QApplication, QComboBox, QScrollArea, QStyle,
                              QStyleOptionComboBox, QStylePainter)
 
 from config import APP_CONFIG
@@ -724,6 +724,50 @@ def global_scrollbar_stylesheet(palette: dict) -> str:
     theme tweak cannot drift between the app-wide and per-widget styles.
     """
     return _scrollbar_rules(palette, width=10, selector="QScrollBar", min_handle=20)
+
+
+class ReservedRailScrollArea(QScrollArea):
+    """A scroll area whose vertical rail is always reserved but only painted
+    when the content can actually scroll.
+
+    ``ScrollBarAlwaysOn`` reserves the rail column permanently, which is what
+    keeps the viewport width stable while rows are inserted during a rebuild —
+    the AsNeeded policy reflows the viewport by the rail's width every time the
+    content crosses the scrollability threshold, and that reflow is the twitch
+    seen when a tool window opens. But a rail that is always *painted* reads as
+    an empty groove on short lists. This class splits the two: the policy stays
+    ``AlwaysOn`` (stable geometry), while the rail's paint falls back to
+    transparent whenever the scrollbar's range is empty — groove fill *and*
+    handle, because an empty range draws the handle across the whole track and
+    a groove-only override still leaves a full-length pill. A per-widget sheet
+    on the scrollbar itself outranks the theme's rules from the scroll area,
+    and the handle's hover rules stay cascading through untouched for real
+    content.
+    """
+
+    # The sheet handed to the scrollbar while its range is empty: the groove
+    # fill and the handle both go transparent (hover and press too, so a dead
+    # rail cannot light in the accent color under the cursor).
+    _RAIL_HIDDEN_SHEET = ("QScrollBar:vertical { background-color: transparent; }"
+                          "QScrollBar::handle:vertical { background-color: transparent; }"
+                          "QScrollBar::handle:vertical:hover { background-color: transparent; }"
+                          "QScrollBar::handle:vertical:pressed { background-color: transparent; }")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # Empty until proven otherwise: a fresh area has a zero range, and
+        # rangeChanged only fires on actual changes, so the never-scrollable
+        # case would otherwise keep the theme's groove color.
+        self.verticalScrollBar().setStyleSheet(self._RAIL_HIDDEN_SHEET)
+        self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
+
+    def _on_range_changed(self, _minimum: int, maximum: int):
+        sheet = "" if maximum > 0 else self._RAIL_HIDDEN_SHEET
+        if self.verticalScrollBar().styleSheet() != sheet:
+            # Skip the no-op set: re-polishing an unchanged sheet churns the
+            # scrollbar's layout for nothing.
+            self.verticalScrollBar().setStyleSheet(sheet)
 
 
 def nav_button_stylesheet(palette: dict, bg_color: str, *, is_today_button: bool = False) -> str:

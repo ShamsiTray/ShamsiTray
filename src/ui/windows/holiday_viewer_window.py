@@ -22,17 +22,17 @@ import jdatetime
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QComboBox, QFrame, QGraphicsOpacityEffect,
-                             QHBoxLayout, QLabel, QPushButton, QScrollArea,
-                             QVBoxLayout, QWidget)
+                             QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+                             QWidget)
 
 from config import APP_CONFIG
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (persian_month_name, persian_weekday_name,
                               to_persian_digits)
 from utils.logger import setup_logging
-from utils.ui_helpers import (SCROLL_BOTTOM_PAD_PX, center_combo_items,
-                              combo_stylesheet, fit_combo_width,
-                              scrollbar_stylesheet)
+from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
+                              center_combo_items, combo_stylesheet,
+                              fit_combo_width, scrollbar_stylesheet)
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -209,7 +209,7 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.rows_layout.setSpacing(1)
         self.rows_layout.addStretch(1)
 
-        self.scroll_area = QScrollArea()
+        self.scroll_area = ReservedRailScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidget(self.list_container)
