@@ -11,8 +11,8 @@ from typing import Optional
 
 from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QCursor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
-from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle, QStyleOptionComboBox,
-                             QStylePainter)
+from PyQt6.QtWidgets import (QApplication, QComboBox, QStyle,
+                             QStyleOptionComboBox, QStylePainter)
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits
@@ -672,6 +672,14 @@ def danger_button_stylesheet(palette: dict) -> str:
         f"QPushButton:pressed {{ background-color: {base.darker(140).name()}; }}")
 
 
+# One value owns both bottom insets of a scrolled tool-window list: the
+# content column's bottom pad and the scrollbar track's bottom margin. They
+# must move together - the pad keeps the last card above the container's
+# bottom edge, and a track that still spans the full viewport would let the
+# thumb's edge sail past that same card at max scroll.
+SCROLL_BOTTOM_PAD_PX = 10
+
+
 def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: int,
                      bottom_margin: int = 0) -> str:
     """Core rounded-scrollbar rules shared by every scrollbar in the app.
@@ -683,7 +691,8 @@ def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: in
     hover and press, and the corner arrow buttons are removed entirely.
     ``bottom_margin`` insets the track's bottom edge so the thumb stops where
     the content pad ends; the top stays untouched, so at scroll-top the thumb
-    still opens aligned with the first card.
+    still opens aligned with the first card. Scrolled lists pass their pad
+    (``SCROLL_BOTTOM_PAD_PX``) so the two insets cannot drift apart.
     """
     radius = width // 2
     return (

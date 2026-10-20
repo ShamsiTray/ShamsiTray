@@ -55,10 +55,10 @@ from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             next_occurrence_jdate, parse_event_key,
                             recurrence_of_key)
 from utils.logger import setup_logging
-from utils.ui_helpers import (accent_button_stylesheet, center_combo_items,
-                              combo_stylesheet, fit_combo_width,
-                              ghost_button_stylesheet, line_edit_stylesheet,
-                              scrollbar_stylesheet)
+from utils.ui_helpers import (SCROLL_BOTTOM_PAD_PX, accent_button_stylesheet,
+                              center_combo_items, combo_stylesheet,
+                              fit_combo_width, ghost_button_stylesheet,
+                              line_edit_stylesheet, scrollbar_stylesheet)
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -95,14 +95,6 @@ def _event_anchor_month(key: str) -> Optional[int]:
     if parsed is None:
         return None
     return parsed[1]  # None for monthly events -> they match any month filter
-
-
-# One value owns both bottom insets: the row column's pad and the scrollbar
-# track's bottom margin. They must move together - otherwise the last card
-# stops 10px above the footer while the thumb's end oversails it at max
-# scroll (the pad shortens the content, but the track still spans the full
-# viewport).
-BOTTOM_PAD_PX = 10
 
 
 class EventRow(QFrame):
@@ -240,7 +232,12 @@ class EventManagerWindow(BaseFramelessWindow):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(18, 14, 18, 14)
+        # The scrollbar's rail hangs in the left padding band instead of the
+        # margin line the header rows keep: 8px off the glass, matching the
+        # 8px gutter it keeps from the rows on its other side. Content rows
+        # that must stay on the old 18px line compensate with a trailing
+        # addSpacing (under RTL that pads the row's LEFT end).
+        main_layout.setContentsMargins(8, 14, 18, 14)
         main_layout.setSpacing(10)
 
         self.title_bar = WindowTitleBar(self.close, self.showMinimized)
@@ -258,6 +255,7 @@ class EventManagerWindow(BaseFramelessWindow):
         self.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_button.clicked.connect(self._on_add_requested)
         header_row.addWidget(self.add_button)
+        header_row.addSpacing(10)           # back to the header's 18px margin line
         main_layout.addLayout(header_row)
 
         filter_row = QHBoxLayout()
@@ -301,17 +299,20 @@ class EventManagerWindow(BaseFramelessWindow):
         self.past_checkbox.toggled.connect(self.refresh_list)
         filter_row.addSpacing(6)
         filter_row.addWidget(self.past_checkbox)
+        filter_row.addSpacing(10)           # back to the header's 18px margin line
         main_layout.addLayout(filter_row)
 
         self.list_container = QWidget()
         self.rows_layout = QVBoxLayout(self.list_container)
-        # The scrollbar track hangs in the window's left margin line; its
-        # gutter is the row column's only horizontal inset, and the right
-        # edge stays flush with the header's margin line (a mirrored inset
-        # misaligned the list with the header for its whole height). The
-        # bottom pad and the track's matching margin both come from
-        # BOTTOM_PAD_PX.
-        self.rows_layout.setContentsMargins(8, 0, 0, BOTTOM_PAD_PX)
+        # The scrollbar track hangs in the window's left padding band (8px
+        # off the glass, matching the gutter on its other side — see the
+        # main_layout comment) rather than on the margin line the rows'
+        # headers keep. The gutter is the row column's only horizontal
+        # inset, and the right edge stays flush with the header's margin
+        # line (a mirrored inset misaligned the list with the header for
+        # its whole height). The bottom pad and the track's matching margin
+        # both come from SCROLL_BOTTOM_PAD_PX.
+        self.rows_layout.setContentsMargins(8, 0, 0, SCROLL_BOTTOM_PAD_PX)
         self.rows_layout.setSpacing(8)
         self.rows_layout.addStretch(1)
 
@@ -712,7 +713,8 @@ class EventManagerWindow(BaseFramelessWindow):
         self.import_button.setStyleSheet(ghost_style)
         self.export_button.setStyleSheet(ghost_style)
         self.scroll_area.setStyleSheet("QScrollArea { background: transparent; }"
-                                       + scrollbar_stylesheet(palette, bottom_margin=BOTTOM_PAD_PX))
+                                       + scrollbar_stylesheet(palette,
+                                                              bottom_margin=SCROLL_BOTTOM_PAD_PX))
         self.list_container.setStyleSheet("background: transparent;")
         self._restyle_dynamic_children()
         self.event_input_widget.update_styles()
