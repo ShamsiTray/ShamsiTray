@@ -1,12 +1,14 @@
 """Tests for the new windows: event manager, holiday viewer."""
 import datetime
+import re
 
 import jdatetime
 import pytest
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
 from PyQt6.QtGui import QCursor
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QComboBox, QDialog, QLabel, QWidget
+from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QLabel, QStyle,
+                             QStyleOptionSlider, QWidget)
 
 from config import APP_CONFIG
 from ui.windows.base_window import BaseFramelessWindow
@@ -15,17 +17,20 @@ from ui.widgets.confirm_card import ConfirmCard
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.tooltip import CustomTooltip
-from ui.windows.event_manager_window import (AUTO_DELETE_MARKER, AUTO_DELETE_TOOLTIP,
-                                             BOTTOM_PAD_PX, EventManagerWindow,
+from ui.windows.event_manager_window import (AUTO_DELETE_MARKER,
+                                             AUTO_DELETE_TOOLTIP,
+                                             EventManagerWindow,
                                              _event_date_label)
 from utils.event_io import recurrence_of_key as _event_recurrence
 from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.event_input import EventInputWidget
-from ui.windows.holiday_viewer_window import HolidayViewerWindow
+from ui.windows.holiday_viewer_window import (HolidayMonthHeader, HolidayRowWidget,
+                                              HolidayViewerWindow, split_lunar_date)
 from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import to_persian_digits
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, make_event_key)
+from utils.ui_helpers import SCROLL_BOTTOM_PAD_PX
 
 
 @pytest.fixture(autouse=True)
@@ -66,18 +71,17 @@ def test_manager_lists_all_events(manager):
 
 
 def test_rows_align_with_the_header_and_clear_track_and_footer(manager):
-    """The scrollbar's track is chrome on the margin line: the rows keep an
-    8px gutter by it (left edge, this RTL window) and stay flush with the
-    search field's margin line on the right; scrolled to the bottom, the last
-    card and the thumb both stop at the same pad above the footer, and at
-    scroll-top the thumb still opens aligned with the first card."""
+    """The scrollbar's track is chrome hanging out at the glass: the rows
+    keep an 8px gutter by it (left edge, this RTL window) and stay flush with
+    the search field's margin line on the right; scrolled to the bottom, the
+    last card and the thumb both stop at the same pad above the footer, and
+    at scroll-top the thumb still opens aligned with the first card."""
     manager.controller.add_user_event(jdatetime.date.today(), "یادداشت امروز", "none", False)
     for day in range(1, 12):
         key = make_event_key(jdatetime.date(1405, 1, day))
         manager.controller.user_events[key] = {"text": f"رویداد {day}", "recurrence": "none",
                                                "remove_after_finish": False}
     manager.refresh_list()
-    manager.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
     QApplication.processEvents()
 
     sb = manager.scroll_area.verticalScrollBar()
@@ -97,13 +101,13 @@ def test_rows_align_with_the_header_and_clear_track_and_footer(manager):
     last = manager.rows_layout.itemAt(manager.rows_layout.count() - 2).widget()
     viewport_bottom = viewport.mapTo(manager, QPoint(0, 0)).y() + viewport.height()
     last_bottom = last.mapTo(manager, QPoint(0, 0)).y() + last.height()
-    assert viewport_bottom - last_bottom == BOTTOM_PAD_PX   # pad above the footer
+    assert viewport_bottom - last_bottom == SCROLL_BOTTOM_PAD_PX   # pad above the footer
 
     # Both bottom insets are the one constant: the content pad and the
     # track's bottom margin (the thumb must arrive with the last card, not
     # sail past it).
-    assert manager.rows_layout.contentsMargins().bottom() == BOTTOM_PAD_PX
-    assert f"margin: 0px 0px {BOTTOM_PAD_PX}px 0px" in manager.scroll_area.styleSheet()
+    assert manager.rows_layout.contentsMargins().bottom() == SCROLL_BOTTOM_PAD_PX
+    assert f"margin: 0px 0px {SCROLL_BOTTOM_PAD_PX}px 0px" in manager.scroll_area.styleSheet()
     from PyQt6.QtWidgets import QStyle, QStyleOptionSlider
     opt = QStyleOptionSlider()
     sb.initStyleOption(opt)
@@ -764,14 +768,13 @@ def test_holiday_viewer_groups_by_month():
     }
     window = HolidayViewerWindow(holidays)
     window.year_combo.setCurrentIndex(window.year_combo.findData(1403))
-    labels = [child.text() for child in window.list_container.findChildren(type(window.empty_label))
-              if child.objectName() in ("MonthHeader", "HolidayRow")]
-    month_headers = [t for t in labels if t and "-" in t and "تعطیلی" in t]
-    rows = [t for t in labels if t and t not in month_headers]
-    assert any("فروردین" in h for h in month_headers)
-    assert any("مرداد" in h for h in month_headers)
-    assert any("جشن نوروز" in r for r in rows)
-    assert any("۵ مرداد" in r for r in rows)
+    headers = window.list_container.findChildren(HolidayMonthHeader)
+    rows = window.list_container.findChildren(HolidayRowWidget)
+    assert ["فروردین", "مرداد"] == [h.name_label.text() for h in headers]
+    assert ["۲", "۱"] == [h.count_label.text() for h in headers]
+    titles = [r.title_label.text() for r in rows]
+    assert "جشن نوروز" in titles
+    assert "۵" in [r.day_label.text() for r in rows]
     window.close()
 
 
@@ -789,8 +792,8 @@ def test_holiday_viewer_year_switch():
     holidays = {1403: {(1, 1): ["عید"]}, 1404: {(3, 3): ["دیگری"]}}
     window = HolidayViewerWindow(holidays)
     window.year_combo.setCurrentIndex(window.year_combo.findData(1404))
-    labels = [child.text() for child in window.list_container.findChildren(type(window.empty_label))]
-    assert any("خرداد" in t for t in labels if "-" in t)
+    headers = window.list_container.findChildren(HolidayMonthHeader)
+    assert any("خرداد" in h.name_label.text() for h in headers)
     window.close()
 
 
@@ -827,11 +830,94 @@ def test_holiday_viewer_count_label_shows_days_only():
     holidays = {1403: {(1, 1): ["عید", "جشن"], (1, 2): ["دیگری"]}}
     window = HolidayViewerWindow(holidays)
     window.year_combo.setCurrentIndex(window.year_combo.findData(1403))
-    text = window.count_label.text()
+    text = re.sub(r"<[^>]+>", "", window.count_label.text())  # it is rich text now
     assert "۲ روز تعطیل" in text      # two distinct dates
     assert "مناسبت" not in text       # occasions no longer shown (by design)
     assert "۱۴۰۳" in text
     window.close()
+
+
+def test_split_lunar_date():
+    """Bracketed lunar dates move out of the title into their own sub-line."""
+    assert split_lunar_date("تاسوعای حسینی [ ۹ محرم ]") == ("تاسوعای حسینی", "۹ محرم")
+    assert split_lunar_date("عیدنوروز") == ("عیدنوروز", "")
+    assert split_lunar_date("") == ("", "")
+
+
+def test_holiday_row_friday_next_and_past(monkeypatch):
+    """In the current year only, the next upcoming holiday is tagged and
+    highlighted while past rows dim; a bracketed lunar date becomes the
+    row's sub-line."""
+    from ui.windows import holiday_viewer_window as hv
+
+    class FakeDate(jdatetime.date):
+        @classmethod
+        def today(cls):
+            return cls(1405, 7, 26)
+
+    monkeypatch.setattr(hv.jdatetime, "date", FakeDate)
+    window = hv.HolidayViewerWindow({
+        1405: {(1, 1): ["گذشته"],
+               (11, 22): ["پیروزی انقلاب [ ۱ رجب ]"],
+               (12, 29): ["نفت"]},
+    })
+    rows = {r.day_label.text(): r
+            for r in window.list_container.findChildren(HolidayRowWidget)}
+    assert rows["۱"].is_past and not rows["۲۲"].is_past
+    assert rows["۲۲"].property("next") is True
+    assert rows["۲۲"].tag_label.text().endswith("روز دیگر")
+    assert rows["۲۲"].sub_label.text() == "۱ رجب"
+    assert rows["۲۹"].tag_label is None      # not next, not past, no tag
+    is_friday = jdatetime.date(1405, 11, 22).weekday() == 6
+    assert rows["۲۲"].badge.property("friday") is is_friday
+    window.close()
+
+
+def test_holiday_viewer_other_year_has_no_next_or_past():
+    """Next/past markers describe only the year being lived through."""
+    window = HolidayViewerWindow({1390: {(1, 1): ["الف"], (2, 2): ["ب"]},
+                                  1405: {(1, 1): ["ج"]}})
+    window.year_combo.setCurrentIndex(window.year_combo.findData(1390))
+    rows = window.list_container.findChildren(HolidayRowWidget)
+    assert rows and all(not r.is_past and not r.property("next") for r in rows)
+    window.close()
+
+
+def test_holiday_viewer_scrollbar_meets_the_rows():
+    """One pad owns both bottom insets: at max scroll the thumb ends level
+    with the last row, and at the top it opens on the first month header."""
+    holidays = {1390: {(m, (m % 27) + 3): [f"تعطیل {m}"]
+                       for m in range(1, 13)}}
+    window = HolidayViewerWindow(holidays)
+    window.show()
+    try:
+        window.year_combo.setCurrentIndex(window.year_combo.findData(1390))
+        QApplication.processEvents()
+        scrollbar = window.scroll_area.verticalScrollBar()
+
+        def thumb_rect():
+            option = QStyleOptionSlider()
+            scrollbar.initStyleOption(option)
+            return scrollbar.style().subControlRect(
+                QStyle.ComplexControl.CC_ScrollBar, option,
+                QStyle.SubControl.SC_ScrollBarSlider, scrollbar)
+
+        scrollbar_y = scrollbar.mapTo(window, QPoint(0, 0)).y()
+        rect = thumb_rect()
+        first_widget = window.rows_layout.itemAt(0).widget()   # the month header
+        first_top = first_widget.mapTo(window, QPoint(0, 0)).y()
+        assert first_top == scrollbar_y + rect.y()
+        scrollbar.setValue(scrollbar.maximum())
+        QApplication.processEvents()
+        rows = window.list_container.findChildren(HolidayRowWidget)
+        last_bottom = rows[-1].mapTo(window, QPoint(0, 0)).y() + rows[-1].height()
+        rect = thumb_rect()
+        assert last_bottom == scrollbar_y + rect.bottom() + 1
+        assert window.rows_layout.contentsMargins().bottom() == SCROLL_BOTTOM_PAD_PX
+        assert (f"margin: 0px 0px {SCROLL_BOTTOM_PAD_PX}px 0px"
+                in window.scroll_area.styleSheet())
+    finally:
+        window.close()
 
 
 # --- past-events filter (event manager) ---
