@@ -491,7 +491,7 @@ def test_clean_ticks_converge_the_driver(qtbot, monkeypatch):
     assert not window._hover_timer.isActive()
     # The open's initial feed, then nothing: a stationary hovered widget is
     # not refed, and every tick still counts clean toward convergence.
-    assert fed == [window.mapFromGlobal(QPoint(60, 60))]
+    assert fed == [QPoint(60, 60)]
 
 
 def test_capture_sweep_is_gated_by_budget(qtbot):
