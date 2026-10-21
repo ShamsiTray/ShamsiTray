@@ -47,6 +47,7 @@ from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.event_input import (EventInputWidget, delete_confirmation_message,
                                    recurrence_label)
+from ui.widgets.overlay_blocker import OverlayBlocker
 from ui.widgets.tooltip import TooltipButton, TooltipLabel
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
@@ -367,9 +368,7 @@ class EventManagerWindow(BaseFramelessWindow):
         # Click-blocking scrim behind the editor, mirroring the calendar
         # popup: while «افزودن رویداد» is open the manager behind it must not
         # react to clicks; the translucent fill also signals the modal state.
-        self.overlay_blocker = QWidget(self)
-        self.overlay_blocker.setStyleSheet("background-color: rgba(0, 0, 0, 75); border-radius: 26px; margin: 1px;")
-        self.overlay_blocker.hide()
+        self.overlay_blocker = OverlayBlocker(self)
 
     def hideEvent(self, event):
         """Hiding the window must also tear down the editor overlay, so a
@@ -538,9 +537,7 @@ class EventManagerWindow(BaseFramelessWindow):
         height = 340 if not self.event_input_widget.date_row.isHidden() else 300
         x = (self.width() - width) // 2
         y = (self.height() - height) // 2
-        self.overlay_blocker.setGeometry(self.rect())
-        self.overlay_blocker.show()
-        self.overlay_blocker.raise_()
+        self.overlay_blocker.present()
         self.event_input_widget.setGeometry(x, y, width, height)
         self.event_input_widget.show()
         self.event_input_widget.raise_()
