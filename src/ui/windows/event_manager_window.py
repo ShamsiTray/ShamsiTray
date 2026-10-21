@@ -398,7 +398,7 @@ class EventManagerWindow(BaseFramelessWindow):
         of mutating persistence itself: transactional saves, rollback and the
         save-failure dialog are handled in one place.
         """
-        return self.controller._events
+        return self.controller.event_service
 
     def refresh_list(self):
         """Rebuild the event rows from the live store, applying search + filters."""
