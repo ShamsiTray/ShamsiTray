@@ -144,14 +144,15 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.warning(
                 f"No holiday data for the current Jalali year {_current_year}; "
                 f"official holidays will be missing until the holiday data is updated.")
-        # The event store is owned by the EventService: every mutation and every
-        # save goes through it, so the calendar, the tray and the disk can never
-        # disagree. ``user_events`` below is a live view of ``self._events.events``.
-        self._events = EventService()
+        # The store is owned by the EventService, named here as the public
+        # attribute the UI layers reach: every mutation and every save goes
+        # through it, so the calendar, the tray and the disk can never
+        # disagree. ``user_events`` below is a live view of its dict.
+        self.event_service = EventService()
         # The service stays Qt-free; the application supplies the themed failure
         # dialog for interactive saves (background cleanup passes notify=False
         # inside the service and never calls this).
-        self._events.on_save_error = self._notify_save_failed
+        self.event_service.on_save_error = self._notify_save_failed
         # Window references are created lazily; they must exist (as None) before
         # _clean_expired_events can run, because it refreshes the calendar when
         # events expire.
@@ -193,7 +194,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         reference the calendar widget holds. The setter syncs IN PLACE for the
         same reason, so external holders always read current state.
         """
-        return self._events.events
+        return self.event_service.events
 
     @user_events.setter
     def user_events(self, value: Dict[str, dict]):
@@ -201,8 +202,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         # clear-then-update against that same dict leaves it empty - which the
         # next save would then persist.
         snapshot = dict(value)
-        self._events.events.clear()
-        self._events.events.update(snapshot)
+        self.event_service.events.clear()
+        self.event_service.events.update(snapshot)
 
     def _get_windows_theme(self) -> str:
         """Detects if Windows is in light or dark mode. Defaults to dark if detection fails."""
@@ -798,7 +799,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         the transactional save live in the EventService; this wrapper only
         refreshes the UI on success.
         """
-        if self._events.add(jdate, text, recurrence, remove_after_finish):
+        if self.event_service.add(jdate, text, recurrence, remove_after_finish):
             self._refresh_after_events_changed()
 
     def update_user_event_by_key(self, key: str, jdate: jdatetime.date, text: str,
@@ -814,7 +815,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         an event that already exists. The store's own save transaction decides
         the outcome, so there is no second (fallible) path to roll back.
         """
-        if self._events.update_key(key, jdate, text, recurrence, remove_after_finish,
+        if self.event_service.update_key(key, jdate, text, recurrence, remove_after_finish,
                                    merge_into or None):
             self._refresh_after_events_changed()
         else:
@@ -830,7 +831,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         the one the user pointed at. The store's own save transaction decides
         the outcome, so there is no second (fallible) path to roll back.
         """
-        if self._events.delete_key(key):
+        if self.event_service.delete_key(key):
             self._refresh_after_events_changed()
         else:
             # Unknown/expired key: nothing was written, so nothing to refresh.
@@ -838,13 +839,13 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
         """Remove every event variant matching ``jdate`` (specific, yearly, monthly)."""
-        if self._events.remove_for_date(jdate, commit=save):
+        if self.event_service.remove_for_date(jdate, commit=save):
             self._refresh_after_events_changed()
 
     def _clean_expired_events(self):
         # Background cleanup (startup / midnight / time-change / minute tick):
         # the service logs quietly instead of raising a modal from a timer.
-        if not self._events.clean_expired(notify=False):
+        if not self.event_service.clean_expired(notify=False):
             return
         if self.calendar_widget is not None:
             self.calendar_widget.set_user_events(self.user_events)
@@ -1292,7 +1293,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                                  danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
             return False
         imported, skipped = result
-        plan = self._events.plan_import(imported)
+        plan = self.event_service.plan_import(imported)
         if plan.replaced_existing:
             detail = self._import_collision_detail(plan)
             count = to_persian_digits(len(plan.replaced_existing))
@@ -1304,7 +1305,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             if not confirmed:
                 logger.info("Import canceled at the collision confirmation.")
                 return False
-        if not self._events.apply_import(plan):
+        if not self.event_service.apply_import(plan):
             # The themed failure notice fires via the service's on_save_error;
             # in-memory state was rolled back to the pre-import store.
             return False
