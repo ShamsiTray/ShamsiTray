@@ -965,7 +965,7 @@ def test_theme_cycle_advances_and_persists(tray, monkeypatch):
     before the last one is dark, so landing on light proves that "system"
     re-detected instead of staying on the pin it came from.
     """
-    monkeypatch.setattr(tray, "_get_windows_theme",
+    monkeypatch.setattr(tray.theme_backend, "theme",
                         lambda: APP_CONFIG.Theme.LIGHT, raising=True)
     monkeypatch.setattr(tray, "_apply_theme", lambda: None)
     key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
@@ -984,7 +984,7 @@ def test_theme_cycle_advances_and_persists(tray, monkeypatch):
 def test_theme_cycle_persists_every_stop_and_returns_to_system(tray, monkeypatch):
     """The row cycles system → light → dark → system, saving each stop
     explicitly - «هماهنگ با سیستم» is reachable again after any pin."""
-    monkeypatch.setattr(tray, "_get_windows_theme",
+    monkeypatch.setattr(tray.theme_backend, "theme",
                         lambda: APP_CONFIG.Theme.LIGHT, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
@@ -1008,7 +1008,7 @@ def test_theme_cycle_persists_every_stop_and_returns_to_system(tray, monkeypatch
 
 def test_theme_follows_system_when_no_preference_saved(tray, monkeypatch):
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
-    monkeypatch.setattr(tray, "_get_windows_theme",
+    monkeypatch.setattr(tray.theme_backend, "theme",
                         lambda: APP_CONFIG.Theme.LIGHT, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
@@ -1024,7 +1024,7 @@ def test_theme_follows_system_when_no_preference_saved(tray, monkeypatch):
 
 def test_theme_follow_ignores_saved_user_choice(tray, monkeypatch):
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
-    monkeypatch.setattr(tray, "_get_windows_theme",
+    monkeypatch.setattr(tray.theme_backend, "theme",
                         lambda: APP_CONFIG.Theme.LIGHT, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
@@ -1039,7 +1039,7 @@ def test_theme_follow_ignores_saved_user_choice(tray, monkeypatch):
 
 def test_theme_follow_ignores_same_theme(tray, monkeypatch):
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
-    monkeypatch.setattr(tray, "_get_windows_theme",
+    monkeypatch.setattr(tray.theme_backend, "theme",
                         lambda: APP_CONFIG.Theme.DARK, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
@@ -1065,7 +1065,7 @@ def test_explicit_system_choice_still_follows_windows(tray, monkeypatch):
     """An explicit «هماهنگ با سیستم» value keeps following Windows - only a
     pinned light/dark choice stops the broadcast from applying."""
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
-    monkeypatch.setattr(tray, "_get_windows_theme",
+    monkeypatch.setattr(tray.theme_backend, "theme",
                         lambda: APP_CONFIG.Theme.LIGHT, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
