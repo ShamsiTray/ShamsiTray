@@ -151,8 +151,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.event_service = EventService()
         # The service stays Qt-free; the application supplies the themed failure
         # dialog for interactive saves (background cleanup passes notify=False
-        # inside the service and never calls this).
+        # inside the service and never calls this) and the one post-save refresh
+        # for the calendar, tray and manager.
         self.event_service.on_save_error = self._notify_save_failed
+        self.event_service.on_store_changed = self._refresh_after_events_changed
         # Window references are created lazily; they must exist (as None) before
         # _clean_expired_events can run, because it refreshes the calendar when
         # events expire.
@@ -785,7 +787,21 @@ class SystemTrayIcon(QSystemTrayIcon):
             danger=True, glyph=APP_CONFIG.FAS.FA_SAVE)
 
     def _refresh_after_events_changed(self):
-        """Push a successful store mutation to the calendar, tray and manager."""
+        """Push a committed store change to the calendar, tray and manager.
+
+        Subscribed as the service's ``on_store_changed`` hook, so this one
+        composition refreshes every mutation path: the wrappers below, the
+        event manager's own edit/delete/import, the calendar's context menu.
+        A committed save can itself introduce an expired event (a past-dated
+        auto-delete add), so the expiry cleanup rides along quietly first;
+        any commit that cleanup makes re-enters through this same hook and
+        stops after one pass, because the second cleanup finds nothing."""
+        if self.calendar_widget is None:
+            # The store is built and cleaned before the calendar exists: the
+            # calendar reads the settled store straight from its constructor
+            # and the tray refreshes on its own init path.
+            return
+        self.event_service.clean_expired(notify=False)
         self.calendar_widget.set_user_events(self.user_events)
         self.update_tray_icon(force=True)
         self._refresh_event_manager()
@@ -795,12 +811,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         """Add an event on ``jdate``; an event of the same recurrence is replaced.
 
         Keyed, not date-scoped: a date may show several events with different
-        recurrences, and adding one never removes the others. All store rules and
-        the transactional save live in the EventService; this wrapper only
-        refreshes the UI on success.
+        recurrences, and adding one never removes the others. All store rules,
+        the transactional save and the post-save refresh live in the service
+        and its ``on_store_changed`` hook; this is only the request API the
+        calendar's signals and tests call.
         """
-        if self.event_service.add(jdate, text, recurrence, remove_after_finish):
-            self._refresh_after_events_changed()
+        self.event_service.add(jdate, text, recurrence, remove_after_finish)
 
     def update_user_event_by_key(self, key: str, jdate: jdatetime.date, text: str,
                                  recurrence: str = RECURRENCE_NONE,
@@ -815,41 +831,28 @@ class SystemTrayIcon(QSystemTrayIcon):
         an event that already exists. The store's own save transaction decides
         the outcome, so there is no second (fallible) path to roll back.
         """
-        if self.event_service.update_key(key, jdate, text, recurrence, remove_after_finish,
-                                   merge_into or None):
-            self._refresh_after_events_changed()
-        else:
-            # Unknown/expired key, or a refused overwrite: nothing was written,
-            # so there is nothing to refresh.
-            logger.debug(f"update_user_event_by_key: no store entry for {key!r}.")
+        self.event_service.update_key(key, jdate, text, recurrence, remove_after_finish,
+                                      merge_into or None)
 
     def remove_user_event_by_key(self, key: str):
-        """Remove one store entry by its key and refresh every surface.
+        """Remove one store entry by its key.
 
         The by-key path exists because a day can hold several events with
         DIFFERENT keys: deleting by date would take the whole day's set with
         the one the user pointed at. The store's own save transaction decides
         the outcome, so there is no second (fallible) path to roll back.
         """
-        if self.event_service.delete_key(key):
-            self._refresh_after_events_changed()
-        else:
-            # Unknown/expired key: nothing was written, so nothing to refresh.
-            logger.debug(f"remove_user_event_by_key: no store entry for {key!r}.")
+        self.event_service.delete_key(key)
 
     def remove_user_event(self, jdate: jdatetime.date, save: bool = True):
         """Remove every event variant matching ``jdate`` (specific, yearly, monthly)."""
-        if self.event_service.remove_for_date(jdate, commit=save):
-            self._refresh_after_events_changed()
+        self.event_service.remove_for_date(jdate, commit=save)
 
     def _clean_expired_events(self):
         # Background cleanup (startup / midnight / time-change / minute tick):
-        # the service logs quietly instead of raising a modal from a timer.
-        if not self.event_service.clean_expired(notify=False):
-            return
-        if self.calendar_widget is not None:
-            self.calendar_widget.set_user_events(self.user_events)
-        self._refresh_event_manager()
+        # the service logs quietly instead of raising a modal from a timer, and
+        # any committed cleanup refreshes the surfaces through the store hook.
+        self.event_service.clean_expired(notify=False)
 
     def _refresh_event_manager(self):
         """Keep an open event-manager window in sync with store mutations that
@@ -1254,21 +1257,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._show_or_raise("converter_window", DateConverterWindow)
 
     def _open_event_manager(self):
-        def _factory():
-            window = EventManagerWindow(self)
-            window.events_changed.connect(self._on_events_changed_by_manager)
-            return window
-        self._show_or_raise("event_manager_window", _factory)
+        self._show_or_raise("event_manager_window",
+                            lambda: EventManagerWindow(self))
 
     def _open_holiday_viewer(self):
         self._show_or_raise("holiday_viewer_window",
                             lambda: HolidayViewerWindow(self.holidays_cache))
-
-    def _on_events_changed_by_manager(self):
-        """The event manager mutated self.user_events; refresh calendar + tray."""
-        self._clean_expired_events()
-        self.calendar_widget.set_user_events(self.user_events)
-        self.update_tray_icon(force=True)
 
     def import_events_from_dialog(self, parent=None) -> bool:
         """Reusable import flow for the event manager window. Returns True when events changed.
@@ -1319,7 +1313,6 @@ class SystemTrayIcon(QSystemTrayIcon):
             summary += f"\n{to_persian_digits(skipped)} ورودی نامعتبر نادیده گرفته شد."
         ConfirmDialog.notify(parent, "وارد کردن رویدادها", summary,
                              glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
-        self._refresh_after_events_changed()
         return True
 
     @staticmethod

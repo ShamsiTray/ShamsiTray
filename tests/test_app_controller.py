@@ -1454,12 +1454,36 @@ def test_refresh_event_manager_when_visible(tray):
     tray.event_manager_window = None
 
 
-def test_events_changed_by_manager_refreshes_calendar(tray):
+def test_refresh_after_events_changed_refreshes_calendar_and_tray(tray):
     set_calls, _ = _spy(tray.calendar_widget, "set_user_events")
     icon_calls, _ = _spy(tray, "update_tray_icon")
-    tray._on_events_changed_by_manager()
+    tray._refresh_after_events_changed()
     assert len(set_calls) == 1
     assert len(icon_calls) == 1
+
+
+def test_a_committed_store_save_refreshes_every_surface_once(tray, qtbot):
+    """The service's on_store_changed hook owns the post-save refresh: one
+    committed save (the manager's own upsert route included) reaches the
+    calendar, tray and manager through this one composition - nobody drives a
+    second rebuild of the same state."""
+    from ui.windows.event_manager_window import EventManagerWindow
+    manager = EventManagerWindow(tray)
+    qtbot.addWidget(manager)
+    manager.show()
+    tray.event_manager_window = manager
+    refreshes, _ = _spy(manager, "refresh_list")
+    set_calls, _ = _spy(tray.calendar_widget, "set_user_events")
+    icon_calls, _ = _spy(tray, "update_tray_icon")
+
+    tray.event_service.upsert("1405-05-05",
+                              {"text": "شرایط سرویس", "recurrence": "yearly",
+                               "remove_after_finish": False})
+
+    assert len(refreshes) == 1  # built once: the hook's pass, not the manager's duplicate
+    assert len(set_calls) == 1
+    assert len(icon_calls) >= 1  # each hook pass forces the tray redraw
+    tray.event_manager_window = None
 
 
 def test_close_menu_then_closes_and_defers(tray, monkeypatch):

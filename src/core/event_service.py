@@ -21,9 +21,12 @@ rebinding rollback would restore ``service.events`` while the calendar kept
 reading the mutated object.
 
 Persistence failures are reported through ``on_save_error`` (a plain callable
-the application points at its themed failure dialog) so this module stays
-Qt-free and testable. Interactive mutation paths pass ``notify=True``;
-background cleanup passes ``notify=False`` and only logs.
+the application points at its themed failure dialog); committed saves are
+announced through ``on_store_changed`` (the application's refresh composition,
+subscribed once) so no mutation caller re-composes "mutate then refresh".
+Both hooks fire with no arguments and keep this module Qt-free and testable.
+Interactive mutation paths pass ``notify=True``; background cleanup passes
+``notify=False`` and only logs.
 """
 import logging
 from typing import Callable, Dict, List, Optional
@@ -68,10 +71,12 @@ class EventService:
 
     def __init__(self):
         self.events: Dict[str, dict] = {}
-        # UI hook: called (no arguments) when an interactive save fails and the
-        # in-memory state was rolled back. The application points this at its
-        # themed failure dialog; tests point it at a recorder.
+        # UI hooks: called (no arguments) at the two edges of a save. The
+        # application points ``on_save_error`` at its themed failure dialog and
+        # ``on_store_changed`` at the one refresh composition every committed
+        # save pushes to the surfaces through; tests point both at recorders.
         self.on_save_error: Optional[Callable[[], None]] = None
+        self.on_store_changed: Optional[Callable[[], None]] = None
         self.reload()
 
     # --- state ------------------------------------------------------------------
@@ -113,6 +118,8 @@ class EventService:
         half-applied file can never exist.
         """
         if save_user_events(self.events):
+            if self.on_store_changed is not None:
+                self.on_store_changed()
             return True
         logger.error("Failed to persist user events (in-memory state restored).")
         self.events.clear()
