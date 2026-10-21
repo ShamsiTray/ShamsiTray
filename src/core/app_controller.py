@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl, Qt
 from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QWidgetAction
 
 from config import APP_CONFIG
 from core.event_service import EventService
@@ -49,8 +49,6 @@ from utils.date_utils import ms_until_midnight, persian_month_name, persian_week
 from utils.event_io import (
     RECURRENCE_NONE,
     events_on_date,
-    export_events_to_file,
-    import_events_from_file,
 )
 from utils.holiday_io import read_version, resolve_holidays_store
 from utils.json_settings import JsonSettings
@@ -1263,93 +1261,3 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _open_holiday_viewer(self):
         self._show_or_raise("holiday_viewer_window",
                             lambda: HolidayViewerWindow(self.holidays_cache))
-
-    def import_events_from_dialog(self, parent=None) -> bool:
-        """Reusable import flow for the event manager window. Returns True when events changed.
-
-        The import is reconciled against the store by *visible date* before
-        anything is applied. When it would replace existing events (exact-key
-        overwrites, or same-date collisions across recurrence forms - e.g. an
-        imported yearly «0000-08-01» taking over a stored one-time
-        «1405-08-01»), a themed confirm lists the count first.
-
-        The whole new state (merge + replaced-event removal + expiry cleanup) is
-        computed in memory and saved EXACTLY ONCE, so a failed save can never
-        leave a half-imported file on disk.
-        """
-        path, _ = QFileDialog.getOpenFileName(parent, "وارد کردن رویدادها", "", "JSON (*.json)")
-        if not path:
-            return False
-        result = import_events_from_file(path)
-        if result is None:
-            ConfirmDialog.notify(parent, "وارد کردن رویدادها",
-                                 "خواندن فایل رویدادها ناموفق بود.",
-                                 danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
-            return False
-        imported, skipped = result
-        plan = self.event_service.plan_import(imported)
-        if plan.replaced_existing:
-            detail = self._import_collision_detail(plan)
-            count = to_persian_digits(len(plan.replaced_existing))
-            confirmed = ConfirmDialog.ask(
-                parent, "وارد کردن رویدادها",
-                f"این فایل {count} رویداد موجود را جایگزین می‌کند.",
-                detail=detail, confirm_text="جایگزینی", cancel_text="انصراف",
-                danger=True, glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
-            if not confirmed:
-                logger.info("Import canceled at the collision confirmation.")
-                return False
-        if not self.event_service.apply_import(plan):
-            # The themed failure notice fires via the service's on_save_error;
-            # in-memory state was rolled back to the pre-import store.
-            return False
-        if plan.internal_replaced:
-            logger.info(f"Import folded {plan.internal_replaced} same-date duplicate "
-                        f"entr{'y' if plan.internal_replaced == 1 else 'ies'} from the file (later entry won).")
-        summary = f"{to_persian_digits(len(plan.applied))} رویداد وارد شد."
-        if plan.replaced_existing:
-            summary += f"\n{to_persian_digits(len(plan.replaced_existing))} رویداد جایگزین شد."
-        if skipped:
-            summary += f"\n{to_persian_digits(skipped)} ورودی نامعتبر نادیده گرفته شد."
-        ConfirmDialog.notify(parent, "وارد کردن رویدادها", summary,
-                             glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
-        return True
-
-    @staticmethod
-    def _import_collision_detail(plan) -> str:
-        """Preview of the existing events the import would replace.
-
-        Text-only lines (the same style the delete confirmation uses), capped so
-        a bulk import cannot build an endless dialog.
-        """
-        lines = []
-        for _key, entry in list(plan.replaced_existing.items())[:6]:
-            text = str(entry.get("text", ""))
-            preview = text if len(text) <= 40 else text[:40] + "…"
-            lines.append(preview)
-        remaining = len(plan.replaced_existing) - len(lines)
-        if remaining > 0:
-            lines.append(f"… و {to_persian_digits(remaining)} مورد دیگر")
-        return "\n".join(lines)
-
-    def export_events_to_dialog(self, parent=None) -> bool:
-        """Reusable export flow for the event manager window. Returns True on success."""
-        if not self.user_events:
-            ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
-                                 "هیچ رویدادی برای خروجی گرفتن وجود ندارد.",
-                                 glyph=APP_CONFIG.FAS.FA_UPLOAD)
-            return False
-        default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
-        path, _ = QFileDialog.getSaveFileName(parent, "خروجی گرفتن از رویدادها", default_name, "JSON (*.json)")
-        if not path:
-            return False
-        if export_events_to_file(self.user_events, Path(path)):
-            logger.info(f"Exported {len(self.user_events)} user events to {path}")
-            ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
-                                 "رویدادها با موفقیت خروجی گرفته شدند.",
-                                 glyph=APP_CONFIG.FAS.FA_UPLOAD)
-            return True
-        ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
-                             "خروجی گرفتن از رویدادها ناموفق بود.",
-                             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
-        return False
