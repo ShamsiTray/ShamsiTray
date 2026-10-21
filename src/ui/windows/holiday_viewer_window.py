@@ -6,10 +6,10 @@ Holiday Viewer Window
 opened from the tray menu («مشاهده تعطیلات»). Holidays are shown for one
 Jalali year at a time (selectable, defaulting to the current year), grouped
 under Persian month headers as badge rows: a day badge carrying the weekday,
-the title with an optional lunar sub-date — in the current year every
-upcoming row is tagged with a countdown («امروز» / «فردا» / «۲۳ روز دیگر» /
-«۱ ماه و ۴ روز دیگر»; the nearest tag filled, the rest muted) while
-past rows dim. The year can also be stepped with «❯» / «❮» buttons flanking
+the title with an optional muted inline lunar date, and — only in the current
+year — the next upcoming holiday tinted, every upcoming row tagged with a countdown
+(«امروز» / «فردا» / «۲۳ روز دیگر» / «۱ ماه و ۴ روز دیگر»; the nearest tag filled,
+the rest muted) while past rows dim. The year can also be stepped with «❯» / «❮» buttons flanking
 the combo box.
 
 The data comes straight from the in-memory holiday cache the calendar uses,
@@ -17,6 +17,7 @@ so what is shown here is exactly what the calendar highlights; updated data
 pulled by the auto-updater appears here the next time the window is opened.
 """
 import re
+from html import escape
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
@@ -39,14 +40,23 @@ from .base_window import BaseFramelessWindow
 logger = setup_logging(__name__)
 
 # Holiday descriptions conventionally carry their lunar date in brackets
-# («تاسوعای حسینی [ ۹ محرم ]»); the row shows that separately from the title.
+# («تاسوعای حسینی [ ۹ محرم ]»); the row renders that muted, inline after the
+# title it belongs to.
 _LUNAR_RE = re.compile(r"\s*\[\s*(.+?)\s*\]")
+
+
+# Qt rich text has no inline margin, so the extra gap before the lunar date is
+# a no-break space set in a tiny font: a space is ~0.25em wide, so 6px is ~1.5px.
+_LUNAR_GAP_FONT_PX = 6
+
+# Space above a month's hairline, so the last row of the previous month doesn't touch it.
+MONTH_GAP_ABOVE_LINE_PX = 8
 
 
 def split_lunar_date(text: str) -> Tuple[str, str]:
     """Split «تاسوعای حسینی [ ۹ محرم ]» into ("تاسوعای حسینی", "۹ محرم")."""
     subs = [m.strip() for m in _LUNAR_RE.findall(text)]
-    return _LUNAR_RE.sub("", text).strip(), "، ".join(subs)
+    return _LUNAR_RE.sub("", text).strip(), " · ".join(subs)
 
 
 def format_countdown(target, today) -> str:
@@ -99,9 +109,10 @@ class HolidayMonthHeader(QWidget):
 
 
 class HolidayRowWidget(QFrame):
-    """One holiday: day badge (number + full weekday), title, optional lunar sub-line and tag."""
+    """One holiday: day badge (number + full weekday), title line(s) — each
+    with its lunar date inline and muted — and optional tag."""
 
-    def __init__(self, day: int, weekday: Optional[int], title: str, sub: str = "",
+    def __init__(self, day: int, weekday: Optional[int], title: str,
                  tag: str = "", is_past: bool = False, is_next: bool = False):
         super().__init__()
         self.setObjectName("HolidayRow")
@@ -133,12 +144,11 @@ class HolidayRowWidget(QFrame):
         self.title_label = QLabel(title)
         self.title_label.setObjectName("RowTitle")
         self.title_label.setWordWrap(True)
+        # The title arrives as muted spans joined with <br> (see _fill_year);
+        # the payload can start with plain text, so the format is set
+        # explicitly instead of left to auto-detection.
+        self.title_label.setTextFormat(Qt.TextFormat.RichText)
         text_col.addWidget(self.title_label)
-        self.sub_label = None
-        if sub:
-            self.sub_label = QLabel(sub)
-            self.sub_label.setObjectName("RowSub")
-            text_col.addWidget(self.sub_label)
         lay.addLayout(text_col, 1)
 
         self.tag_label = None
@@ -347,14 +357,28 @@ class HolidayViewerWindow(BaseFramelessWindow):
             if not month_days:
                 continue
             header = HolidayMonthHeader(persian_month_name(month), len(month_days), first)
+            if not first:
+                # Air between the previous month's last row and the hairline
+                # (the line is the header's own top border, so the gap has to
+                # be a separate spacer ahead of it).
+                self.rows_layout.insertSpacing(self.rows_layout.count() - 1, MONTH_GAP_ABOVE_LINE_PX)
             first = False
             self.rows_layout.insertWidget(self.rows_layout.count() - 1, header)
 
             for (month_no, day), descriptions in month_days:
                 date = dates[(month_no, day)]
                 parts = [split_lunar_date(d) for d in descriptions]
-                title = "، ".join(t for t, _ in parts if t) or "، ".join(descriptions)
-                sub = "، ".join(x for _, x in parts if x)
+                # Every row reads the same way: one line per holiday, its
+                # lunar date (if any) trailing the title muted and 11px, so
+                # single- and multi-holiday days share one presentation. The
+                # tone shift plus a hairline gap (_LUNAR_GAP_FONT_PX) separates
+                # it from the title — no separator glyph.
+                muted = APP_CONFIG.get_current_palette()["GREY_COLOR"]
+                title = "<br>".join(
+                    escape(t) + (f' <span style="font-size:{_LUNAR_GAP_FONT_PX}px;">&nbsp;</span>'
+                                 f'<span style="color:{muted}; font-size:11px;">'
+                                 f'{escape(x)}</span>' if x else "")
+                    for t, x in parts) or "<br>".join(escape(d) for d in descriptions)
                 is_next = (month_no, day) == next_md
                 # Every upcoming holiday of the current year carries its
                 # countdown; the nearest one's tag is filled (see the QSS),
@@ -364,7 +388,7 @@ class HolidayViewerWindow(BaseFramelessWindow):
                 if date is not None and date >= today and (is_current or is_next):
                     tag = format_countdown(date, today)
                 row = HolidayRowWidget(
-                    day, date.weekday() if date is not None else None, title, sub, tag,
+                    day, date.weekday() if date is not None else None, title, tag,
                     is_past=is_current and date is not None and date < today,
                     is_next=is_next)
                 if is_next:
@@ -434,7 +458,6 @@ class HolidayViewerWindow(BaseFramelessWindow):
             QLabel#DayName {{ color: {p['WEEKDAY_NAMES_COLOR']}; font-size: 10px; }}
             QFrame#DayBadge[friday="true"] QLabel {{ color: {holiday}; }}
             QLabel#RowTitle {{ color: {p['TEXT_COLOR']}; font-size: 13px; }}
-            QLabel#RowSub {{ color: {p['GREY_COLOR']}; font-size: 11px; }}
             QLabel#RowTag {{ background: {p['CALENDAR_BORDER_COLOR']}; color: {p['GREY_COLOR']}; border-radius: 9px; padding: 1px 9px; font-size: 11px; font-weight: bold; }}
             QFrame#HolidayRow[next="true"] QLabel#RowTag {{ background: {accent}; color: #ffffff; }}
             QWidget#MonthHeader {{ border-top: 1px solid {p['CALENDAR_BORDER_COLOR']}; }}

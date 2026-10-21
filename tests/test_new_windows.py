@@ -838,16 +838,33 @@ def test_holiday_viewer_count_label_shows_days_only():
 
 
 def test_split_lunar_date():
-    """Bracketed lunar dates move out of the title into their own sub-line."""
+    """Bracketed lunar dates split out of the title for muted inline rendering."""
     assert split_lunar_date("تاسوعای حسینی [ ۹ محرم ]") == ("تاسوعای حسینی", "۹ محرم")
     assert split_lunar_date("عیدنوروز") == ("عیدنوروز", "")
     assert split_lunar_date("") == ("", "")
 
 
+def test_holiday_viewer_lunar_date_rides_its_title_line():
+    """Every row — single or multi holiday — renders its lunar date muted and
+    inline after its own title: no parentheses, no stacked sub block."""
+    window = HolidayViewerWindow(
+        {1407: {(3, 14): ["تاسوعای حسینی [ ۹ محرم ]", "روز پدر"],
+                (3, 15): ["عید قربان [ ۱۰ محرم ]"]}})
+    window.year_combo.setCurrentIndex(window.year_combo.findData(1407))
+    rows = {r.day_label.text(): r
+            for r in window.list_container.findChildren(HolidayRowWidget)}
+    multi = rows["۱۴"].title_label.text()
+    assert "<br>" in multi and "۹ محرم" in multi and "·" not in multi
+    assert "(" not in multi and not hasattr(rows["۱۴"], "sub_label")
+    single = rows["۱۵"].title_label.text()
+    assert "۱۰ محرم" in single and "<br>" not in single and "·" not in single
+    window.close()
+
+
 def test_holiday_row_friday_next_and_past(monkeypatch):
     """In the current year only, the next upcoming holiday is tagged and
-    highlighted while past rows dim; a bracketed lunar date becomes the
-    row's sub-line."""
+    highlighted while past rows dim; a bracketed lunar date rides its title
+    muted and inline."""
     from ui.windows import holiday_viewer_window as hv
 
     class FakeDate(jdatetime.date):
@@ -866,7 +883,8 @@ def test_holiday_row_friday_next_and_past(monkeypatch):
     assert rows["۱"].is_past and not rows["۲۲"].is_past
     assert rows["۲۲"].property("next") is True
     assert rows["۲۲"].tag_label.text().endswith("روز دیگر")
-    assert rows["۲۲"].sub_label.text() == "۱ رجب"
+    assert "۱ رجب" in rows["۲۲"].title_label.text() and "·" not in rows["۲۲"].title_label.text()
+    assert not hasattr(rows["۲۲"], "sub_label")
     assert rows["۲۹"].tag_label is not None  # upcoming but not next: muted countdown
     assert rows["۲۹"].property("next") is False and rows["۲۹"].tag_label.text().endswith("دیگر")
     assert rows["۱"].tag_label is None      # past rows carry no countdown
@@ -905,15 +923,27 @@ def test_holiday_viewer_scrollbar_meets_the_rows():
                 QStyle.SubControl.SC_ScrollBarSlider, scrollbar)
 
         scrollbar_y = scrollbar.mapTo(window, QPoint(0, 0)).y()
-        rect = thumb_rect()
+
+        def settled_thumb_rect():
+            """subControlRect lags a rebuild by a polish pass, so read the
+            handle only once its geometry has stopped moving."""
+            rect = thumb_rect()
+            for _ in range(10):
+                QApplication.processEvents()
+                nxt = thumb_rect()
+                if nxt == rect:
+                    return rect
+                rect = nxt
+            return rect
+
         first_widget = window.rows_layout.itemAt(0).widget()   # the month header
         first_top = first_widget.mapTo(window, QPoint(0, 0)).y()
-        assert first_top == scrollbar_y + rect.y()
+        assert first_top == scrollbar_y + settled_thumb_rect().y()
         scrollbar.setValue(scrollbar.maximum())
         QApplication.processEvents()
         rows = window.list_container.findChildren(HolidayRowWidget)
         last_bottom = rows[-1].mapTo(window, QPoint(0, 0)).y() + rows[-1].height()
-        rect = thumb_rect()
+        rect = settled_thumb_rect()
         assert last_bottom == scrollbar_y + rect.bottom() + 1
         assert window.rows_layout.contentsMargins().bottom() == SCROLL_BOTTOM_PAD_PX
         assert (f"margin: 0px 0px {SCROLL_BOTTOM_PAD_PX}px 0px"
