@@ -838,6 +838,17 @@ def window_title_button_stylesheets(palette: dict) -> tuple[str, str]:
     return close_style, minimize_style
 
 
+def rgba_string(color_hex: str, alpha: float, *, channel_max: int = 255) -> str:
+    """The one ``rgba()`` builder for stylesheet text. ``channel_max`` names
+    the alpha channel's notation: Qt's QSS keeps the classic integer form in
+    the calendar's day styles (tuned over 0-255), while the holiday viewer's
+    rows use the CSS 0-1 float form - each stylesheet keeps the notation it
+    was tuned with, one builder stops the forms from drifting."""
+    color = QColor(color_hex)
+    alpha_value = int(alpha * channel_max) if channel_max != 1 else alpha
+    return f"rgba({color.red()}, {color.green()}, {color.blue()}, {alpha_value})"
+
+
 def plain_menu_stylesheet(palette: dict, *, dividers: bool = False) -> str:
     """The stock-QMenu popup look shared by the tray menu and the calendar's
     go-to-date popup: one rounded frame clause, optionally followed by the

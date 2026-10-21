@@ -34,7 +34,8 @@ from utils.date_utils import (describe_date_distance, persian_month_name,
 from utils.logger import setup_logging
 from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
                               center_combo_items, combo_stylesheet,
-                              fit_combo_width, scrollbar_stylesheet)
+                              fit_combo_width, rgba_string,
+                              scrollbar_stylesheet)
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -81,11 +82,6 @@ def format_countdown(target, today) -> str:
                  if count]
         return f"{' و '.join(parts)} دیگر"
     return f"{to_persian_digits(total)} روز دیگر"
-
-
-def _rgba(color: str, alpha: float) -> str:
-    c = QColor(color)
-    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha})"
 
 
 class HolidayMonthHeader(QWidget):
@@ -451,9 +447,9 @@ class HolidayViewerWindow(BaseFramelessWindow):
             QWidget {{ background: transparent; font-family: '{font}'; }}
             QFrame#HolidayRow {{ background: transparent; border: 1px solid transparent; border-radius: 10px; }}
             QFrame#HolidayRow:hover {{ background: {hover}; }}
-            QFrame#HolidayRow[next="true"] {{ background: {_rgba(accent, 0.14)}; border: 1px solid {accent}; }}
+            QFrame#HolidayRow[next="true"] {{ background: {rgba_string(accent, 0.14, channel_max=1)}; border: 1px solid {accent}; }}
             QFrame#DayBadge {{ background: {p['CALENDAR_BORDER_COLOR']}; border: none; border-radius: 9px; }}
-            QFrame#DayBadge[friday="true"] {{ background: {_rgba(holiday, 0.16)}; }}
+            QFrame#DayBadge[friday="true"] {{ background: {rgba_string(holiday, 0.16, channel_max=1)}; }}
             QLabel#DayNum {{ color: {p['TEXT_COLOR']}; font-size: 16px; font-weight: bold; }}
             QLabel#DayName {{ color: {p['WEEKDAY_NAMES_COLOR']}; font-size: 10px; }}
             QFrame#DayBadge[friday="true"] QLabel {{ color: {holiday}; }}
@@ -463,7 +459,7 @@ class HolidayViewerWindow(BaseFramelessWindow):
             QWidget#MonthHeader {{ border-top: 1px solid {p['CALENDAR_BORDER_COLOR']}; }}
             QWidget#MonthHeader[first="true"] {{ border-top: none; }}
             QLabel#MonthName {{ color: {accent}; font-size: 15px; font-weight: bold; }}
-            QLabel#MonthCount {{ background: {_rgba(accent, 0.16)}; color: {accent}; border-radius: 9px; padding: 0 9px; font-size: 11px; font-weight: bold; }}
+            QLabel#MonthCount {{ background: {rgba_string(accent, 0.16, channel_max=1)}; color: {accent}; border-radius: 9px; padding: 0 9px; font-size: 11px; font-weight: bold; }}
         """)
 
     def update_styles(self):

@@ -267,7 +267,8 @@ class ClickableLabel(QLabel):
             add_action.setDefaultWidget(add_event_widget)
             menu.addAction(add_action)
             add_event_widget.triggered.connect(
-                lambda: self._trigger_add_event_and_close_menu(menu, self.jalali_date))
+                lambda: self._emit_after_menu_close(menu, self.add_event_requested,
+                                                    self.jalali_date))
 
             if day_events:
                 menu.addSeparator()
@@ -279,7 +280,8 @@ class ClickableLabel(QLabel):
             edit_action.setDefaultWidget(edit_event_widget)
             menu.addAction(edit_action)
             edit_event_widget.triggered.connect(
-                lambda k=key, e=entry: self._trigger_edit_specific_and_close(menu, k, e))
+                lambda k=key, e=entry: self._emit_after_menu_close(
+                    menu, self.edit_event_requested_specific, self.jalali_date, k, e))
 
             menu.addSeparator()
 
@@ -288,19 +290,24 @@ class ClickableLabel(QLabel):
             remove_action.setDefaultWidget(remove_event_widget)
             menu.addAction(remove_action)
             remove_event_widget.triggered.connect(
-                lambda: self._trigger_remove_event_and_close_menu(menu, self.jalali_date))
+                lambda: self._emit_after_menu_close(menu, self.remove_event_requested,
+                                                    self.jalali_date))
         elif day_events:
             self._add_event_rows_submenu(
                 menu, "ویرایش رویداد", day_events,
-                lambda key, entry: self._trigger_edit_specific_and_close(menu, key, entry))
+                lambda key, entry: self._emit_after_menu_close(
+                    menu, self.edit_event_requested_specific, self.jalali_date, key, entry))
 
             menu.addSeparator()
 
             self._add_event_rows_submenu(
                 menu, "حذف رویداد", day_events,
-                lambda key, _entry: self._trigger_remove_specific_and_close(menu, key))
+                lambda key, _entry: self._emit_after_menu_close(
+                    menu, self.remove_event_requested_specific, key))
 
-        distance_widget.triggered.connect(lambda: self._trigger_distance_and_close_menu(menu, self.jalali_date))
+        distance_widget.triggered.connect(
+            lambda: self._emit_after_menu_close(menu, self.distance_requested,
+                                                self.jalali_date))
 
         menu.exec(clamp_popup_to_work_area(menu, self.mapToGlobal(event.pos())))
 
@@ -379,26 +386,10 @@ class ClickableLabel(QLabel):
         QApplication.clipboard().setText(_copy_text_for_mode(mode, jdate))
         copy_menu.show_copied_row(action)
 
-    def _trigger_add_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
+    def _emit_after_menu_close(self, menu: QMenu, signal, *args):
         menu.close()
         # Delay emission slightly to ensure the context menu fully closes
-        # before opening any new dialogs or widgets.
-        QTimer.singleShot(50, lambda: self.add_event_requested.emit(jdate))
-
-    def _trigger_remove_event_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
-        menu.close()
-        QTimer.singleShot(50, lambda: self.remove_event_requested.emit(jdate))
-
-    def _trigger_edit_specific_and_close(self, menu: QMenu, key: str, entry: dict):
-        menu.close()
-        QTimer.singleShot(50, lambda: self.edit_event_requested_specific.emit(self.jalali_date, key, entry))
-
-    def _trigger_remove_specific_and_close(self, menu: QMenu, key: str):
-        menu.close()
-        QTimer.singleShot(50, lambda: self.remove_event_requested_specific.emit(key))
-
-    def _trigger_distance_and_close_menu(self, menu: QMenu, jdate: jdatetime.date):
-        menu.close()
-        # Same deferred emission as the event rows: the notice opens a modal
-        # dialog, which must not appear while the menu still holds its grab.
-        QTimer.singleShot(50, lambda: self.distance_requested.emit(jdate))
+        # before opening any new dialogs or widgets: the editor and the
+        # distance notice are modal, and a modal must not appear while the
+        # menu still holds its grab.
+        QTimer.singleShot(50, lambda: signal.emit(*args))

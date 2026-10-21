@@ -199,7 +199,7 @@ def test_context_menu_remove_enabled_with_user_event(qtbot, open_menu):
 
 
 def test_add_event_emission_is_delayed_until_menu_gone(cell, qtbot):
-    """_trigger_add_event_and_close_menu closes first, emits via singleShot."""
+    """_emit_after_menu_close closes first, emits via singleShot."""
     received = []
     cell.add_event_requested.connect(lambda j: received.append(j))
 
@@ -211,7 +211,7 @@ def test_add_event_emission_is_delayed_until_menu_gone(cell, qtbot):
             self.closed = True
 
     menu = FakeMenu()
-    cell._trigger_add_event_and_close_menu(menu, cell.jalali_date)
+    cell._emit_after_menu_close(menu, cell.add_event_requested, cell.jalali_date)
     assert menu.closed
     assert received == []  # not emitted synchronously
     qtbot.wait(100)  # let the 50ms singleShot fire
@@ -230,7 +230,7 @@ def test_remove_event_emission_is_delayed_until_menu_gone(cell, qtbot):
             self.closed = True
 
     menu = FakeMenu()
-    cell._trigger_remove_event_and_close_menu(menu, cell.jalali_date)
+    cell._emit_after_menu_close(menu, cell.remove_event_requested, cell.jalali_date)
     assert menu.closed
     assert received == []  # not emitted synchronously
     qtbot.wait(100)  # let the 50ms singleShot fire
@@ -603,7 +603,7 @@ def test_choosing_an_event_to_delete_emits_that_key(cell, qtbot):
     """Deleting one event of a several-event day takes only that one."""
     received = []
     cell.remove_event_requested_specific.connect(lambda key: received.append(key))
-    cell._trigger_remove_specific_and_close(_FakeMenu(), "0000-00-02")
+    cell._emit_after_menu_close(_FakeMenu(), cell.remove_event_requested_specific, "0000-00-02")
 
     assert received == []  # deferred until the menu is gone
     qtbot.wait(100)
@@ -1383,7 +1383,7 @@ def test_distance_emission_is_delayed_until_menu_gone(cell, qtbot):
             self.closed = True
 
     menu = FakeMenu()
-    cell._trigger_distance_and_close_menu(menu, cell.jalali_date)
+    cell._emit_after_menu_close(menu, cell.distance_requested, cell.jalali_date)
     assert menu.closed
     assert received == []
     qtbot.wait(100)

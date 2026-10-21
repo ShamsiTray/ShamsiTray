@@ -5,6 +5,7 @@ import jdatetime
 
 from config import APP_CONFIG
 from utils.date_utils import to_persian_digits
+from utils.event_io import events_for_date
 from ui.windows.calendar_window import PersianCalendarWidget
 
 
@@ -104,6 +105,18 @@ def test_go_to_today_resets_selection():
 
 # --- event matching through the widget API ---
 
+def _user_event_fields(calendar, jdate):
+    """The widget projects one event's text, repeat flag and auto-delete
+    straight from the store read (events_for_date), the same way the day
+    cells and tooltips do."""
+    matched = events_for_date(calendar.user_events, jdate)
+    if matched is None:
+        return None, False, False
+    entry = matched[1]
+    return (entry.get("text"), entry.get("recurrence", "none") != "none",
+            entry.get("remove_after_finish", False))
+
+
 def test_widget_event_lookup_priorities():
     jdate = jdatetime.date(1404, 5, 5)
     calendar = make_calendar(events={
@@ -111,18 +124,18 @@ def test_widget_event_lookup_priorities():
         "0000-05-05": {"text": "yearly", "recurrence": "yearly", "remove_after_finish": False},
         "0000-00-05": {"text": "monthly", "recurrence": "monthly", "remove_after_finish": False},
     })
-    text, repeats, remove = calendar.get_user_event_for_date(jdate)
+    text, repeats, remove = _user_event_fields(calendar, jdate)
     assert text == "specific" and not repeats and remove
 
     del calendar.user_events["1404-05-05"]
-    text, repeats, remove = calendar.get_user_event_for_date(jdate)
+    text, repeats, remove = _user_event_fields(calendar, jdate)
     assert text == "yearly" and repeats and not remove
 
     del calendar.user_events["0000-05-05"]
-    text, repeats, remove = calendar.get_user_event_for_date(jdate)
+    text, repeats, remove = _user_event_fields(calendar, jdate)
     assert text == "monthly" and repeats and not remove
 
-    text, repeats, remove = calendar.get_user_event_for_date(jdatetime.date(1404, 5, 6))
+    text, repeats, remove = _user_event_fields(calendar, jdatetime.date(1404, 5, 6))
     assert text is None and not repeats and not remove
 
 
