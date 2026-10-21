@@ -56,7 +56,8 @@ from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             export_events_to_file, import_events_from_file,
                             is_expired_one_time, keys_share_visible_date,
                             make_event_key, next_occurrence_jdate,
-                            parse_event_key, recurrence_of_key)
+                            parse_event_key, recurrence_of_key,
+                            truncate_preview)
 from utils.logger import setup_logging
 from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
                               accent_button_stylesheet, center_combo_items,
@@ -500,7 +501,7 @@ class EventManagerWindow(BaseFramelessWindow):
         from the key, so a recurring event is asked about as its whole series
         rather than as the single row it was reached from."""
         text = str(self.user_events[key].get("text", ""))
-        preview = text if len(text) <= 40 else text[:40] + "…"
+        preview = truncate_preview(text)
         return ConfirmDialog.ask(
             self, "حذف رویداد", delete_confirmation_message([key]), detail=preview,
             confirm_text="حذف", cancel_text="انصراف", danger=True)
@@ -746,7 +747,7 @@ class EventManagerWindow(BaseFramelessWindow):
         lines = []
         for _key, entry in list(plan.replaced_existing.items())[:6]:
             text = str(entry.get("text", ""))
-            preview = text if len(text) <= 40 else text[:40] + "…"
+            preview = truncate_preview(text)
             lines.append(preview)
         remaining = len(plan.replaced_existing) - len(lines)
         if remaining > 0:

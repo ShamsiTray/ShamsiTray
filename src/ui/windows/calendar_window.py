@@ -23,7 +23,8 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               to_persian_digits)
 from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, events_for_date,
                             events_for_key, events_on_date, keys_matching_date,
-                            recurrence_of_key, recurrences_on_date, target_key_for)
+                            recurrence_of_key, recurrences_on_date,
+                            target_key_for, truncate_preview)
 from utils.logger import setup_logging
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
@@ -730,7 +731,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         """
         self._cancel_day_tooltips()
         existing = str(self.user_events.get(target_key, {}).get("text", ""))
-        preview = existing if len(existing) <= 40 else existing[:40] + "…"
+        preview = truncate_preview(existing)
         self._merge_overlay.set_message(
             f"رویدادی با تکرار {recurrence_label(recurrence)} از قبل روی این تاریخ وجود دارد؛ ادغام شود؟")
         self._merge_overlay.set_detail(preview)
@@ -802,7 +803,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
             best = events_for_date(self.user_events, jdate)
             entry = best[1] if best else None
         text = str(entry.get("text", "")) if entry else ""
-        preview = text if len(text) <= 40 else text[:40] + "…"
+        preview = truncate_preview(text)
         self._pending_remove = jdate
         self._pending_remove_key = key
         self._pending_remove_subjects = subjects
