@@ -26,7 +26,7 @@ from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, events_for_date,
                             recurrence_of_key, recurrences_on_date,
                             target_key_for, truncate_preview)
 from utils.logger import setup_logging
-from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet
+from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet, plain_menu_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.go_to_date import GoToDateWindow
@@ -551,8 +551,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
     def _show_go_to_date_menu(self, pos):
         menu = QMenu(self)
-        palette = APP_CONFIG.get_current_palette()
-        menu.setStyleSheet(f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}")
+        menu.setStyleSheet(plain_menu_stylesheet(APP_CONFIG.get_current_palette()))
         go_to_action = MenuActionWidget("برو به تاریخ", menu)
 
         def _open_after_menu_close():

@@ -21,9 +21,8 @@ from utils.date_utils import (
     format_jalali_numeric,
 )
 from utils.ui_helpers import clamp_popup_to_work_area
-from .menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
-                           MENU_ITEM_PADDING_TRAIL, MENU_ITEM_PADDING_V,
-                           MenuActionWidget)
+from .menu_widgets import (CenteredTextMenu, MenuActionWidget,
+                           attach_centered_submenu, centered_menu_stylesheet)
 from .tooltip import TOOLTIP_DELAY_MS, CustomTooltip
 
 # Clipboard payloads of the «کپی تاریخ» submenu entries, built from the
@@ -84,52 +83,6 @@ def _copy_text_for_mode(mode: str, jdate: jdatetime.date) -> str:
         return (f"{format_jalali_long(jdate, persian_digits=False)}\n"
                 f"{format_gregorian_long(jdate.togregorian(), persian_digits=False)}")
     return f"{format_jalali_numeric(jdate)}\n{format_gregorian_numeric(jdate)}"
-
-
-def _menu_stylesheet(palette: dict) -> str:
-    """The shared day-cell menu stylesheet (parent menu AND submenus, so a
-    submenu never falls back to the stock Qt popup look).
-
-    The item rules mirror MenuActionWidget's own row look so the native
-    «کپی تاریخ» rows and the custom add/remove-event rows read as one menu: the
-    same Vazirmatn 14px bold text, the same 6px vertical pad (hence the same
-    row height) and the same rounded MENU_HOVER_COLOR hover (HoverWidget paints
-    exactly this RGBA). The horizontal pads deliberately differ from the
-    widget's 15px layout margins: the wider leading one is the submenu arrow's
-    own column (see menu_widgets' constants).
-
-    The item text itself is drawn ``transparent`` here: QSS cannot center
-    QMenu::item text (no text-align support) and Qt's stylesheet engine paints
-    CE_MenuItem entirely itself, so CenteredTextMenu paints the glyphs instead.
-    The padding numbers come from the shared menu_widgets constants the painter
-    uses, so QSS box and painted text cannot drift.
-
-    Separator rows only provide spacing (11px, the same as the tray menu's
-    dividers) and draw nothing themselves: CenteredTextMenu paints each line on
-    the device-pixel grid, so the day menu's dividers come out the same thickness
-    as the tray menu's instead of being drawn by QSS at a fractional position.
-
-    The arrow subcontrols ARE zeroed out here: CenteredTextMenu paints the
-    indicator itself (handing it back to the style primitives proved invisible
-    under some Windows styles/themes, where the primitive picks a color the
-    custom background swallows), and a primitive Qt still drew would land inside
-    the content rect next to the painted triangle, pulling the row's ink off the
-    centre the caption is placed at.
-    """
-    hover = palette["MENU_HOVER_COLOR"]
-    hover_css = f"rgba({hover[0]}, {hover[1]}, {hover[2]}, {hover[3]})"
-    return (
-        f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; }}"
-        # CSS shorthand top/right/bottom/left: the wider arrow column on the
-        # physical left, the leading side under RTL.
-        f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_TRAIL}px "
-        f"{MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_LEAD}px; color: transparent; }}"
-        f"QMenu::item:disabled {{ color: transparent; }}"
-        f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}"
-        f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
-        # No image and no box: the submenu arrow Qt would draw is suppressed at
-        # its source, leaving the painter's triangle the only indicator.
-        "QMenu::left-arrow, QMenu::right-arrow { image: none; width: 0px; height: 0px; }")
 
 
 class CopyDateMenu(CenteredTextMenu):
@@ -277,7 +230,7 @@ class ClickableLabel(QLabel):
 
         palette = APP_CONFIG.get_current_palette()
         menu = CenteredTextMenu(self)
-        menu.setStyleSheet(_menu_stylesheet(palette))
+        menu.setStyleSheet(centered_menu_stylesheet(palette))
         # Persian app: the day menu presents RTL, and the copy submenu inherits
         # the direction below (Qt mirrors the popup side, the submenu arrow and
         # keyboard navigation from it). Layout direction changes which *side* a
@@ -379,11 +332,7 @@ class ClickableLabel(QLabel):
         distinct options. ``CopyDateMenu`` intercepts only leaf-row activation,
         so it can keep the submenu open briefly while the copied row is morphed.
         """
-        copy_menu = CopyDateMenu(parent_menu)
-        copy_menu.setTitle("کپی تاریخ")
-        parent_menu.addMenu(copy_menu)
-        copy_menu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
-        copy_menu.setLayoutDirection(parent_menu.layoutDirection())
+        copy_menu = attach_centered_submenu(parent_menu, CopyDateMenu(parent_menu), "کپی تاریخ")
 
         for index, (mode, text) in enumerate(zip(_COPY_MODES, _COPY_ACTION_TEXTS)):
             if index:
@@ -406,11 +355,7 @@ class ClickableLabel(QLabel):
         ``(key, entry)`` list for the day and ``on_row(key, entry)`` runs when a
         row is triggered.
         """
-        submenu = CenteredTextMenu(parent_menu)
-        submenu.setTitle(title)
-        parent_menu.addMenu(submenu)
-        submenu.setStyleSheet(_menu_stylesheet(APP_CONFIG.get_current_palette()))
-        submenu.setLayoutDirection(parent_menu.layoutDirection())
+        submenu = attach_centered_submenu(parent_menu, CenteredTextMenu(parent_menu), title)
 
         for index, (key, entry) in enumerate(rows):
             if index:
