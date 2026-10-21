@@ -867,7 +867,9 @@ def test_holiday_row_friday_next_and_past(monkeypatch):
     assert rows["۲۲"].property("next") is True
     assert rows["۲۲"].tag_label.text().endswith("روز دیگر")
     assert rows["۲۲"].sub_label.text() == "۱ رجب"
-    assert rows["۲۹"].tag_label is None      # not next, not past, no tag
+    assert rows["۲۹"].tag_label is not None  # upcoming but not next: muted countdown
+    assert rows["۲۹"].property("next") is False and rows["۲۹"].tag_label.text().endswith("دیگر")
+    assert rows["۱"].tag_label is None      # past rows carry no countdown
     is_friday = jdatetime.date(1405, 11, 22).weekday() == 6
     assert rows["۲۲"].badge.property("friday") is is_friday
     window.close()
@@ -2022,3 +2024,71 @@ def test_overlay_centers_over_its_host(qtbot, host):
     overlay.center_in(host)
     assert abs(overlay.x() - (host.width() - overlay.width()) // 2) <= 1
     assert abs(overlay.y() - (host.height() - overlay.height()) // 2) <= 1
+
+
+def test_format_countdown_wording():
+    """امروز / فردا / پس‌فردا, plain days under a month, then calendar units."""
+    from ui.windows.holiday_viewer_window import format_countdown
+    today = jdatetime.date(1405, 7, 29)
+    cases = {
+        (1405, 7, 29): "امروز",
+        (1405, 7, 30): "فردا",
+        (1405, 8, 1): "پس\u200cفردا",
+        (1405, 8, 10): "۱۱ روز دیگر",
+        (1405, 9, 3): "۱ ماه و ۴ روز دیگر",
+        (1405, 10, 29): "۳ ماه دیگر",
+        (1405, 11, 22): "۳ ماه و ۲۳ روز دیگر",
+    }
+    for ymd, expected in cases.items():
+        assert format_countdown(jdatetime.date(*ymd), today) == expected
+
+
+def _freeze_today(monkeypatch, ymd):
+    from ui.windows import holiday_viewer_window as hv
+
+    class FakeDate(jdatetime.date):
+        @classmethod
+        def today(cls):
+            return cls(*ymd)
+
+    monkeypatch.setattr(hv.jdatetime, "date", FakeDate)
+    return hv
+
+
+def test_holiday_viewer_opens_on_next_year_once_this_year_is_used_up(monkeypatch):
+    """With every holiday of the current year behind us, the viewer opens on the
+    year holding the nearest upcoming one and highlights it with its countdown;
+    the other rows there stay untagged."""
+    hv = _freeze_today(monkeypatch, (1405, 12, 20))
+    window = hv.HolidayViewerWindow({
+        1405: {(1, 1): ["گذشته"]},
+        1406: {(1, 1): ["نوروز"], (1, 2): ["دوم فروردین"]},
+    })
+    assert window.year_combo.currentData() == 1406
+    rows = {r.day_label.text(): r
+            for r in window.list_container.findChildren(HolidayRowWidget)}
+    assert rows["۱"].property("next") is True and rows["۱"].tag_label is not None
+    assert rows["۲"].property("next") is False and rows["۲"].tag_label is None
+    assert not rows["۱"].is_past
+    window.close()
+
+
+def test_holiday_viewer_stays_on_current_year_while_it_has_upcoming(monkeypatch):
+    hv = _freeze_today(monkeypatch, (1405, 7, 26))
+    window = hv.HolidayViewerWindow({
+        1405: {(11, 22): ["انقلاب"]},
+        1406: {(1, 1): ["نوروز"]},
+    })
+    assert window.year_combo.currentData() == 1405
+    window.close()
+
+
+def test_holiday_viewer_opens_on_next_year_when_current_year_has_no_data(monkeypatch):
+    """No data for today's year but a later year holds the nearest holiday:
+    open on that year, highlighted, rather than on the empty state."""
+    hv = _freeze_today(monkeypatch, (1405, 7, 26))
+    window = hv.HolidayViewerWindow({1406: {(1, 1): ["نوروز"]}})
+    assert window.year_combo.currentData() == 1406
+    row = window.list_container.findChildren(HolidayRowWidget)[0]
+    assert row.property("next") is True and row.tag_label is not None
+    window.close()
