@@ -54,13 +54,11 @@ from utils.json_settings import JsonSettings
 from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
 from utils.startup_registry import RUN_KEY_PATH, StartupRegistry
+from utils.windows_theme import WindowsThemeBackend
 from utils.ui_helpers import create_tray_pixmap, global_scrollbar_stylesheet
 
 if TYPE_CHECKING:
     from ui.windows.tutorial_window import TutorialWindow
-
-if sys.platform == 'win32':
-    import winreg
 
 logger = setup_logging(__name__)
 
@@ -125,13 +123,17 @@ class SystemTrayIcon(QSystemTrayIcon):
     """The main application controller, managing the tray icon, windows, and settings."""
 
     def __init__(self, settings: Optional[JsonSettings] = None,
-                 startup_registry: Optional[StartupRegistry] = None):
+                 startup_registry: Optional[StartupRegistry] = None,
+                 theme_backend: Optional[WindowsThemeBackend] = None):
         super().__init__()
         self.settings = settings if settings is not None else JsonSettings()
         # Every autostart registry operation goes through this seam, so the
         # policy below can be driven against an in-memory backend in tests
         # without touching the real HKCU hive.
         self.startup_registry = startup_registry if startup_registry is not None else StartupRegistry()
+        # The 'system' theme mode's winreg read works the same way: a backend
+        # that can stand in for the real unreadable host in tests.
+        self.theme_backend = theme_backend if theme_backend is not None else WindowsThemeBackend()
         self.holidays_cache = resolve_holidays_store()
         # The bundled data covers a limited year range, and a missing current
         # year is a silent cliff - Fridays still render red while official
@@ -205,17 +207,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.event_service.events.update(snapshot)
 
     def _get_windows_theme(self) -> str:
-        """Detects if Windows is in light or dark mode. Defaults to dark if detection fails."""
-        if not sys.platform == 'win32':
-            return APP_CONFIG.Theme.DARK
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.CloseKey(key)
-            return APP_CONFIG.Theme.LIGHT if value == 1 else APP_CONFIG.Theme.DARK
-        except Exception as e:
-            logger.warning(f"Could not detect Windows theme, defaulting to dark: {e}")
-            return APP_CONFIG.Theme.DARK
+        """Detects if Windows is in light or dark mode. Defaults to dark if detection fails.
+
+        The read goes through the injectable ``theme_backend`` (the backend
+        owns the rule: off Windows too, the verdict is dark).
+        """
+        return self.theme_backend.theme()
 
     def _theme_choice(self) -> str:
         """The stored appearance preference: "system", "light" or "dark".
