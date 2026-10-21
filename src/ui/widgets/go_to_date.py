@@ -11,7 +11,8 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValida
 from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout
 
 from config import APP_CONFIG
-from utils.date_utils import from_persian_digits, persian_month_name, to_persian_digits
+from utils.date_utils import (from_persian_digits, persian_month_name,
+                              to_persian_digits, year_range_hint)
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet,
                               danger_button_stylesheet)
@@ -20,12 +21,6 @@ from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
 # their visual order depends on the base direction of whatever paints them.
 # DigitsFirstCombo pins closed label and popup rows to the digits-first order
 # («۰۶ - شهریور") on every platform.
-
-
-def _year_range_hint(min_year: int, max_year: int) -> str:
-    """The live range message: the red border says "wrong", this says what
-    "right" is."""
-    return f"سال باید بین {to_persian_digits(min_year)} تا {to_persian_digits(max_year)} باشد"
 
 
 class GoToDateWindow(YearRangeValidationMixin, QWidget):
@@ -131,7 +126,7 @@ class GoToDateWindow(YearRangeValidationMixin, QWidget):
         return self.MIN_YEAR, self.MAX_YEAR
 
     def _year_hint_text(self) -> str:
-        return _year_range_hint(self.MIN_YEAR, self.MAX_YEAR)
+        return year_range_hint(self.MIN_YEAR, self.MAX_YEAR)
 
     def _error_label_height(self) -> int:
         """The height the error/hint label actually needs at the card's inner width.
