@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 import jdatetime
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QCursor, QFont
+from PyQt6.QtGui import QCursor, QFont
 from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
@@ -27,7 +27,8 @@ from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, ask_is_stale,
                             recurrences_on_date, target_key_for,
                             truncate_preview)
 from utils.logger import setup_logging
-from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet, plain_menu_stylesheet
+from utils.ui_helpers import (clamp_popup_to_work_area, nav_button_stylesheet,
+                              plain_menu_stylesheet, rgba_string)
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.overlay_blocker import OverlayBlocker
@@ -326,12 +327,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
                     cell.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
                     cell.update()
 
-    def _get_nav_button_style(self, bg_color: str, is_today_button: bool = False) -> str:
-        # Shared builder: the style text lives with the other stylesheets so a
-        # theme tweak cannot drift.
-        return nav_button_stylesheet(APP_CONFIG.get_current_palette(), bg_color,
-                                     is_today_button=is_today_button)
-
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         text_color, accent_color = palette['TEXT_COLOR'], palette['ACCENT_COLOR']
@@ -339,12 +334,12 @@ class PersianCalendarWidget(BaseFramelessWindow):
         today_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Weight.Bold)
         self.left_arrow_btn.setFont(nav_button_font)
         self.right_arrow_btn.setFont(nav_button_font)
-        self.left_arrow_btn.setStyleSheet(self._get_nav_button_style("transparent"))
-        self.right_arrow_btn.setStyleSheet(self._get_nav_button_style("transparent"))
+        self.left_arrow_btn.setStyleSheet(nav_button_stylesheet(APP_CONFIG.get_current_palette(), "transparent"))
+        self.right_arrow_btn.setStyleSheet(nav_button_stylesheet(APP_CONFIG.get_current_palette(), "transparent"))
         self.left_arrow_btn.setFixedSize(30, 30)
         self.right_arrow_btn.setFixedSize(30, 30)
         self.today_btn.setFont(today_button_font)
-        self.today_btn.setStyleSheet(self._get_nav_button_style(accent_color, is_today_button=True))
+        self.today_btn.setStyleSheet(nav_button_stylesheet(APP_CONFIG.get_current_palette(), accent_color, is_today_button=True))
         self.today_btn.setFixedSize(60, 30)
         header_style = f"color: {text_color}; font-size: {APP_CONFIG.FONT_SIZE_HEADER}px; font-weight: bold; font-family: '{APP_CONFIG.FONT_FAMILY}';"
         self.year_label.setStyleSheet(header_style)
@@ -363,16 +358,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.go_to_window.update_styles()
         self.fill_calendar_grid()
 
-    def get_user_event_for_date(self, jdate: jdatetime.date) -> Tuple[Optional[str], bool, bool]:
-        """Checks for a matching event (specific, yearly or monthly), returning the
-        text, whether it repeats (recurrence != none), and its auto-delete flag."""
-        matched = events_for_date(self.user_events, jdate)
-        if matched is None:
-            return None, False, False
-        _, entry = matched
-        recurrence = entry.get("recurrence", RECURRENCE_NONE)
-        return entry.get("text"), recurrence != RECURRENCE_NONE, entry.get("remove_after_finish", False)
-
     def fill_calendar_grid(self):
         self._update_header()
         self._fill_grid_cells()
@@ -388,9 +373,8 @@ class PersianCalendarWidget(BaseFramelessWindow):
                 label.jalali_date = current_day
                 label.setText(to_persian_digits(current_day.day))
 
-                user_event_text, _, _ = self.get_user_event_for_date(current_day)
-                label.has_user_event = bool(user_event_text)
-
+                matched = events_for_date(self.user_events, current_day)
+                label.has_user_event = bool(matched is not None and matched[1].get("text"))
                 is_in_display_month = (current_day.month == self.display_date.month)
                 stylesheet, tooltip = self._get_day_style(current_day, is_in_display_month)
                 label.setStyleSheet(stylesheet)
@@ -402,10 +386,6 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.year_label.setText(to_persian_digits(self.display_date.year))
         greg_date = self.selected_date.togregorian()
         self.gregorian_date_label.setText(greg_date.strftime("%m/%d/%Y") if self._show_gregorian_mdy else greg_date.strftime("%b %d, %Y"))
-
-    def _get_rgba_string(self, color_hex: str, alpha: float) -> str:
-        color = QColor(color_hex)
-        return f"rgba({color.red()}, {color.green()}, {color.blue()}, {int(alpha * 255)})"
 
     def _determine_day_style(self, jdate: jdatetime.date, is_in_month: bool) -> DayStyle:
         """Determines visual styling for a calendar cell based on: current day, selected day,
@@ -450,23 +430,23 @@ class PersianCalendarWidget(BaseFramelessWindow):
 
             if is_today and is_selected:
                 alpha = 0.6 if is_special_day else 0.35
-                style.background_color = self._get_rgba_string(base_color_hex, alpha)
-                style.hover_background_color = self._get_rgba_string(base_color_hex, alpha + 0.1)
+                style.background_color = rgba_string(base_color_hex, alpha)
+                style.hover_background_color = rgba_string(base_color_hex, alpha + 0.1)
             elif is_selected:
                 if is_special_day:
-                    style.background_color = self._get_rgba_string(base_color_hex, 0.45)
-                    style.hover_background_color = self._get_rgba_string(base_color_hex, 0.55)
+                    style.background_color = rgba_string(base_color_hex, 0.45)
+                    style.hover_background_color = rgba_string(base_color_hex, 0.55)
                 else:
                     style.background_color = palette['CALENDAR_SELECTED_BG_COLOR']
                     style.hover_background_color = palette['CALENDAR_SELECTED_HOVER_BG_COLOR']
             elif is_today:
                 alpha = 0.35 if is_special_day else 1.0
                 bg_hex = base_color_hex if alpha != 1.0 else palette['CALENDAR_TODAY_BG_COLOR']
-                style.background_color = self._get_rgba_string(bg_hex, alpha) if alpha != 1.0 else bg_hex
-                style.hover_background_color = self._get_rgba_string(base_color_hex, alpha + 0.1) if alpha != 1.0 else palette['CALENDAR_TODAY_HOVER_BG_COLOR']
+                style.background_color = rgba_string(bg_hex, alpha) if alpha != 1.0 else bg_hex
+                style.hover_background_color = rgba_string(base_color_hex, alpha + 0.1) if alpha != 1.0 else palette['CALENDAR_TODAY_HOVER_BG_COLOR']
             elif is_special_day:
-                style.background_color = self._get_rgba_string(base_color_hex, 0.15)
-                style.hover_background_color = self._get_rgba_string(base_color_hex, 0.3)
+                style.background_color = rgba_string(base_color_hex, 0.15)
+                style.hover_background_color = rgba_string(base_color_hex, 0.3)
 
             if is_today or is_selected:
                 style.border_style = f"1px solid {base_color_hex}"
@@ -475,13 +455,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
         else:
             style.text_color = palette['GREY_COLOR']
             if is_user_event:
-                style.text_color = self._get_rgba_string(palette['ACCENT_COLOR'], 0.45)
-                style.background_color = self._get_rgba_string(palette['ACCENT_COLOR'], 0.05)
-                style.hover_background_color = self._get_rgba_string(palette['ACCENT_COLOR'], 0.10)
+                style.text_color = rgba_string(palette['ACCENT_COLOR'], 0.45)
+                style.background_color = rgba_string(palette['ACCENT_COLOR'], 0.05)
+                style.hover_background_color = rgba_string(palette['ACCENT_COLOR'], 0.10)
             elif is_holiday or is_friday:
-                style.text_color = self._get_rgba_string(palette['HOLIDAY_COLOR'], 0.45)
-                style.background_color = self._get_rgba_string(palette['HOLIDAY_COLOR'], 0.05)
-                style.hover_background_color = self._get_rgba_string(palette['HOLIDAY_COLOR'], 0.10)
+                style.text_color = rgba_string(palette['HOLIDAY_COLOR'], 0.45)
+                style.background_color = rgba_string(palette['HOLIDAY_COLOR'], 0.05)
+                style.hover_background_color = rgba_string(palette['HOLIDAY_COLOR'], 0.10)
 
         return style
 

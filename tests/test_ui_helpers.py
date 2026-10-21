@@ -15,7 +15,8 @@ from utils.ui_helpers import (MENU_EDGE_MARGIN, DigitsFirstCombo, FramelessDragM
                               danger_button_stylesheet, error_line_edit_stylesheet,
                               fit_combo_width, ghost_button_stylesheet,
                               line_edit_stylesheet, nudge_popup_inside_work_area,
-                              paint_rounded_card, scrollbar_stylesheet,
+                              paint_rounded_card, rgba_string,
+                              scrollbar_stylesheet,
                               window_title_button_stylesheets)
 
 
@@ -688,3 +689,15 @@ def test_nudge_is_a_no_op_while_hidden(work_area, qtbot):
     before = popup.pos()
     nudge_popup_inside_work_area(popup)
     assert popup.pos() == before
+
+
+def test_rgba_string_integer_form_is_the_calendar_default():
+    """The calendar's day styles were tuned over the classic 0-255 alpha
+    channel; the default keeps emitting it."""
+    assert rgba_string("#ff0000", 0.2) == "rgba(255, 0, 0, 51)"
+
+
+def test_rgba_string_float_form_for_the_viewers_rows():
+    """channel_max=1 keeps the CSS 0-1 float notation the holiday viewer's
+    rows were tuned with, unchanged in the emitted text."""
+    assert rgba_string("#00ff00", 0.14, channel_max=1) == "rgba(0, 255, 0, 0.14)"
