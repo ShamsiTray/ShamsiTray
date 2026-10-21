@@ -11,6 +11,7 @@ from PyQt6.QtTest import QTest
 
 import core.app_controller as controller_module
 import core.event_service as event_service_module
+import ui.widgets.tray_menu as tray_menu_module
 from config import APP_CONFIG
 from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_MS,
                                  DEBUG_DATA_VERSION_ENV, HOLIDAY_RETRY_DELAY_MS,
@@ -1491,10 +1492,10 @@ def test_close_menu_then_closes_and_defers(tray, monkeypatch):
     closed = []
     monkeypatch.setattr(menu, "close", lambda: closed.append(1))
     scheduled = []
-    monkeypatch.setattr(controller_module.QTimer, "singleShot",
+    monkeypatch.setattr(tray_menu_module.QTimer, "singleShot",
                         lambda ms, cb: scheduled.append(cb))
     marker = []
-    tray._close_menu_then(lambda: marker.append(1))
+    tray_menu_module.close_menu_then(tray, lambda: marker.append(1))
     assert closed == [1]
     assert marker == []          # deferred
     scheduled[0]()               # run the deferred callback

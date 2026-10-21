@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 import jdatetime
 from PyQt6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl, Qt
 from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QWidgetAction
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
 from config import APP_CONFIG
 from core.event_service import EventService
@@ -27,8 +27,7 @@ from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
 from ui.windows.event_manager_window import EventManagerWindow
 from ui.windows.holiday_viewer_window import HolidayViewerWindow
-from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, TrayMenu
-from ui.widgets.checkbox import IconCheckboxActionWidget
+from ui.widgets.tray_menu import build_tray_menu
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.download_dialog import DownloadUpdateDialog
 from core.update_checker import (
@@ -946,94 +945,15 @@ class SystemTrayIcon(QSystemTrayIcon):
         return "\n".join(lines)
 
     def _setup_context_menu(self):
-        menu = TrayMenu()
-        palette = APP_CONFIG.get_current_palette()
-        # Separator rows only provide spacing; TrayMenu paints the actual divider
-        # lines with the same thickness everywhere: ceil(scale) full device rows,
-        # matching how a native separator renders on a well-aligned position.
-        menu.setStyleSheet(
-            f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}"
-            f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
-        )
-        self._add_menu_action(menu, "تبدیل تاریخ", lambda: self._close_menu_then(self._open_date_converter))
-        menu.add_divider()
-        self._add_theme_toggle_action(menu)
-        menu.add_divider()
-        self._add_startup_action(menu)
-        menu.add_divider()
-        self._add_always_on_top_action(menu)
-        menu.add_divider()
-        self._add_menu_action(menu, "مدیریت رویدادها", lambda: self._close_menu_then(self._open_event_manager))
-        menu.add_divider()
-        self._add_menu_action(menu, "مشاهده تعطیلات", lambda: self._close_menu_then(self._open_holiday_viewer))
-        menu.add_divider()
-        self._add_auto_check_action(menu)
-        menu.add_divider()
-        self._add_menu_action(menu, "بررسی بروزرسانی", lambda: self._close_menu_then(lambda: self._check_for_updates(manual=True)))
-        menu.add_divider()
-        self._add_menu_action(menu, "خروج", QApplication.quit)
-        self.setContextMenu(menu)
-
-    def _close_menu_then(self, callback):
-        """Close the popup menu, then run callback once it has fully dismissed.
-        Windows refuses to show modal dialogs (e.g. native file dialogs) while a
-        popup menu is still tracking, so dialogs must be opened after the close."""
-        menu = self.contextMenu()
-        if menu:
-            menu.close()
-        QTimer.singleShot(50, callback)
-
-    def _add_menu_action(self, menu, text, slot):
-        action = QWidgetAction(self)
-        widget = MenuActionWidget(text, parent=menu)
-        widget.triggered.connect(slot)
-        action.setDefaultWidget(widget)
-        menu.addAction(action)
-
-    def _add_theme_toggle_action(self, menu):
-        """The theme row: one click advances system → light → dark → system,
-        and the row reads back the current preference, so «هماهنگ با سیستم» is
-        reachable again after any pin."""
-        action = QWidgetAction(self)
-        widget = ThemeToggleActionWidget(lambda: self._theme_choice(), parent=menu)
-        widget.triggered.connect(self._cycle_theme_choice)
-        action.setDefaultWidget(widget)
-        menu.addAction(action)
-
-    def _add_startup_action(self, menu):
-        if not sys.platform.startswith('win'):
-            return
-        action = QWidgetAction(self)
-        widget = IconCheckboxActionWidget("راه اندازی همراه با سیستم", self.is_open_at_login, parent=menu)
-        widget.toggled.connect(self._toggle_open_at_boot)
-        action.setDefaultWidget(widget)
-        menu.addAction(action)
-
-    def _add_always_on_top_action(self, menu):
-        action = QWidgetAction(self)
-        widget = IconCheckboxActionWidget("تقویم همیشه در بالا", self.always_on_top, parent=menu)
-        widget.toggled.connect(self._toggle_always_on_top)
-        action.setDefaultWidget(widget)
-        menu.addAction(action)
+        # The menu's composition lives beside the menu widgets (tray_menu.py);
+        # the state its rows drive stays owned here (the _toggle_* callbacks).
+        self.setContextMenu(build_tray_menu(self))
 
     def _toggle_always_on_top(self, checked: bool):
         self.always_on_top = checked
         self.settings.setValue(APP_CONFIG.ALWAYS_ON_TOP_SETTING_KEY, checked)
         self.calendar_widget.set_always_on_top(checked)
         logger.info(f"Calendar always-on-top {'enabled' if checked else 'disabled'}.")
-
-    def _add_auto_check_action(self, menu):
-        """The tray toggle for the automatic update check.
-
-        The row sits right above the manual «بررسی بروزرسانی» action it
-        complements. Like the other checkbox rows, the widget keeps the menu
-        open on click and paints its own new state.
-        """
-        action = QWidgetAction(self)
-        widget = IconCheckboxActionWidget("بررسی خودکار بروزرسانی", self._auto_check_enabled(), parent=menu)
-        widget.toggled.connect(self._toggle_auto_update_check)
-        action.setDefaultWidget(widget)
-        menu.addAction(action)
 
     def _toggle_auto_update_check(self, checked: bool):
         self.settings.setValue(APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY, checked)
