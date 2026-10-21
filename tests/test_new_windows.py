@@ -2083,6 +2083,24 @@ def test_holiday_viewer_stays_on_current_year_while_it_has_upcoming(monkeypatch)
     window.close()
 
 
+def test_holiday_viewer_scroll_starts_on_the_month_name(monkeypatch):
+    """The view starts past the header's hairline band, on the month name."""
+    hv = _freeze_today(monkeypatch, (1405, 7, 26))
+    window = hv.HolidayViewerWindow({1405: {(m, 28): [f"تعطیل {m}"] for m in range(1, 13)}})
+    window.show()
+    try:
+        QApplication.processEvents()
+        QTest.qWait(50)
+        header = window._next_header
+        assert header is not None
+        scrollbar = window.scroll_area.verticalScrollBar()
+        skip = header.layout().contentsMargins().top()
+        assert skip > 0
+        assert scrollbar.value() == min(scrollbar.maximum(), header.y() + skip)
+    finally:
+        window.close()
+
+
 def test_holiday_viewer_opens_on_next_year_when_current_year_has_no_data(monkeypatch):
     """No data for today's year but a later year holds the nearest holiday:
     open on that year, highlighted, rather than on the empty state."""

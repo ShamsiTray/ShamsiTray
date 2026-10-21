@@ -222,6 +222,7 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.count_label)
         self._next_row: Optional[QWidget] = None
+        self._next_header: Optional[QWidget] = None
         self._summary: Optional[Tuple[int, int, int]] = None
 
         self.list_container = QWidget()
@@ -339,6 +340,7 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self._update_summary()
 
         self._next_row = None
+        self._next_header = None
         first = True
         for month in range(1, 13):
             month_days = sorted((md, descs) for md, descs in year_holidays.items() if md[0] == month)
@@ -367,6 +369,7 @@ class HolidayViewerWindow(BaseFramelessWindow):
                     is_next=is_next)
                 if is_next:
                     self._next_row = row
+                    self._next_header = header
                 self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
 
         self._restyle_dynamic_children()
@@ -385,9 +388,17 @@ class HolidayViewerWindow(BaseFramelessWindow):
         """Bring the next upcoming holiday into view with its month header above it."""
         try:
             if self._next_row is not None:
-                # -70 keeps the month header above the highlighted row visible.
-                self.scroll_area.verticalScrollBar().setValue(
-                    max(0, self._next_row.y() - 70))
+                # Make sure the freshly added rows have their final geometry
+                # before reading positions, then start exactly on the month
+                # header of the next holiday (not a fixed offset above the row,
+                # which showed the previous month's tail when the row was not
+                # the first of its month).
+                self.list_container.layout().activate()
+                target = self._next_header if self._next_header is not None else self._next_row
+                # Skip the header's top margin: that band holds the month's
+                # hairline, and the view should start on the month name itself.
+                skip = target.layout().contentsMargins().top() if target.layout() else 0
+                self.scroll_area.verticalScrollBar().setValue(max(0, target.y() + skip))
         except RuntimeError:  # row was deleted by a rebuild before the timer fired
             pass
 
