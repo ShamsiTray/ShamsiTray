@@ -210,6 +210,27 @@ def test_clean_expired_keys_empty_store():
     assert event_io.clean_expired_keys({}, jdatetime.date(1404, 5, 10)) == []
 
 
+def test_is_expired_one_time_is_the_rule_clean_expired_layers_the_flag_on():
+    """The exported predicate carries only the expired-one-time verdict; the
+    auto-delete flag is clean_expired_keys' own condition on top of it."""
+    today = jdatetime.date(1404, 5, 10)
+    events = {
+        "1404-05-01": {"text": "past, unflagged", "recurrence": "none", "remove_after_finish": False},
+        "1404-05-10": {"text": "today is not behind", "recurrence": "none", "remove_after_finish": True},
+        "1404-05-20": {"text": "future", "recurrence": "none", "remove_after_finish": True},
+        "0000-05-01": {"text": "recurring", "recurrence": "yearly", "remove_after_finish": False},
+        "0000-00-02": {"text": "recurring", "recurrence": "monthly", "remove_after_finish": False},
+        "bad-key": {"text": "x", "recurrence": "none", "remove_after_finish": True},
+    }
+    assert event_io.is_expired_one_time(events, "1404-05-01", today) is True
+    assert event_io.is_expired_one_time(events, "1404-05-10", today) is False
+    assert event_io.is_expired_one_time(events, "1404-05-20", today) is False
+    assert event_io.is_expired_one_time(events, "0000-05-01", today) is False
+    assert event_io.is_expired_one_time(events, "0000-00-02", today) is False
+    assert event_io.is_expired_one_time(events, "bad-key", today) is False
+    assert event_io.is_expired_one_time({}, "1404-05-01", today) is False
+
+
 # --- recurrence normalization ---
 
 def test_normalize_recurrence():

@@ -51,9 +51,9 @@ from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
-                            keys_share_visible_date, make_event_key,
-                            next_occurrence_jdate, parse_event_key,
-                            recurrence_of_key)
+                            is_expired_one_time, keys_share_visible_date,
+                            make_event_key, next_occurrence_jdate,
+                            parse_event_key, recurrence_of_key)
 from utils.logger import setup_logging
 from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
                               accent_button_stylesheet, center_combo_items,
@@ -425,12 +425,7 @@ class EventManagerWindow(BaseFramelessWindow):
             entry = self.user_events[key]
             recurrence = recurrence_of_key(key)
             parsed = parse_event_key(key)
-            next_date = next_occurrence_jdate(key, today) if parsed else None
-            is_expired = (
-                recurrence == RECURRENCE_NONE
-                and parsed is not None and parsed[0] is not None
-                and next_date is not None and next_date < today
-            )
+            is_expired = is_expired_one_time(self.user_events, key, today)
             if selected_type == _TYPE_PAST:
                 # «گذشته»: only one-time events whose date has passed; the
                 # show-past checkbox is irrelevant here and never hides them.

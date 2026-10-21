@@ -328,12 +328,41 @@ def events_sorted_by_next_occurrence(events: Dict[str, dict],
         next_date = next_occurrence_jdate(key, today)
         if next_date is None:
             return (2, float("inf"), key)
-        is_past_one_time = next_date < today
-        # Upcoming events first (ordered by date), then past/expired, then junk.
-        group = 1 if is_past_one_time else 0
+        # One name owns the expired-one-time verdict (is_expired_one_time);
+        # this grouping is that verdict expressed over the date in hand.
+        group = 1 if next_date < today else 0
         return (group, next_date.toordinal(), key)
 
     return sorted(events, key=sort_key)
+
+
+def is_expired_one_time(events: Dict[str, dict], key: str,
+                        today: Optional[jdatetime.date] = None) -> bool:
+    """Expired-one-time rule, stated once: ``key`` holds a one-time event
+    whose date is strictly behind ``today``.
+
+    Consumers layer their own conditions on the verdict: ``clean_expired_keys()``
+    removes an event only when the entry ALSO carries the auto-delete flag;
+    the manager's list marks every expired row past (from this verdict alone)
+    and hands the same boolean to the row for its styling. Recurring events
+    can never expire - their next occurrence always rolls forward to today
+    or later - so the recurrence check is part of the rule, read from the
+    entry the store keeps under the key.
+    """
+
+    def _past() -> bool:
+        next_date = next_occurrence_jdate(key, today)
+        return next_date is not None and next_date < today
+
+    entry = events.get(key)
+    if entry is None:
+        return False
+    if entry.get("recurrence", RECURRENCE_NONE) != RECURRENCE_NONE:
+        return False
+    parsed = parse_event_key(key)
+    if parsed is None or parsed[0] is None:
+        return False
+    return _past()
 
 
 # --- Entry normalization ----------------------------------------------------
@@ -757,19 +786,14 @@ def clean_expired_keys(events: Dict[str, dict],
     """Keys of expired auto-delete events inside ``events`` (not mutated).
 
     Only one-time events with ``remove_after_finish`` whose date is strictly
-    before ``today`` expire; recurring events never auto-delete.
+    before ``today`` expire; the expired-one-time verdict itself is
+    ``is_expired_one_time``, and this layer adds the flag it removes on.
     """
     today = today or jdatetime.date.today()
     expired: List[str] = []
     for key, entry in events.items():
-        if entry.get("recurrence", RECURRENCE_NONE) != RECURRENCE_NONE:
-            continue
         if not entry.get("remove_after_finish", False):
             continue
-        parsed = parse_event_key(key)
-        if parsed is None or parsed[0] is None:
-            continue
-        event_date = next_occurrence_jdate(key, today=today)
-        if event_date is not None and event_date < today:
+        if is_expired_one_time(events, key, today):
             expired.append(key)
     return expired
