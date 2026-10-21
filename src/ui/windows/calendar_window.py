@@ -29,6 +29,7 @@ from utils.logger import setup_logging
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet, plain_menu_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
 from ui.widgets.confirm_overlay import ConfirmOverlay
+from ui.widgets.overlay_blocker import OverlayBlocker
 from ui.widgets.go_to_date import GoToDateWindow
 from ui.widgets.event_input import (EventInputWidget, delete_confirmation_message,
                                    recurrence_label)
@@ -128,9 +129,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
     def _present_overlay(self, overlay: ConfirmOverlay):
         """Dim the grid and raise ``overlay`` in the middle of the popup."""
         self._active_overlay = overlay
-        self.overlay_blocker.resize(self.size())
-        self.overlay_blocker.show()
-        self.overlay_blocker.raise_()
+        self.overlay_blocker.present()
         overlay.center_in(self)
         overlay.show()
         overlay.raise_()
@@ -183,9 +182,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         self.calendar_grid_layout = self._create_calendar_grid()
         main_layout.addLayout(self.calendar_grid_layout)
 
-        self.overlay_blocker = QWidget(self)
-        self.overlay_blocker.setStyleSheet("background-color: rgba(0, 0, 0, 75); border-radius: 26px; margin: 1px;")
-        self.overlay_blocker.hide()
+        self.overlay_blocker = OverlayBlocker(self)
 
         # Confirmation surfaces are part of the popup, not windows over it: no
         # drag, no separate top-level card, and the dimmed blocker behind them.

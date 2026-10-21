@@ -22,7 +22,7 @@ ShamsiTray is a Python PyQt6 system-tray calendar app for Windows that displays 
                          # HolidayViewerWindow, TutorialWindow, BaseFramelessWindow (+ window-chrome helpers)
       widgets/           # CalendarDayCell, Tooltip, EventInput, GoToDate, Checkbox (custom),
                          # ConfirmDialog (themed), ConfirmOverlay (in-calendar), Menu widgets,
-                         # tray-menu builder
+                         # tray-menu builder, OverlayBlocker (one dimmer behind every overlay)
     utils/
       date_utils.py      # Jalali/Gregorian helpers, formatting, digit conversion, leap-year, validation
       asset_loader.py    # Font loading, asset verification
@@ -200,6 +200,7 @@ pytest
 - `ConfirmDialog` (`ConfirmDialog`): themed dialog — `ask` (yes/no), `choose` (three-way), `notify` (single button, optional `detail` line); used by update popup + all confirm flows; draggable, button-fit auto-width, and it inherits `HoverDriverMixin` so a dialog surfaced right after tray interaction (the update popup from a silent auto-check) has live hover before any click. `notify(..., key=...)` opts a notice into single-instance replacement: a newer result of the same key re-words the notice already on screen instead of stacking a second window (the update round uses `UPDATE_CHECK_NOTICE_KEY`)
 - `ConfirmCard` (`ConfirmCard` / `ConfirmOverlay`): the shared card half of both surfaces — badge, title, message, detail box, buttons, painting. A **plain mixin**, not a widget base, so one card serves a `QDialog` and a `QWidget` child without giving either two QWidget branches; it sets `WA_TranslucentBackground` and delegates finishing to `_finish_choice()` (accept/reject on the dialog, hide on the overlay). `ConfirmOverlay` is persistent and fixed-*shape* (notice = 1 button, ask = 2), not fixed-content: the delete card raises its description line per question (`set_message`) and keeps the preview box for the event text alone, mirroring the event manager's dialog. Every overlay's `chosen` must be connected by the calendar - an overlay only hides itself, so an unconnected one leaves the dimmer up over a card that is already gone
 - `DownloadDialog` (`DownloadUpdateDialog`): themed installer-download progress card (determinate/busy, Persian digit counters, cancel signal wired to `UpdateChecker.cancel_download`; carries the hover driver like every other frameless surface)
+- `OverlayBlocker` (`overlay_blocker.py`): the one dimming child behind any in-window overlay — the calendar's confirm surfaces and the manager's event editor both size it to their host on `present()` and raise the card above it; the hosts keep teardown in their own `hideEvent`
 - `MenuWidgets` (`HoverWidget`, `MenuActionWidget`, `ThemeToggleActionWidget`): custom tray-menu action widgets with hover states; `CenteredTextMenu`'s chrome strings live once here (`centered_menu_stylesheet()`) and the day menu's submenus attach through `attach_centered_submenu()`, which pins the shared stylesheet and the parent's direction
 
 ### `src/utils/`
