@@ -35,10 +35,12 @@ Editing rules:
 from typing import Dict, Optional
 
 import jdatetime
+from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton, QStackedWidget, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
+                             QLineEdit, QPushButton, QStackedWidget, QVBoxLayout,
+                             QWidget)
 
 from config import APP_CONFIG
 from ui.widgets.checkbox import CustomCheckbox
@@ -51,6 +53,7 @@ from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
+                            export_events_to_file, import_events_from_file,
                             is_expired_one_time, keys_share_visible_date,
                             make_event_key, next_occurrence_jdate,
                             parse_event_key, recurrence_of_key)
@@ -676,11 +679,101 @@ class EventManagerWindow(BaseFramelessWindow):
         self.overlay_blocker.hide()
 
     def _on_import(self):
-        if self.controller.import_events_from_dialog(parent=self):
+        if self._import_events_from_dialog(parent=self):
             self.events_changed.emit()
 
     def _on_export(self):
-        self.controller.export_events_to_dialog(parent=self)
+        self._export_events_to_dialog(parent=self)
+
+    def _import_events_from_dialog(self, parent=None) -> bool:
+        """Import flow behind the manager's «وارد کردن» button; returns True when events changed.
+
+        The import is reconciled against the store by *visible date* before
+        anything is applied. When it would replace existing events (exact-key
+        overwrites, or same-date collisions across recurrence forms - e.g. an
+        imported yearly «0000-08-01» taking over a stored one-time
+        «1405-08-01»), a themed confirm lists the count first.
+
+        The whole new state (merge + replaced-event removal + expiry cleanup) is
+        computed in memory and saved EXACTLY ONCE, so a failed save can never
+        leave a half-imported file on disk.
+        """
+        path, _ = QFileDialog.getOpenFileName(parent, "وارد کردن رویدادها", "", "JSON (*.json)")
+        if not path:
+            return False
+        result = import_events_from_file(path)
+        if result is None:
+            ConfirmDialog.notify(parent, "وارد کردن رویدادها",
+                                 "خواندن فایل رویدادها ناموفق بود.",
+                                 danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
+            return False
+        imported, skipped = result
+        plan = self.event_store.plan_import(imported)
+        if plan.replaced_existing:
+            detail = self._import_collision_detail(plan)
+            count = to_persian_digits(len(plan.replaced_existing))
+            confirmed = ConfirmDialog.ask(
+                parent, "وارد کردن رویدادها",
+                f"این فایل {count} رویداد موجود را جایگزین می‌کند.",
+                detail=detail, confirm_text="جایگزینی", cancel_text="انصراف",
+                danger=True, glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
+            if not confirmed:
+                logger.info("Import canceled at the collision confirmation.")
+                return False
+        if not self.event_store.apply_import(plan):
+            # The themed failure notice fires via the service's on_save_error;
+            # in-memory state was rolled back to the pre-import store.
+            return False
+        if plan.internal_replaced:
+            logger.info(f"Import folded {plan.internal_replaced} same-date duplicate "
+                        f"entr{'y' if plan.internal_replaced == 1 else 'ies'} from the file (later entry won).")
+        summary = f"{to_persian_digits(len(plan.applied))} رویداد وارد شد."
+        if plan.replaced_existing:
+            summary += f"\n{to_persian_digits(len(plan.replaced_existing))} رویداد جایگزین شد."
+        if skipped:
+            summary += f"\n{to_persian_digits(skipped)} ورودی نامعتبر نادیده گرفته شد."
+        ConfirmDialog.notify(parent, "وارد کردن رویدادها", summary,
+                             glyph=APP_CONFIG.FAS.FA_DOWNLOAD)
+        return True
+
+    @staticmethod
+    def _import_collision_detail(plan) -> str:
+        """Preview of the existing events the import would replace.
+
+        Text-only lines (the same style the delete confirmation uses), capped so
+        a bulk import cannot build an endless dialog.
+        """
+        lines = []
+        for _key, entry in list(plan.replaced_existing.items())[:6]:
+            text = str(entry.get("text", ""))
+            preview = text if len(text) <= 40 else text[:40] + "…"
+            lines.append(preview)
+        remaining = len(plan.replaced_existing) - len(lines)
+        if remaining > 0:
+            lines.append(f"… و {to_persian_digits(remaining)} مورد دیگر")
+        return "\n".join(lines)
+
+    def _export_events_to_dialog(self, parent=None) -> bool:
+        """Export flow behind the manager's «خروجی گرفتن» button; returns True on success."""
+        if not self.user_events:
+            ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
+                                 "هیچ رویدادی برای خروجی گرفتن وجود ندارد.",
+                                 glyph=APP_CONFIG.FAS.FA_UPLOAD)
+            return False
+        default_name = f"ShamsiTrayEvents-{jdatetime.date.today().strftime('%Y-%m-%d')}.json"
+        path, _ = QFileDialog.getSaveFileName(parent, "خروجی گرفتن از رویدادها", default_name, "JSON (*.json)")
+        if not path:
+            return False
+        if export_events_to_file(self.user_events, Path(path)):
+            logger.info(f"Exported {len(self.user_events)} user events to {path}")
+            ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
+                                 "رویدادها با موفقیت خروجی گرفته شدند.",
+                                 glyph=APP_CONFIG.FAS.FA_UPLOAD)
+            return True
+        ConfirmDialog.notify(parent, "خروجی گرفتن از رویدادها",
+                             "خروجی گرفتن از رویدادها ناموفق بود.",
+                             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
+        return False
 
     # --- styling ---
 

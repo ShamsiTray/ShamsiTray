@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QLabel, QStyle,
                              QStyleOptionSlider, QWidget)
 
 from config import APP_CONFIG
+import core.event_service as event_service_module
+import ui.windows.event_manager_window as manager_module
 from ui.windows.base_window import BaseFramelessWindow
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.widgets.confirm_card import ConfirmCard
@@ -1436,6 +1438,190 @@ def test_manager_search_placeholder_pins_to_physical_right_edge(manager):
     alignment = manager.search_input.alignment()
     assert alignment & Qt.AlignmentFlag.AlignRight
     assert alignment & Qt.AlignmentFlag.AlignAbsolute
+
+
+# --- import/export dialog flows -----------------------------------------------------------
+
+def _write_import_file(tmp_path, events):
+    import json
+
+    from utils.event_io import EVENTS_STORE_VERSION
+
+    path = tmp_path / "import.json"
+    path.write_text(json.dumps({"version": EVENTS_STORE_VERSION, "events": events},
+                               ensure_ascii=False), encoding="utf-8")
+    return str(path)
+
+
+def _entry(text, recurrence="none", remove_after_finish=False):
+    return {"text": text, "recurrence": recurrence, "remove_after_finish": remove_after_finish}
+
+
+def test_import_events_from_dialog_success(manager, monkeypatch, tmp_path):
+    import_file = _write_import_file(tmp_path, {"1405-08-01": _entry("imported")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a)))
+
+    assert manager._import_events_from_dialog() is True
+    assert manager.controller.user_events["1405-08-01"]["text"] == "imported"
+    assert boxes  # summary box shown
+
+
+def test_import_events_from_dialog_canceled(manager, monkeypatch):
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: ("", "")))
+    assert manager._import_events_from_dialog() is False
+
+
+def test_import_events_from_dialog_bad_file(manager, monkeypatch, tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("}not json{", encoding="utf-8")
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (str(bad), "")))
+    errors = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: errors.append(a)))
+    assert manager._import_events_from_dialog() is False
+    assert errors
+
+
+def test_export_events_empty_shows_info(manager, monkeypatch):
+    manager.controller.user_events = {}
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a)))
+    assert manager._export_events_to_dialog() is False
+    assert boxes
+
+
+def test_export_events_success(manager, monkeypatch, tmp_path):
+    manager.controller.add_user_event(jdatetime.date(1405, 9, 10), "export me", "none", False)
+    out = tmp_path / "out.json"
+    monkeypatch.setattr(manager_module.QFileDialog, "getSaveFileName",
+                        staticmethod(lambda *a, **k: (str(out), "")))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a)))
+    assert manager._export_events_to_dialog() is True
+    assert out.exists()
+    manager.controller.remove_user_event(jdatetime.date(1405, 9, 10))
+
+
+def test_export_events_canceled(manager, monkeypatch):
+    manager.controller.add_user_event(jdatetime.date(1405, 9, 11), "keep", "none", False)
+    monkeypatch.setattr(manager_module.QFileDialog, "getSaveFileName",
+                        staticmethod(lambda *a, **k: ("", "")))
+    assert manager._export_events_to_dialog() is False
+    manager.controller.remove_user_event(jdatetime.date(1405, 9, 11))
+
+
+def test_import_warns_and_aborts_on_exact_key_collision(manager, monkeypatch, tmp_path):
+    manager.controller.user_events = {"1405-08-01": _entry("existing event")}
+    import_file = _write_import_file(tmp_path, {"1405-08-01": _entry("imported event")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    asks = []
+
+    def fake_ask(parent, title, message, **kwargs):
+        asks.append((title, message, kwargs))
+        return False  # user declines
+
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(fake_ask))
+    assert manager._import_events_from_dialog() is False
+    # Nothing changed: the store still holds the original event.
+    assert manager.controller.user_events == {"1405-08-01": _entry("existing event")}
+    assert len(asks) == 1
+    title, message, kwargs = asks[0]
+    assert title == "وارد کردن رویدادها"
+    assert "جایگزین" in message
+    assert kwargs["detail"] == "existing event"
+
+
+def test_import_confirms_before_replacing_on_exact_collision(manager, monkeypatch, tmp_path):
+    manager.controller.user_events = {"1405-08-01": _entry("existing event")}
+    import_file = _write_import_file(tmp_path, {"1405-08-01": _entry("imported event")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(lambda *a, **k: True))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append((a[1], a[2]))))
+    assert manager._import_events_from_dialog() is True
+    assert manager.controller.user_events == {"1405-08-01": _entry("imported event")}
+    # Summary mentions both the import and the replacement (Grok's «N جایگزین شد»).
+    summary = boxes[0][1]
+    assert "وارد شد" in summary and "جایگزین شد" in summary
+
+
+def test_import_warns_on_cross_representation_collision(manager, monkeypatch, tmp_path):
+    """A one-time event and an imported yearly event landing on the same
+    visible day used to stack silently: the calendar picked a winner while
+    the manager listed both."""
+    manager.controller.user_events = {"1405-08-01": _entry("one-time existing")}
+    import_file = _write_import_file(tmp_path, {"0000-08-01": _entry("yearly imported", "yearly")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    asks = []
+
+    def fake_ask(parent, title, message, **kwargs):
+        asks.append((message, kwargs))
+        return True
+
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(fake_ask))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a)))
+    assert manager._import_events_from_dialog() is True
+    # The confirm promised exactly ONE replacement:
+    assert len(asks) == 1 and "جایگزین" in asks[0][0]
+    assert asks[0][1]["detail"] == "one-time existing"
+    # And applying it kept the one-event-per-date invariant: the imported
+    # yearly took over, the shadowed one-time is gone everywhere.
+    assert manager.controller.user_events == {"0000-08-01": _entry("yearly imported", "yearly")}
+
+
+def test_import_without_collisions_never_asks(manager, monkeypatch, tmp_path):
+    manager.controller.user_events = {"1405-08-01": _entry("existing")}
+    import_file = _write_import_file(tmp_path, {"1406-03-05": _entry("imported")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+
+    def boom(*a, **k):
+        raise AssertionError("confirm dialog must not appear without collisions")
+
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(boom))
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify", staticmethod(lambda *a, **k: None))
+    assert manager._import_events_from_dialog() is True
+    assert set(manager.controller.user_events) == {"1405-08-01", "1406-03-05"}
+
+
+def test_import_save_failure_leaves_disk_and_memory_untouched(manager, monkeypatch, tmp_path):
+    """Review item #2, failure side: with the single atomic save there is no
+    half-imported file to outlive the in-memory rollback."""
+    import json
+
+    original = {"version": 2, "events": {"1405-08-01": _entry("existing event")}}
+    store = APP_CONFIG.USER_EVENTS_FILE_PATH
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+    manager.controller.user_events = {"1405-08-01": _entry("existing event")}
+
+    import_file = _write_import_file(tmp_path, {"1406-01-01": _entry("imported")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+    errors = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: errors.append(a)))
+    monkeypatch.setattr(event_service_module, "save_user_events", lambda events: False)
+
+    assert manager._import_events_from_dialog() is False
+    assert manager.controller.user_events == {"1405-08-01": _entry("existing event")}
+    assert json.loads(store.read_text(encoding="utf-8")) == original, \
+        "the store file must be byte-identical after a failed import"
+    assert errors  # themed failure notice shown
 
 
 # --- month combo greyed out for monthly events ---
