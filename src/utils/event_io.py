@@ -272,6 +272,24 @@ def truncate_preview(text: str, limit: int = EVENT_TEXT_PREVIEW_CHARS) -> str:
     return text[:limit] + "…"
 
 
+def ask_is_stale(live_facts: dict, shown_facts: dict) -> bool:
+    """The store-at-ask vs store-now verdict, stated once.
+
+    A confirm ask runs a nested loop over a store the rest of the app keeps
+    writing, so its answer re-checks the facts it was shown: the ask stays
+    valid only while the live side still equals them exactly. Which facts an
+    ask snapshots is each surface's own call - the calendar's delete card
+    covers one visible date and snapshots its key-to-text subjects (an event
+    added beside the one the card named must stale the ask), the event
+    manager's replace ask covers the whole store so its replace set stays
+    complete against anything written inside the dialog's wait. What a stale
+    ask leads to is the surface's own UX too: the calendar drops an emptied
+    ask or re-asks from the live store; the manager refuses the save and
+    keeps its editor up.
+    """
+    return live_facts != shown_facts
+
+
 def next_occurrence_jdate(key: str, today: Optional[jdatetime.date] = None) -> Optional[jdatetime.date]:
     """The next Jalali date on which the event under ``key`` occurs.
 
