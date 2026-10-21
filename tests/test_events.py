@@ -246,6 +246,30 @@ def test_truncate_preview_cuts_long_text_with_ellipsis():
     assert event_io.truncate_preview("و" * 40) == "و" * 40  # exactly at the limit fits
 
 
+# --- ask-window revalidation ---
+
+def test_ask_is_stale_verdicts():
+    """The answer to an ask re-checks what it was shown: equal facts keep the
+    ask valid; a re-wording, a vanished key, or an extra fact written beside
+    the dialog's wait all stale it (the manager snapshots those as its whole
+    store; the calendar as a date's key-to-text subjects)."""
+    entry = {"text": "old", "recurrence": "none", "remove_after_finish": False}
+    assert event_io.ask_is_stale({"1405-08-01": entry}, {"1405-08-01": entry}) is False
+    reworded = dict(entry, text="new")
+    assert event_io.ask_is_stale({"1405-08-01": reworded}, {"1405-08-01": entry}) is True
+    assert event_io.ask_is_stale({}, {"1405-08-01": entry}) is True          # vanished
+    assert event_io.ask_is_stale({"1405-08-01": entry, "1405-09-01": reworded},
+                                 {"1405-08-01": entry}) is True               # a writer beside it
+
+
+def test_ask_is_stale_subjects_form_matches_by_key_and_text():
+    """The calendar's subject facts are key-to-text maps; order of collection
+    must not matter, only the pairs."""
+    shown = {"0000-05-05": "سالانه", "1404-05-05": "یک‌باره"}
+    live = dict(reversed(list(shown.items())))
+    assert event_io.ask_is_stale(live, shown) is False
+
+
 # --- recurrence normalization ---
 
 def test_normalize_recurrence():

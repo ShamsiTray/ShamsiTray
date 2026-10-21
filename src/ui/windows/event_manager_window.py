@@ -53,7 +53,8 @@ from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
-                            RECURRENCE_YEARLY, events_sorted_by_next_occurrence,
+                            RECURRENCE_YEARLY, ask_is_stale,
+                            events_sorted_by_next_occurrence,
                             export_events_to_file, import_events_from_file,
                             is_expired_one_time, keys_share_visible_date,
                             make_event_key, next_occurrence_jdate,
@@ -631,7 +632,7 @@ class EventManagerWindow(BaseFramelessWindow):
         # describe the snapshot the user was shown, so acting on them now would
         # replace or drop an event that changed under the dialog. The save bails
         # and the editor stays up, so the next press works from the live store.
-        if self.user_events != store_at_ask:
+        if ask_is_stale(self.user_events, store_at_ask):
             logger.info("Event store changed while the replace confirmation was open; "
                         "not saving the edit.")
             return

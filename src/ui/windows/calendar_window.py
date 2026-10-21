@@ -9,7 +9,7 @@ interaction for navigation, date selection, and event management.
 import datetime
 from dataclasses import dataclass
 from html import escape
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import jdatetime
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -21,10 +21,11 @@ from utils.date_utils import (describe_date_distance, days_in_jalali_month,
                               format_distance_breakdown, format_distance_total,
                               format_jalali_long, persian_month_name,
                               to_persian_digits)
-from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, events_for_date,
-                            events_for_key, events_on_date, keys_matching_date,
-                            recurrence_of_key, recurrences_on_date,
-                            target_key_for, truncate_preview)
+from utils.event_io import (RECURRENCE_MODES, RECURRENCE_NONE, ask_is_stale,
+                            events_for_date, events_for_key, events_on_date,
+                            keys_matching_date, recurrence_of_key,
+                            recurrences_on_date, target_key_for,
+                            truncate_preview)
 from utils.logger import setup_logging
 from utils.ui_helpers import clamp_popup_to_work_area, nav_button_stylesheet, plain_menu_stylesheet
 from ui.widgets.calendar_day_cell import ClickableLabel
@@ -120,7 +121,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         overlay, self._active_overlay = self._active_overlay, None
         self._pending_remove = None
         self._pending_remove_key = None
-        self._pending_remove_subjects = ()
+        self._pending_remove_subjects = {}
         self._pending_merge = None
         if overlay is not None:
             overlay.hide()
@@ -195,7 +196,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # The keys the parked ask would remove, with the text each carried when
         # the card was shown: the answer is revalidated against the store before
         # it is allowed to delete.
-        self._pending_remove_subjects: Tuple[Tuple[str, str], ...] = ()
+        self._pending_remove_subjects: Dict[str, str] = {}
         # key, jdate, target_key, text, recurrence, remove_after_finish,
         # source_text - the entry text the ask previewed, so the answer can be
         # re-validated against the store when it finally arrives
@@ -809,7 +810,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
         # removes rather than the one event the box previews, so a recurring
         # event's other occurrences are named before they go.
         self._remove_overlay.set_message(
-            delete_confirmation_message([key for key, _text in subjects]))
+            delete_confirmation_message(sorted(subjects)))
         self._remove_overlay.set_detail(preview)
         self._present_overlay(self._remove_overlay)
 
@@ -827,13 +828,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
         """
         target, self._pending_remove = self._pending_remove, None
         target_key, self._pending_remove_key = self._pending_remove_key, None
-        subjects, self._pending_remove_subjects = self._pending_remove_subjects, ()
+        subjects, self._pending_remove_subjects = self._pending_remove_subjects, {}
         self._dismiss_active_overlay()
         self.normalize_day_hover()
         if text != self._remove_overlay.confirm_button.text():
             return
         live_subjects = self._remove_subject(target, target_key)
-        if live_subjects != subjects:
+        if ask_is_stale(live_subjects, subjects):
             if not live_subjects:
                 # The event went away while the card waited: a yes could only
                 # delete nothing, so the request is dropped instead of asked
@@ -849,7 +850,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.event_removed.emit(target)
 
     def _remove_subject(self, jdate: Optional[jdatetime.date],
-                        key: Optional[str]) -> Tuple[Tuple[str, str], ...]:
+                        key: Optional[str]) -> Dict[str, str]:
         """The keys a delete would remove, with the text each carries right now.
 
         The card previews ONE event, but a date-level delete removes every entry
@@ -861,8 +862,7 @@ class PersianCalendarWidget(BaseFramelessWindow):
             keys = [key] if events_for_key(self.user_events, key) else []
         else:
             keys = keys_matching_date(self.user_events, jdate) if jdate else []
-        return tuple(sorted(
-            (k, str(self.user_events.get(k, {}).get("text", ""))) for k in keys))
+        return {k: str(self.user_events.get(k, {}).get("text", "")) for k in keys}
 
     def _on_notice_choice(self, text: str):
         """Dismiss the read-only notice.
