@@ -219,6 +219,10 @@ class EventManagerWindow(BaseFramelessWindow):
         # Date/recurrence the editor opened with, so a save that changed neither
         # can keep the stored key (and with it the recurring anchor).
         self._edit_initial: Optional[tuple] = None
+        # Snapshot of the store the current rows were built from; showEvent
+        # skips its rebuild while it still matches. Sound as a shallow copy
+        # because store entries are replaced, never mutated in place.
+        self._built_from: Optional[Dict[str, dict]] = None
         self.setWindowTitle("مدیریت رویدادها")
         self.setFixedSize(self.WIDTH, self.HEIGHT)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -373,7 +377,12 @@ class EventManagerWindow(BaseFramelessWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
-        self.refresh_list()
+        # An unchanged store is already on screen from the construction-time
+        # build; a redundant rebuild's deferred layout collapses the scrollbar
+        # range to (0,0) for a frame - the rail vanishing and returning, the
+        # reopen twitch - so only a store change since that build reopens one.
+        if self.user_events != self._built_from:
+            self.refresh_list()
 
     # --- data plumbing ---
 
@@ -468,6 +477,7 @@ class EventManagerWindow(BaseFramelessWindow):
             self.count_label.setText(f"{to_persian_digits(total)} رویداد" if total else "")
         self.content_stack.setCurrentWidget(self.empty_label if shown == 0 else self.scroll_area)
         self._restyle_dynamic_children()
+        self._built_from = dict(self.user_events)
 
     def _dismiss_row_tooltips(self):
         """Drop the rows' hover tooltips when the list moves under them.
