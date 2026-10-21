@@ -8,10 +8,11 @@ menu in the calendar: every event in the store is listed with its date and
 recurrence, and can be searched, filtered, edited, deleted, imported and
 exported.
 
-The window operates directly on the controller's live ``user_events`` dict
-(single source of truth) and persists through the controller's save path;
-after every mutation it emits ``events_changed`` so the tray icon and the
-calendar popup refresh.
+The window operates on the controller's live ``user_events`` dict (single
+source of truth) and persists through the EventService's transactional save;
+every committed save refreshes the calendar, tray and manager through the
+service's ``on_store_changed`` hook, and ``events_changed`` is then emitted
+for listeners that want the store-moved moment itself.
 
 Editing rules:
 - The manager is its OWN replacement flow: saving an event onto a date that
@@ -518,7 +519,6 @@ class EventManagerWindow(BaseFramelessWindow):
         if self.event_store.delete_key(key):
             logger.info(f"Event {key!r} deleted from the event manager.")
             self.events_changed.emit()
-            self.refresh_list()
 
     def _on_add_requested(self):
         """Open the same editor the calendar uses, plus a date picker row."""
@@ -652,7 +652,6 @@ class EventManagerWindow(BaseFramelessWindow):
             action = "added" if editing_key is None else "updated"
             logger.info(f"Event {new_key!r} {action} via the event manager.")
             self.events_changed.emit()
-            self.refresh_list()
 
     def _colliding_keys(self, new_key: str, exclude: Optional[str] = None) -> list:
         """Stored keys other than ``exclude`` that show on a date ``new_key`` shows on."""
@@ -684,7 +683,6 @@ class EventManagerWindow(BaseFramelessWindow):
     def _on_import(self):
         if self.controller.import_events_from_dialog(parent=self):
             self.events_changed.emit()
-            self.refresh_list()
 
     def _on_export(self):
         self.controller.export_events_to_dialog(parent=self)
