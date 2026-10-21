@@ -6,8 +6,9 @@ Holiday Viewer Window
 opened from the tray menu («مشاهده تعطیلات»). Holidays are shown for one
 Jalali year at a time (selectable, defaulting to the current year), grouped
 under Persian month headers as badge rows: a day badge carrying the weekday,
-the title with an optional lunar sub-date, and — only in the current year —
-the next upcoming holiday tinted and tagged «امروز» / «… روز دیگر» while
+the title with an optional lunar sub-date — in the current year every
+upcoming row is tagged with a countdown («امروز» / «فردا» / «۲۳ روز دیگر» /
+«۱ ماه و ۴ روز دیگر»; the nearest tag filled, the rest muted) while
 past rows dim. The year can also be stepped with «❯» / «❮» buttons flanking
 the combo box.
 
@@ -27,8 +28,8 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QGraphicsOpacityEffect,
 
 from config import APP_CONFIG
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
-from utils.date_utils import (persian_month_name, persian_weekday_name,
-                              to_persian_digits)
+from utils.date_utils import (describe_date_distance, persian_month_name,
+                              persian_weekday_name, to_persian_digits)
 from utils.logger import setup_logging
 from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
                               center_combo_items, combo_stylesheet,
@@ -46,6 +47,30 @@ def split_lunar_date(text: str) -> Tuple[str, str]:
     """Split «تاسوعای حسینی [ ۹ محرم ]» into ("تاسوعای حسینی", "۹ محرم")."""
     subs = [m.strip() for m in _LUNAR_RE.findall(text)]
     return _LUNAR_RE.sub("", text).strip(), "، ".join(subs)
+
+
+def format_countdown(target, today) -> str:
+    """Friendly «time until» wording for a holiday row.
+
+    امروز / فردا / پس‌فردا for the first three days, plain days while less than a
+    whole month away («۲۳ روز دیگر»), and calendar units after that
+    («۱ ماه و ۴ روز دیگر», «۳ ماه دیگر»). Jalali months are 29-31 days long, so
+    the split comes from ``describe_date_distance`` rather than dividing by 30.
+    """
+    distance = describe_date_distance(target, today=today)
+    total = distance.total_days
+    if total == 0:
+        return "امروز"
+    if total == 1:
+        return "فردا"
+    if total == 2:
+        return "پس‌فردا"
+    if distance.has_calendar_units:
+        parts = [f"{to_persian_digits(count)} {unit}" for count, unit in
+                 ((distance.years, "سال"), (distance.months, "ماه"), (distance.days, "روز"))
+                 if count]
+        return f"{' و '.join(parts)} دیگر"
+    return f"{to_persian_digits(total)} روز دیگر"
 
 
 def _rgba(color: str, alpha: float) -> str:
@@ -232,13 +257,32 @@ class HolidayViewerWindow(BaseFramelessWindow):
         newest year that happens to be in the file."""
         current_year = jdatetime.date.today().year
         years = sorted(set(self.holidays_cache.keys()) | {current_year}, reverse=True)
+        # Whenever the nearest upcoming holiday lives in a later year (this
+        # year's are used up, or it has no data at all), open there so the
+        # viewer lands on it with its countdown instead of on a dimmed or empty
+        # list. With nothing upcoming anywhere it opens on "now".
+        default_year = current_year
+        upcoming = self._find_next_holiday()
+        if upcoming is not None and upcoming[0] != current_year:
+            default_year = upcoming[0]
         self.year_combo.blockSignals(True)
         self.year_combo.clear()
         for year in years:
             self.year_combo.addItem(to_persian_digits(year), year)
         center_combo_items(self.year_combo)
-        self.year_combo.setCurrentIndex(years.index(current_year))
+        self.year_combo.setCurrentIndex(years.index(default_year))
         self.year_combo.blockSignals(False)
+
+    def _find_next_holiday(self) -> Optional[Tuple[int, Tuple[int, int]]]:
+        """(year, (month, day)) of the first holiday dated today or later,
+        searching this year and every later year in the cache; None if none."""
+        today = jdatetime.date.today()
+        for year in sorted(y for y in self.holidays_cache if y >= today.year):
+            for md in sorted(self.holidays_cache[year]):
+                date = self._safe_date(year, md)
+                if date is not None and date >= today:
+                    return year, md
+        return None
 
     def _current_year(self) -> Optional[int]:
         return self.year_combo.currentData() if self.year_combo.count() else None
@@ -286,11 +330,10 @@ class HolidayViewerWindow(BaseFramelessWindow):
         today = jdatetime.date.today()
         is_current = year == today.year
         dates = {md: self._safe_date(year, md) for md in year_holidays}
-        next_md = None
-        if is_current:
-            upcoming = [md for md in sorted(year_holidays)
-                        if dates[md] is not None and dates[md] >= today]
-            next_md = upcoming[0] if upcoming else None
+        # The highlighted "next" holiday is the nearest one overall, so it can
+        # sit in a later year than the current one once this year is used up.
+        nearest = self._find_next_holiday()
+        next_md = nearest[1] if nearest is not None and nearest[0] == year else None
         fridays = sum(1 for d in dates.values() if d is not None and d.weekday() == 6)
         self._summary = (len(year_holidays), year, fridays)
         self._update_summary()
@@ -311,10 +354,13 @@ class HolidayViewerWindow(BaseFramelessWindow):
                 title = "، ".join(t for t, _ in parts if t) or "، ".join(descriptions)
                 sub = "، ".join(x for _, x in parts if x)
                 is_next = (month_no, day) == next_md
-                diff = (date - today).days if date is not None else 0
+                # Every upcoming holiday of the current year carries its
+                # countdown; the nearest one's tag is filled (see the QSS),
+                # the rest stay muted. Past rows get none, and other years only
+                # tag the nearest holiday overall when it falls in them.
                 tag = ""
-                if is_next:
-                    tag = "امروز" if diff == 0 else f"{to_persian_digits(diff)} روز دیگر"
+                if date is not None and date >= today and (is_current or is_next):
+                    tag = format_countdown(date, today)
                 row = HolidayRowWidget(
                     day, date.weekday() if date is not None else None, title, sub, tag,
                     is_past=is_current and date is not None and date < today,
@@ -378,7 +424,8 @@ class HolidayViewerWindow(BaseFramelessWindow):
             QFrame#DayBadge[friday="true"] QLabel {{ color: {holiday}; }}
             QLabel#RowTitle {{ color: {p['TEXT_COLOR']}; font-size: 13px; }}
             QLabel#RowSub {{ color: {p['GREY_COLOR']}; font-size: 11px; }}
-            QLabel#RowTag {{ background: {accent}; color: #ffffff; border-radius: 9px; padding: 1px 9px; font-size: 11px; font-weight: bold; }}
+            QLabel#RowTag {{ background: {p['CALENDAR_BORDER_COLOR']}; color: {p['GREY_COLOR']}; border-radius: 9px; padding: 1px 9px; font-size: 11px; font-weight: bold; }}
+            QFrame#HolidayRow[next="true"] QLabel#RowTag {{ background: {accent}; color: #ffffff; }}
             QWidget#MonthHeader {{ border-top: 1px solid {p['CALENDAR_BORDER_COLOR']}; }}
             QWidget#MonthHeader[first="true"] {{ border-top: none; }}
             QLabel#MonthName {{ color: {accent}; font-size: 15px; font-weight: bold; }}
