@@ -17,6 +17,7 @@ from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_
                                  HOLIDAY_RETRY_MAX_ATTEMPTS, SystemTrayIcon,
                                  TIME_CHANGE_COALESCE_MS)
 from ui.widgets.checkbox import IconCheckboxActionWidget
+from ui.windows.event_manager_window import EventManagerWindow
 
 
 # --- helpers ---------------------------------------------------------------------
@@ -1365,6 +1366,33 @@ def test_open_event_manager_reuses_window(tray, qtbot):
     tray._open_event_manager()
     assert tray.event_manager_window is window
     window.close()
+
+
+def test_reopening_the_event_manager_builds_the_list_once(tray, qtbot, monkeypatch):
+    """Each open of the manager runs exactly one build, the construction-time
+    one: a second build on show of an unchanged store used to collapse the
+    scrollbar range for a frame - the rail flash on every reopen."""
+    calls = []
+    original = EventManagerWindow.refresh_list
+
+    def counting_refresh(self):
+        calls.append(1)
+        original(self)
+
+    monkeypatch.setattr(EventManagerWindow, "refresh_list", counting_refresh)
+
+    tray._open_event_manager()
+    first = tray.event_manager_window
+    qtbot.addWidget(first)
+    assert len(calls) == 1
+    first.close()
+
+    tray._open_event_manager()
+    second = tray.event_manager_window
+    qtbot.addWidget(second)
+    assert second is not first
+    assert len(calls) == 2  # the reopen built exactly once, not twice
+    second.close()
 
 
 def test_open_holiday_viewer_reuses_window(tray, qtbot):
