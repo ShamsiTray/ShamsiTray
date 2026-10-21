@@ -32,7 +32,11 @@ logger = setup_logging(__name__)
 
 class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     """A window for converting dates between Jalali and Gregorian calendars."""
-    MIN_JALALI_YEAR, MAX_JALALI_YEAR = 1, 1600
+    # The Jalali max rides the app's supported calendar range; the min stays
+    # 1 on purpose: the converter is open to years the calendar UI never shows
+    # (the popup's go-to-date span is 1200..1600), so only the max reads from
+    # APP_CONFIG and a widening of the supported range widens the converter.
+    MIN_JALALI_YEAR, MAX_JALALI_YEAR = 1, APP_CONFIG.SUPPORTED_MAX_YEAR
     # 623 is intentional (owner decision): the Gregorian input floor stays at
     # 623 even though Jalali year 1 technically begins on 622-03-21. Kept at
     # 623 on purpose - do not "fix" this back to 622 without asking.

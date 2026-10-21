@@ -28,7 +28,8 @@ from PyQt6.QtGui import QColor, QPainter, QRegularExpressionValidator, QTextOpti
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
-from utils.date_utils import days_in_jalali_month, from_persian_digits, to_persian_digits
+from utils.date_utils import (days_in_jalali_month, from_persian_digits,
+                              to_persian_digits, year_range_hint)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEARLY,
                             recurrence_of_key)
 from utils.ui_helpers import (YearRangeValidationMixin, accent_button_stylesheet,
@@ -41,13 +42,15 @@ _RECURRENCE_VALUES = (RECURRENCE_NONE, RECURRENCE_MONTHLY, RECURRENCE_YEARLY)
 _RECURRENCE_LABELS = ("بدون تکرار", "ماهانه", "سالانه")
 
 # One-time events are only useful inside the range the calendar UI can reach
-# (the go-to-date popup allows 1200..1600), so the typed year is bounded to
-# the same range instead of accepting unreachable outliers like 3213.
-MIN_EVENT_YEAR = 1200
-MAX_EVENT_YEAR = 1600
+# (the go-to-date popup allows the same span, read from APP_CONFIG like this
+# module), so the typed year is bounded to that range instead of accepting
+# unreachable outliers like 3213.
+MIN_EVENT_YEAR = APP_CONFIG.SUPPORTED_MIN_YEAR
+MAX_EVENT_YEAR = APP_CONFIG.SUPPORTED_MAX_YEAR
 # Shown next to the year field whenever the typed year leaves that range:
-# the red border says "wrong", this label says what "right" is.
-YEAR_RANGE_HINT = f"سال باید بین {to_persian_digits(MIN_EVENT_YEAR)} و {to_persian_digits(MAX_EVENT_YEAR)} باشد"
+# the red border says "wrong", this label says what "right" is (one shared
+# template lives in date_utils so the surfaces cannot drift apart).
+YEAR_RANGE_HINT = year_range_hint(MIN_EVENT_YEAR, MAX_EVENT_YEAR)
 
 
 def recurrence_label(mode: str) -> str:

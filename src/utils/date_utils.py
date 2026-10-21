@@ -242,6 +242,14 @@ def validate_year_range(year: int, min_year: int, max_year: int, is_jalali: bool
         return f"سال شمسی باید بین {to_persian_digits(min_year)} و {to_persian_digits(max_year)} باشد."
     return f"سال میلادی باید بین {min_year} و {max_year} باشد."
 
+def year_range_hint(min_year: int, max_year: int) -> str:
+    """The short range message for the year pickers: the red border says
+    "wrong", this one shared template names the supported range the same way
+    on every surface (the converter's validator above keeps its completed
+    sentences, which must name the calendar being rejected).
+    """
+    return f"سال باید بین {to_persian_digits(min_year)} تا {to_persian_digits(max_year)} باشد"
+
 def ms_until_midnight(now: datetime.datetime) -> int:
     """Milliseconds from ``now`` local time until the next local midnight.
 
