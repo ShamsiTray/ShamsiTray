@@ -231,6 +231,21 @@ def test_is_expired_one_time_is_the_rule_clean_expired_layers_the_flag_on():
     assert event_io.is_expired_one_time({}, "1404-05-01", today) is False
 
 
+# --- event-text preview for the themed cards ---
+
+def test_truncate_preview_keeps_short_text_whole():
+    short = "یادداشت کوتاه"
+    assert event_io.truncate_preview(short) == short
+
+
+def test_truncate_preview_cuts_long_text_with_ellipsis():
+    """One preview form for every card quoting an entry: a hard cut at 40
+    characters plus the ellipsis, never a mid-word fade or a second idiom."""
+    long = "و" * 45
+    assert event_io.truncate_preview(long) == "و" * 40 + "…"
+    assert event_io.truncate_preview("و" * 40) == "و" * 40  # exactly at the limit fits
+
+
 # --- recurrence normalization ---
 
 def test_normalize_recurrence():

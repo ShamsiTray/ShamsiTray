@@ -260,6 +260,18 @@ def events_for_key(events: Dict[str, dict], key: str) -> Optional[dict]:
     return events.get(key) if key else None
 
 
+EVENT_TEXT_PREVIEW_CHARS = 40
+
+
+def truncate_preview(text: str, limit: int = EVENT_TEXT_PREVIEW_CHARS) -> str:
+    """The one preview form for event text quoted in a themed card (the
+    delete confirm, the merge ask, the import collision detail): the whole
+    text when it fits, otherwise a hard cut with an ellipsis."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
 def next_occurrence_jdate(key: str, today: Optional[jdatetime.date] = None) -> Optional[jdatetime.date]:
     """The next Jalali date on which the event under ``key`` occurs.
 
