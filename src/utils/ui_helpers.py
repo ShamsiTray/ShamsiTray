@@ -838,6 +838,20 @@ def window_title_button_stylesheets(palette: dict) -> tuple[str, str]:
     return close_style, minimize_style
 
 
+def plain_menu_stylesheet(palette: dict, *, dividers: bool = False) -> str:
+    """The stock-QMenu popup look shared by the tray menu and the calendar's
+    go-to-date popup: one rounded frame clause, optionally followed by the
+    11px no-paint separator clause the spacing rows need (the tray menu's
+    separator rows provide spacing only - TrayMenu paints the actual divider
+    lines, so the clause must not draw anything itself)."""
+    sheet = (f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; "
+             f"border: 1px solid {palette['MENU_BORDER_COLOR']}; "
+             f"border-radius: 8px; padding: 5px; }}")
+    if dividers:
+        sheet += "QMenu::separator { height: 11px; background-color: transparent; }"
+    return sheet
+
+
 def combo_stylesheet(
     palette: dict,
     *,

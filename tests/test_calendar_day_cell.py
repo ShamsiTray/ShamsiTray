@@ -9,11 +9,11 @@ from PyQt6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
 from config import APP_CONFIG
 from tests.qt_mousing import press
 from ui.widgets.calendar_day_cell import (ClickableLabel, CopyDateMenu,
-                                          DISTANCE_ACTION_TEXT,
-                                          _menu_stylesheet)
+                                          DISTANCE_ACTION_TEXT)
 from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
                                      MENU_ITEM_PADDING_TRAIL,
-                                     MENU_ITEM_PADDING_V)
+                                     MENU_ITEM_PADDING_V,
+                                     centered_menu_stylesheet)
 from ui.widgets.tooltip import TOOLTIP_DELAY_MS, CustomTooltip
 
 
@@ -722,7 +722,7 @@ def test_copied_row_paints_the_accent_pill(qtbot, dark_palette):
     parent = QMenu()
     qtbot.addWidget(parent)
     m = CopyDateMenu(parent)
-    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setStyleSheet(centered_menu_stylesheet(palette))
     m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
     copied = m.add_copy_action("تاریخ شمسی", "jalali")
     m.addSeparator()
@@ -945,7 +945,7 @@ def test_qss_item_text_is_transparent_so_the_painter_never_doubles_it(qtbot):
 
     def build(menu_cls):
         m = menu_cls()
-        m.setStyleSheet(_menu_stylesheet(palette))
+        m.setStyleSheet(centered_menu_stylesheet(palette))
         m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         for t in texts:
             m.addAction(t)
@@ -1092,7 +1092,7 @@ def test_disabled_rows_still_render_visible_grey_text(qtbot, dark_palette):
     palette = dark_palette
     m = CenteredTextMenu()
     qtbot.addWidget(m)
-    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setStyleSheet(centered_menu_stylesheet(palette))
     m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
     disabled = m.addAction("خاموش")
     disabled.setEnabled(False)
@@ -1118,7 +1118,7 @@ def test_centered_painter_paints_the_arrow_in_the_gutter_ltr_too(qtbot, dark_pal
     bg = palette["BACKGROUND_COLOR"]
     m = CenteredTextMenu()
     qtbot.addWidget(m)
-    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setStyleSheet(centered_menu_stylesheet(palette))
     m.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
     sub = m.addMenu("کپی تاریخ")
     sub.addAction("هر دو")
@@ -1169,7 +1169,7 @@ def test_row_filling_submenu_title_renders_complete(qtbot, dark_palette):
     caption = "ویرایش رویداد"
     m = CenteredTextMenu()
     qtbot.addWidget(m)
-    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setStyleSheet(centered_menu_stylesheet(palette))
     m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
     sub = m.addMenu(caption)
     sub.addAction("رویداد یک")
@@ -1211,7 +1211,7 @@ def test_row_filling_title_clears_the_tucked_arrow(qtbot, dark_palette):
     caption = "ویرایش رویداد"
     m = CenteredTextMenu()
     qtbot.addWidget(m)
-    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setStyleSheet(centered_menu_stylesheet(palette))
     m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
     sub = m.addMenu(caption)
     sub.addAction("رویداد یک")
@@ -1253,7 +1253,7 @@ def test_overlong_title_clips_to_the_content_rect(qtbot, monkeypatch):
     caption = "کپی تاریخ و زمان"
     m = CenteredTextMenu()
     qtbot.addWidget(m)
-    m.setStyleSheet(_menu_stylesheet(palette))
+    m.setStyleSheet(centered_menu_stylesheet(palette))
     m.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
     sub = m.addMenu(caption)
     sub.addAction("هر دو")

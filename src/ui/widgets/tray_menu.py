@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import QApplication, QWidgetAction
 from config import APP_CONFIG
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, TrayMenu
+from utils.ui_helpers import plain_menu_stylesheet
 
 
 def close_menu_then(tray, callback):
@@ -87,14 +88,11 @@ def add_auto_check_action(tray, menu):
 def build_tray_menu(tray):
     """Compose the tray context menu; row order and separators live here."""
     menu = TrayMenu()
-    palette = APP_CONFIG.get_current_palette()
     # Separator rows only provide spacing; TrayMenu paints the actual divider
     # lines with the same thickness everywhere: ceil(scale) full device rows,
     # matching how a native separator renders on a well-aligned position.
-    menu.setStyleSheet(
-        f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; }}"
-        f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
-    )
+    menu.setStyleSheet(plain_menu_stylesheet(APP_CONFIG.get_current_palette(),
+                                            dividers=True))
     add_menu_action(tray, menu, "تبدیل تاریخ",
                     lambda: close_menu_then(tray, tray._open_date_converter))
     menu.add_divider()

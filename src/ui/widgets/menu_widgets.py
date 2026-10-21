@@ -239,6 +239,64 @@ class TrayMenu(QMenu):
                                       self.devicePixelRatioF() or 1.0, horizontal)
 
 
+def centered_menu_stylesheet(palette: dict) -> str:
+    """The shared day-cell menu stylesheet (parent menu AND submenus, so a
+    submenu never falls back to the stock Qt popup look).
+
+    The item rules mirror MenuActionWidget's own row look so the native
+    «کپی تاریخ» rows and the custom add/remove-event rows read as one menu: the
+    same Vazirmatn 14px bold text, the same 6px vertical pad (hence the same
+    row height) and the same rounded MENU_HOVER_COLOR hover (HoverWidget paints
+    exactly this RGBA). The horizontal pads deliberately differ from the
+    widget's 15px layout margins: the wider leading one is the submenu arrow's
+    own column (see this module's constants).
+
+    The item text itself is drawn ``transparent`` here: QSS cannot center
+    QMenu::item text (no text-align support) and Qt's stylesheet engine paints
+    CE_MenuItem entirely itself, so CenteredTextMenu paints the glyphs instead.
+    The padding numbers come from the shared menu_widgets constants the painter
+    uses, so QSS box and painted text cannot drift.
+
+    Separator rows only provide spacing (11px, the same as the tray menu's
+    dividers) and draw nothing themselves: CenteredTextMenu paints each line on
+    the device-pixel grid, so the day menu's dividers come out the same thickness
+    as the tray menu's instead of being drawn by QSS at a fractional position.
+
+    The arrow subcontrols ARE zeroed out here: CenteredTextMenu paints the
+    indicator itself (handing it back to the style primitives proved invisible
+    under some Windows styles/themes, where the primitive picks a color the
+    custom background swallows), and a primitive Qt still drew would land inside
+    the content rect next to the painted triangle, pulling the row's ink off the
+    centre the caption is placed at.
+    """
+    hover = palette["MENU_HOVER_COLOR"]
+    hover_css = f"rgba({hover[0]}, {hover[1]}, {hover[2]}, {hover[3]})"
+    return (
+        f"QMenu {{ background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; padding: 5px; color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; }}"
+        # CSS shorthand top/right/bottom/left: the wider arrow column on the
+        # physical left, the leading side under RTL.
+        f"QMenu::item {{ padding: {MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_TRAIL}px "
+        f"{MENU_ITEM_PADDING_V}px {MENU_ITEM_PADDING_LEAD}px; color: transparent; }}"
+        f"QMenu::item:disabled {{ color: transparent; }}"
+        f"QMenu::item:selected {{ background-color: {hover_css}; border-radius: 6px; }}"
+        f"QMenu::separator {{ height: 11px; background-color: transparent; }}"
+        # No image and no box: the submenu arrow Qt would draw is suppressed at
+        # its source, leaving the painter's triangle the only indicator.
+        "QMenu::left-arrow, QMenu::right-arrow { image: none; width: 0px; height: 0px; }")
+
+
+def attach_centered_submenu(parent_menu: QMenu, submenu: QMenu, title: str) -> QMenu:
+    """Attach a ``CenteredTextMenu`` popup under a day menu with the shared
+    chrome: take the centered stylesheet (so a submenu never falls back to the
+    stock Qt popup look) and pin the direction to the parent's (top-level
+    popup windows do not reliably inherit it on every platform)."""
+    submenu.setTitle(title)
+    parent_menu.addMenu(submenu)
+    submenu.setStyleSheet(centered_menu_stylesheet(APP_CONFIG.get_current_palette()))
+    submenu.setLayoutDirection(parent_menu.layoutDirection())
+    return submenu
+
+
 class CenteredTextMenu(QMenu):
     """QMenu whose NATIVE rows draw their text horizontally centered.
 
