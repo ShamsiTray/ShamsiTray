@@ -199,7 +199,7 @@ def test_two_recurrences_can_coexist_on_one_visible_date(service, monkeypatch, f
     assert service.add(day, "second", second) is True
 
     assert len(service.events) == 2
-    assert set(service.events.keys()) == set(service.keys_matching_date(day))
+    assert set(service.events.keys()) == set(event_io.keys_matching_date(service.events, day))
     assert {entry["text"] for entry in service.events.values()} == {"first", "second"}
 
 

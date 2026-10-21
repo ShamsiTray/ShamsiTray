@@ -39,8 +39,6 @@ from utils.event_io import (
     ImportPlan,
     build_import_plan,
     clean_expired_keys,
-    events_for_date,
-    events_sorted_by_next_occurrence,
     keys_matching_date,
     load_user_events,
     recurrence_of_key,
@@ -94,16 +92,10 @@ class EventService:
         self.events.update(loaded)
         logger.info(f"Loaded {len(self.events)} user events.")
 
-    # --- queries (thin delegates; the key model lives in event_io) --------------
-
-    def keys_matching_date(self, jdate: jdatetime.date) -> List[str]:
-        return keys_matching_date(self.events, jdate)
-
-    def events_for_date(self, jdate: jdatetime.date):
-        return events_for_date(self.events, jdate)
-
-    def events_sorted_by_next_occurrence(self) -> List[str]:
-        return events_sorted_by_next_occurrence(self.events)
+    # Reads are event_io's pure query helpers over the live ``events`` dict (the
+    # same functions this service uses for its own internal reads) - a second,
+    # delegated query surface here was half-dead: nothing outside tests called
+    # one, while the windows read the helpers over the live dict view directly.
 
     def __len__(self) -> int:
         return len(self.events)

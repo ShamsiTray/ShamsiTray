@@ -157,6 +157,7 @@ pytest
 - Transactional shape: snapshot → mutate in place → save; on failure the snapshot is restored IN PLACE (dict identity preserved so the calendar's live reference sees the rollback) and `on_save_error` fires for interactive paths
 - `on_store_changed` fires after every committed save: the application subscribes its whole refresh composition once (`_refresh_after_events_changed` — expiry ride-along, then calendar, tray and manager), so no mutation caller composes "mutate then refresh" itself. The hook keeps the module Qt-free; it must never rebind the dict, and the manager's own edit/delete and the import flow ride it instead of telling the controller separately
 - Import is reconciled by visible date: `plan_import()` reports exactly which existing events an import would replace (exact-key overwrites AND same-date cross-representation collisions); `apply_import()` computes merge + replacement + expiry in memory and saves exactly once, so no half-imported file can outlive a failed save
+- The read surface is `utils.event_io`'s pure query helpers over the live dict view (`events_for_date`, `events_on_date`, `keys_matching_date`, `events_sorted_by_next_occurrence`) — the same functions the service's mutation paths call; the service exports no delegate methods of its own, and the dict view handed to the calendar is the intentional live-read design
 - The controller and the event manager request operations; they never mutate persistence directly
 
 ### `src/core/app_controller.py` (SystemTrayIcon)
