@@ -153,7 +153,13 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
                actions: List[Tuple[str, str]], danger: bool = False,
                detail: str = "", glyph: Optional[str] = None,
                width: int = 340) -> Optional[str]:
-        """Run an N-way ask and return the clicked action's text (None = dismissed)."""
+        """Run an N-way ask and return the clicked action's text (None = dismissed).
+
+        The caption IS the answer's address: callers branch on the exact text
+        they passed in (the update round keys its three-way choice off
+        ``"دانلود"``/``"نادیده گرفتن"``), so re-wording an action is a behavior
+        change, not a cosmetic one.
+        """
         dialog = ConfirmDialog(parent, title, message, danger=danger, detail=detail,
                                glyph=glyph, actions=actions, width=width)
         dialog.exec_centered(parent)
