@@ -20,6 +20,7 @@ The module also owns the shared recurrence wording: ``recurrence_label`` and
 the ``delete_confirmation_message`` built from it, which the calendar's
 date-level card and the event manager's per-row dialog both ask.
 """
+import datetime
 import jdatetime
 from typing import Iterable, Optional
 
@@ -28,13 +29,14 @@ from PyQt6.QtGui import QColor, QPainter, QRegularExpressionValidator, QTextOpti
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
-from utils.date_utils import (days_in_jalali_month, from_persian_digits,
-                              to_persian_digits, year_range_hint)
+from utils.date_utils import (days_in_gregorian_month, days_in_jalali_month,
+                              from_persian_digits, to_persian_digits, year_range_hint)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEARLY,
                             recurrence_of_key)
-from utils.ui_helpers import (YearRangeValidationMixin, accent_button_stylesheet,
-                              center_combo_items, combo_stylesheet,
-                              danger_button_stylesheet, fit_combo_width)
+from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
+                              accent_button_stylesheet, center_combo_items,
+                              combo_stylesheet, danger_button_stylesheet,
+                              fit_combo_width)
 from .checkbox import CustomCheckbox
 
 # Combo index <-> recurrence mode mapping (kept explicit for signal safety).
@@ -51,6 +53,9 @@ MAX_EVENT_YEAR = APP_CONFIG.SUPPORTED_MAX_YEAR
 # the red border says "wrong", this label says what "right" is (one shared
 # template lives in date_utils so the surfaces cannot drift apart).
 YEAR_RANGE_HINT = year_range_hint(MIN_EVENT_YEAR, MAX_EVENT_YEAR)
+# A Jalali year starts in the Gregorian year this much later (1405 begins in
+# 2026), so the Gregorian row spans the same supported stretch of history.
+JALALI_TO_GREGORIAN_YEAR_OFFSET = 621
 
 
 def recurrence_label(mode: str) -> str:
@@ -123,31 +128,71 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
     red border should come with its explanation, the caller hands the mixin
     its own hint label through ``set_hint_label``: the editor keeps its
     label as a layout row of its own, and a row-owned placement would
-    re-shape that overlay.
+    re-shape that overlay. ``label_text`` relabels the leading caption
+    (the distance window splits two rows into «از تاریخ» / «تا تاریخ»).
     """
 
     changed = pyqtSignal()  # any dimension moved; the picked date may differ
 
     ROW_LABEL = "تاریخ:"
+    # Geometry of the ``ltr_date_order`` row (the distance window): the
+    # caption is fixed and the day field's width is a floor, so the day and
+    # month fields share the row's remaining slack in a balanced row.
+    LTR_LABEL_WIDTH_PX = 56
+    LTR_DAY_WIDTH_PX = 68
 
-    def __init__(self, parent=None):
+    # Field metrics a composing window can tune for its own look (the compact
+    # event-editor values below are the default; the distance window matches
+    # the converter's taller fields and lighter caption instead).
+    FIELD_HEIGHT_PX = 34
+    YEAR_WIDTH_PX = 92
+    ROW_LABEL_SIZE_PX = 13
+    ROW_LABEL_BOLD = True
+
+    # What differs between the Jalali row and its Gregorian subclass; the
+    # build, the refill and the reading above these hooks are shared.
+    YEAR_MIN = MIN_EVENT_YEAR
+    YEAR_MAX = MAX_EVENT_YEAR
+    MONTH_NAMES = APP_CONFIG.PERSIAN_MONTHS
+
+    def __init__(self, parent=None, label_text: Optional[str] = None, *,
+                 ltr_date_order: bool = False, numbered_months: bool = False,
+                 flag_empty_year: bool = False):
         super().__init__(parent)
+        # ``ltr_date_order`` lays the fields out the way a numeric date reads,
+        # year, month, day from the left edge. The default keeps the editor's
+        # historical order (the row mirrors under RTL, so adding order is the
+        # reverse of what shows).
+        self.ltr_date_order = ltr_date_order
+        # ``numbered_months`` labels the months «۰۶ - شهریور» like the converter
+        # and go-to-date do; the default keeps the editor's bare names.
+        self.numbered_months = numbered_months
+        # ``flag_empty_year`` gives an EMPTY year the same red border and hint as
+        # a wrong one. The shared mixin treats empty as "not out of range" (a
+        # form still being filled in); a surface that measures live answers
+        # nothing for an empty year, so it must say why.
+        self.flag_empty_year = flag_empty_year
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         row_layout = QHBoxLayout(self)
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.setSpacing(6)
-        self.row_label = QLabel(self.ROW_LABEL)
+        self.row_label = QLabel(self.ROW_LABEL if label_text is None else label_text)
         self.row_label.setObjectName("DateRowLabel")
         row_layout.addWidget(self.row_label)
         # Text input rather than a dropdown: no artificial year cap.
         self.year_input = QLineEdit()
         self.year_input.setValidator(QRegularExpressionValidator(QRegularExpression("^[0-9۰-۹]{0,4}$")))
         self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.month_combo = QComboBox()
+        self.month_combo = DigitsFirstCombo() if numbered_months else QComboBox()
         self.day_combo = QComboBox()
-        row_layout.addWidget(self.year_input)
-        row_layout.addWidget(self.month_combo, 1)
-        row_layout.addWidget(self.day_combo, 1)
+        if ltr_date_order:
+            row_layout.addWidget(self.day_combo, 1)
+            row_layout.addWidget(self.month_combo, 1)
+            row_layout.addWidget(self.year_input)
+        else:
+            row_layout.addWidget(self.year_input)
+            row_layout.addWidget(self.month_combo, 1)
+            row_layout.addWidget(self.day_combo, 1)
 
         # Only set_date turns the announcement guard off: its field writes
         # are setup, not selections (see set_date).
@@ -165,7 +210,7 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
         if self._announce:
             self.changed.emit()
 
-    def set_date(self, anchor: jdatetime.date) -> None:
+    def set_date(self, anchor) -> None:
         """Show ``anchor`` as one completed selection.
 
         The intermediate field writes stay silent: the year lands before the
@@ -176,11 +221,11 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
         """
         self._announce = False
         try:
-            self.year_input.setText(to_persian_digits(anchor.year))
+            self.year_input.setText(self._digits(anchor.year))
             self.month_combo.blockSignals(True)
             self.month_combo.clear()
-            for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
-                self.month_combo.addItem(name, i)
+            for number in range(1, 13):
+                self.month_combo.addItem(self._month_label(number), number)
             center_combo_items(self.month_combo)
             self.month_combo.setCurrentIndex(anchor.month - 1)
             self.month_combo.blockSignals(False)
@@ -191,11 +236,11 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
 
     def _repopulate_days(self, year: int, month: int, keep_day: int):
         """Fill the day combo with valid days for the year/month, clamping ``keep_day``."""
-        max_day = days_in_jalali_month(year, month)
+        max_day = self._days_in_month(year, month)
         self.day_combo.blockSignals(True)
         self.day_combo.clear()
         for day in range(1, max_day + 1):
-            self.day_combo.addItem(to_persian_digits(day), day)
+            self.day_combo.addItem(self._digits(day), day)
         center_combo_items(self.day_combo)
         self.day_combo.setCurrentIndex(min(max(keep_day, 1), max_day) - 1)
         self.day_combo.blockSignals(False)
@@ -210,9 +255,10 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
             year = int(from_persian_digits(text))
         except (ValueError, TypeError):
             return None
-        return year if MIN_EVENT_YEAR <= year <= MAX_EVENT_YEAR else None
+        lo, hi = self._year_bounds()
+        return year if lo <= year <= hi else None
 
-    def picked(self) -> Optional[jdatetime.date]:
+    def picked(self):
         """The picked date, or None while any dimension is missing or invalid.
 
         The editor layers its own fallbacks on top (a recurring key drops the
@@ -223,7 +269,7 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
         if None in (year, month, day):
             return None
         try:
-            return jdatetime.date(year, month, day)
+            return self._make_date(year, month, day)
         except ValueError:
             return None
 
@@ -235,10 +281,32 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
     # --- YearRangeValidationMixin host hooks ---
 
     def _year_bounds(self):
-        return MIN_EVENT_YEAR, MAX_EVENT_YEAR
+        return self.YEAR_MIN, self.YEAR_MAX
+
+    def _year_is_out_of_range(self) -> bool:
+        if self.flag_empty_year and not self.year_input.text().strip():
+            return True
+        return super()._year_is_out_of_range()
 
     def _year_style_kwargs(self, errored: bool) -> dict:
         return {"padding": "4px 8px", "center_text": True}
+
+    # --- calendar hooks (the Gregorian subclass overrides these) ---
+
+    def _digits(self, value) -> str:
+        return to_persian_digits(value)
+
+    def _month_label(self, number: int) -> str:
+        name = self.MONTH_NAMES[number - 1]
+        if self.numbered_months:
+            return f"{self._digits(str(number).zfill(2))} - {name}"
+        return name
+
+    def _days_in_month(self, year: int, month: int) -> int:
+        return days_in_jalali_month(year, month)
+
+    def _make_date(self, year: int, month: int, day: int):
+        return jdatetime.date(year, month, day)
 
     def _on_anchor_changed(self, *_args):
         year = self._picked_year()
@@ -250,19 +318,53 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
 
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
+        label_weight = "bold" if self.ROW_LABEL_BOLD else "normal"
         self.row_label.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
-        self.year_input.setFixedHeight(34)
-        self.year_input.setFixedWidth(92)
+            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
+            f"font-size: {self.ROW_LABEL_SIZE_PX}px; font-weight: {label_weight}; "
+            f"border: none; background: transparent;")
+        self.year_input.setFixedHeight(self.FIELD_HEIGHT_PX)
+        self.year_input.setFixedWidth(self.YEAR_WIDTH_PX)
         # _apply_year_style keeps the red error border when the typed year is
         # out of range, so the shared style goes through it instead of QSS.
         self._apply_year_style()
         for combo in (self.month_combo, self.day_combo):
             combo.setStyleSheet(combo_stylesheet(palette, padding="4px 8px", center_text=True))
-            combo.setFixedHeight(34)
+            combo.setFixedHeight(self.FIELD_HEIGHT_PX)
             combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             center_combo_items(combo)
         fit_combo_width(self.month_combo)
+        if self.ltr_date_order:
+            self.row_label.setFixedWidth(self.LTR_LABEL_WIDTH_PX)
+            # A floor, not a pin: the day field flexes next to the month
+            # dropdown, so the row reads balanced - a fixed day beside the
+            # month that swallowed all slack left the month's pill twice wide.
+            self.day_combo.setMinimumWidth(self.LTR_DAY_WIDTH_PX)
+
+
+class GregorianDateSelectorRow(DateSelectorRow):
+    """The same row for Gregorian dates: English month names, Latin digits,
+    Gregorian month lengths, ``datetime.date`` out, and the Gregorian span of
+    the app's supported years."""
+    YEAR_MIN = MIN_EVENT_YEAR + JALALI_TO_GREGORIAN_YEAR_OFFSET
+    YEAR_MAX = MAX_EVENT_YEAR + JALALI_TO_GREGORIAN_YEAR_OFFSET
+    MONTH_NAMES = APP_CONFIG.GREGORIAN_MONTHS
+
+    def _digits(self, value) -> str:
+        return str(value)
+
+    def _month_label(self, number: int) -> str:
+        # A numbered label is «08 - August»; the combos paint it under an RTL
+        # base, which would reorder it to «August - 08». A leading left-to-right
+        # mark makes the whole label one LTR run, so it reads as written.
+        label = super()._month_label(number)
+        return "\u200e" + label if self.numbered_months else label
+
+    def _days_in_month(self, year: int, month: int) -> int:
+        return days_in_gregorian_month(year, month)
+
+    def _make_date(self, year: int, month: int, day: int):
+        return datetime.date(year, month, day)
 
 
 class EventInputWidget(QWidget):

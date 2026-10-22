@@ -5,12 +5,17 @@ import jdatetime
 import pytest
 
 from utils.date_utils import (
+    describe_gregorian_distance,
+    year_range_hint,
     DateDistance,
     days_in_gregorian_month,
     days_in_jalali_month,
     describe_date_distance,
     format_distance_breakdown,
     format_distance_total,
+    format_distance_total_months,
+    format_distance_units,
+    format_distance_weeks,
     format_gregorian_long,
     format_gregorian_numeric,
     format_jalali_long,
@@ -375,15 +380,27 @@ def test_distance_reapplying_the_units_lands_exactly_on_the_target():
 @pytest.mark.parametrize("earlier,later,expected_years", [
     (jdatetime.date(1200, 1, 1), jdatetime.date(1600, 12, 29), 400),
     (jdatetime.date(1, 1, 1), jdatetime.date(1600, 12, 29), 1599),
+    (jdatetime.date(1, 1, 1), jdatetime.date(9377, 1, 1), 9376),
 ])
-def test_distance_survives_the_widest_supported_span(earlier, later, expected_years):
-    """The extreme spans the calendar's supported range can produce."""
+def test_distance_survives_the_widest_expressible_spans(earlier, later, expected_years):
+    """The extreme spans expressible at all - the app's support span and both
+    its sides of it, up to the jdatetime edge."""
     distance = describe_date_distance(later, today=earlier)
     assert distance.years == expected_years
     assert distance.total_days == (later - earlier).days
     replayed = _add_jalali_months(_add_jalali_years(earlier, distance.years),
                                   distance.months)
     assert replayed + datetime.timedelta(days=distance.days) == later
+
+
+def test_gregorian_distance_survives_datetime_own_edges():
+    """The Gregorian twin of the edge walk: the closing probe must construct
+    year 10000, which date refuses - the walk stops there, it does not leak
+    the raise to the caller."""
+    earlier, later = datetime.date(1, 1, 1), datetime.date(9999, 12, 31)
+    distance = describe_gregorian_distance(later, today=earlier)
+    assert (distance.years, distance.months, distance.days) == (9998, 11, 30)
+    assert distance.total_days == (later - earlier).days
 
 
 def test_distance_formatters_read_as_persian_sentences():
@@ -509,3 +526,83 @@ def test_distance_is_immutable():
     distance = DateDistance(years=1, months=2, days=3, total_days=400)
     with pytest.raises(Exception):
         distance.years = 2
+
+
+def test_has_full_weeks_starts_at_seven_days_in_either_direction():
+    """Under a week the weeks line would only restate the day total."""
+    base = jdatetime.date(1404, 8, 20)
+    for offset, expected in ((-8, True), (-7, True), (-6, False), (-1, False),
+                             (0, False), (1, False), (6, False), (7, True), (90, True)):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset), today=base)
+        assert distance.has_full_weeks is expected
+
+
+def test_format_distance_weeks_is_a_fixed_seven_day_conversion_without_direction():
+    base = jdatetime.date(1405, 1, 1)
+    cases = {107: "۱۵ هفته و ۲ روز", 14: "۲ هفته", 7: "۱ هفته", 8: "۱ هفته و ۱ روز",
+             -107: "۱۵ هفته و ۲ روز"}
+    for offset, expected in cases.items():
+        distance = describe_date_distance(base + datetime.timedelta(days=offset), today=base)
+        assert format_distance_weeks(distance) == expected
+
+
+def test_format_distance_units_is_the_breakdown_without_the_direction_word():
+    base = jdatetime.date(1405, 1, 1)
+    for offset in (107, -107, 400):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset), today=base)
+        units = format_distance_units(distance)
+        assert "مانده" not in units and "گذشته" not in units
+        # The directional breakdown is exactly the neutral one plus its word.
+        assert format_distance_breakdown(distance).startswith(units + " ")
+
+
+def test_has_month_total_needs_a_whole_year():
+    """Without a year the breakdown already is the months-and-days reading."""
+    base = jdatetime.date(1405, 1, 1)
+    for offset, expected in ((107, False), (364, False), (366, True), (-400, True)):
+        distance = describe_date_distance(base + datetime.timedelta(days=offset), today=base)
+        assert distance.has_month_total is expected
+
+
+def test_format_distance_total_months_folds_years_into_months():
+    first, second = jdatetime.date(1382, 6, 2), jdatetime.date(1388, 2, 22)
+    distance = describe_date_distance(second, today=first)
+    assert (distance.years, distance.months, distance.days) == (5, 8, 20)
+    assert format_distance_total_months(distance) == "۶۸ ماه و ۲۰ روز"
+    # Reversed order measures the same gap; no direction word either way.
+    assert format_distance_total_months(describe_date_distance(first, today=second)) == "۶۸ ماه و ۲۰ روز"
+    exact = describe_date_distance(jdatetime.date(1402, 1, 1), today=jdatetime.date(1400, 1, 1))
+    assert format_distance_total_months(exact) == "۲۴ ماه"
+
+
+def test_describe_gregorian_distance_uses_gregorian_month_lengths():
+    start, end = datetime.date(2026, 3, 21), datetime.date(2026, 7, 6)
+    distance = describe_gregorian_distance(end, today=start)
+    assert (distance.years, distance.months, distance.days, distance.total_days) == (0, 3, 15, 107)
+    # The same two days in Jalali split differently (3 months 14 days).
+    jalali = describe_date_distance(jdatetime.date.fromgregorian(date=end),
+                                    today=jdatetime.date.fromgregorian(date=start))
+    assert jalali.total_days == distance.total_days
+    assert (jalali.months, jalali.days) == (3, 14)
+
+
+def test_describe_gregorian_distance_is_symmetric_and_flags_today():
+    a, b = datetime.date(2000, 3, 1), datetime.date(2024, 3, 1)
+    forward = describe_gregorian_distance(b, today=a)
+    backward = describe_gregorian_distance(a, today=b)
+    assert (forward.years, forward.months, forward.days) == (24, 0, 0)
+    assert (backward.years, backward.months, backward.days) == (24, 0, 0)
+    assert forward.total_days == -backward.total_days
+    assert describe_gregorian_distance(a, today=a).is_today
+
+
+def test_describe_gregorian_distance_clamps_to_the_last_valid_day():
+    # One year on from a leap day lands on 28 February.
+    distance = describe_gregorian_distance(datetime.date(2025, 2, 28),
+                                           today=datetime.date(2024, 2, 29))
+    assert (distance.years, distance.months, distance.days) == (1, 0, 0)
+
+
+def test_year_range_hint_can_show_latin_digits_for_gregorian_surfaces():
+    assert year_range_hint(1200, 1600) == "سال باید بین ۱۲۰۰ تا ۱۶۰۰ باشد"
+    assert year_range_hint(1821, 2221, persian_digits=False) == "سال باید بین 1821 تا 2221 باشد"

@@ -25,6 +25,7 @@ from config import APP_CONFIG
 from core.event_service import EventService
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.windows.converter_window import DateConverterWindow
+from ui.windows.date_distance_window import DateDistanceWindow
 from ui.windows.event_manager_window import EventManagerWindow
 from ui.windows.holiday_viewer_window import HolidayViewerWindow
 from ui.widgets.tray_menu import build_tray_menu
@@ -159,6 +160,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # events expire.
         self.calendar_widget: Optional[PersianCalendarWidget] = None
         self.converter_window: Optional[DateConverterWindow] = None
+        self.distance_window: Optional[DateDistanceWindow] = None
         self.event_manager_window: Optional[EventManagerWindow] = None
         self.holiday_viewer_window: Optional[HolidayViewerWindow] = None
         self.tutorial_window: Optional["TutorialWindow"] = None
@@ -253,7 +255,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._setup_context_menu()
         if self.calendar_widget:
             self.calendar_widget.update_styles()
-        for window in (self.converter_window, self.event_manager_window,
+        for window in (self.converter_window, self.distance_window,
+                       self.event_manager_window,
                        self.holiday_viewer_window, self.tutorial_window):
             if window and window.isVisible():
                 window.update_styles()
@@ -1171,6 +1174,9 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _open_date_converter(self):
         self._show_or_raise("converter_window", DateConverterWindow)
+
+    def _open_date_distance(self):
+        self._show_or_raise("distance_window", DateDistanceWindow)
 
     def _open_event_manager(self):
         self._show_or_raise("event_manager_window",

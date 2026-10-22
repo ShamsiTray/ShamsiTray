@@ -34,6 +34,7 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 - Quick access to a small calendar popup.
 - Displays detailed information in the tray icon tooltip, including day of the week, month and year, holidays, and user-added events.
 - Includes a simple Shamsi(Jalali)–Gregorian date converter.
+- Measures the distance between two arbitrary dates («فاصله دو تاریخ»), showing the total in days, a year/month/day breakdown when it says more, and which date is the first and which the second.
 - Allows adding events with options for yearly/monthly recurrence, automatic deletion after the event date passes, and full edit/delete support.
 - Provides an Event Manager window to search, filter, edit, delete, import and export all events at once.
 - Provides a Holiday Viewer window to browse official holidays year by year.
@@ -50,7 +51,7 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 ## 💡 Usage Tips
 
 - Single-click the tray icon to open the calendar popup.
-- Right-click the tray icon for quick actions: Date Converter, Change Theme, Launch at Windows startup and Exit.
+- Right-click the tray icon for quick actions: Date Converter, Date Distance, Change Theme, Launch at Windows startup and Exit.
 - Hover the mouse on the tray icon for the details tooltip.
 - Hover the mouse on the days with holiday/event in the calendar popup to see the details.
 - Right-clicking on a Date in the calendar popup allows you to add/edit and remove events.
