@@ -418,6 +418,30 @@ def test_commit_inside_the_composition_does_not_reannounce(service, monkeypatch)
 # --- transactional rollback ---------------------------------------------------------
 
 
+def _boom():
+    raise RuntimeError("listener failed")
+
+
+def test_refresh_hook_failure_does_not_invert_a_commit(service, monkeypatch):
+    """The commit verdict is the transaction's: a listening refresh that
+    fails (logged, not raised) cannot turn a landed save into an exception
+    for the caller, whose post-save success path acts on the verdict."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.on_store_changed = _boom
+    assert service.add(jdatetime.date(1405, 9, 1), "committed") is True
+    assert "1405-09-01" in service.events
+
+
+def test_save_error_hook_failure_does_not_invert_a_rollback(service, failing_save):
+    """Symmetric post-transaction edge: the error notice must not break out
+    of _commit either; the rollback verdict (False) is already decided when
+    the notice fires."""
+    service.on_save_error = _boom
+    service.on_store_changed = lambda: None
+    assert service.add(jdatetime.date(1405, 9, 2), "will fail") is False
+    assert "1405-09-02" not in service.events
+
+
 def test_rollback_restores_snapshot_in_place(service, failing_save):
     """The calendar holds a live reference to service.events: a rollback that
     REBINDS the dict would restore the service while the calendar kept reading
