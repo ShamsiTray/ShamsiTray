@@ -691,7 +691,9 @@ class EventManagerWindow(BaseFramelessWindow):
         anything is applied. When it would replace existing events (exact-key
         overwrites, or same-date collisions across recurrence forms - e.g. an
         imported yearly «0000-08-01» taking over a stored one-time
-        «1405-08-01»), a themed confirm lists the count first.
+        «1405-08-01»), a themed confirm lists the count first. Entries the
+        store already holds identically (same key, same content) count as
+        skips, not replacements: they never reach the confirmation.
 
         The whole new state (merge + replaced-event removal + expiry cleanup) is
         computed in memory and saved EXACTLY ONCE, so a failed save can never
@@ -729,6 +731,8 @@ class EventManagerWindow(BaseFramelessWindow):
         summary = f"{to_persian_digits(len(plan.applied))} رویداد وارد شد."
         if plan.replaced_existing:
             summary += f"\n{to_persian_digits(len(plan.replaced_existing))} رویداد جایگزین شد."
+        if plan.unchanged:
+            summary += f"\n{to_persian_digits(len(plan.unchanged))} مورد تکراری نادیده گرفته شد."
         if skipped:
             summary += f"\n{to_persian_digits(skipped)} ورودی نامعتبر نادیده گرفته شد."
         ConfirmDialog.notify(parent, "وارد کردن رویدادها", summary,

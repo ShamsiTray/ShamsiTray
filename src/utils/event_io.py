@@ -34,7 +34,10 @@ that model - it replaces only the event of the SAME recurrence. Import is the
 deliberate exception: ``build_import_plan`` reconciles imported entries against
 the store by *visible date* rather than by key string, so an import stays a
 clean slate instead of stacking a second event on a day the user already filled
-(and says what it would replace before doing so).
+(and says what it would replace before doing so). Entries the store already
+holds in the exact same form - same canonical key, same normalized entry - are
+split out as ``unchanged`` no-ops before that fold, so re-importing a file the
+store already reflects neither replaces events nor asks about them.
 
  The last load is tracked as trusted/untrusted: an unreadable store or one
  with malformed entries is never bulldozed with an empty save (see
@@ -795,10 +798,15 @@ class ImportPlan(NamedTuple):
                            overwrites and same-date collisions alike)
     ``internal_replaced``  import-internal same-date duplicates folded into
                            ``applied`` (later entry won)
+    ``unchanged``          entries skipped as exact copies of what the store
+                           already holds: the fold and the confirmation never
+                           see them, so re-importing an already reflected file
+                           is a 0-work plan, not a round of self-replacements
     """
     applied: Dict[str, dict]
     replaced_existing: Dict[str, dict]
     internal_replaced: int
+    unchanged: Dict[str, dict]
 
 
 def build_import_plan(existing: Dict[str, dict],
@@ -807,9 +815,21 @@ def build_import_plan(existing: Dict[str, dict],
 
     Every entry in ``replaced_existing`` is an event the user currently has that
     would no longer show (or exist) after the import — the exact count the
-    confirm dialog promises to replace.
+    confirm dialog promises to replace. An entry the store already holds in the
+    exact same form (same canonical key, same normalized entry - one
+    normalizer produced both sides) reaches none of that: it lands in
+    ``unchanged`` and the rest of the file applies as if it were absent, so
+    the same text under a DIFFERENT key shape (e.g. a yearly file key over a
+    one-time store key) stays a confirmed replace.
     """
-    applied, internal_replaced = dedupe_events_by_visible_date(imported)
+    unchanged: Dict[str, dict] = {}
+    remaining: Dict[str, dict] = {}
+    for key, entry in imported.items():
+        if existing.get(key) == entry:
+            unchanged[key] = entry
+        else:
+            remaining[key] = entry
+    applied, internal_replaced = dedupe_events_by_visible_date(remaining)
     replaced_existing: Dict[str, dict] = {}
     for new_key in applied:
         for existing_key, entry in existing.items():
@@ -817,7 +837,8 @@ def build_import_plan(existing: Dict[str, dict],
                 replaced_existing[existing_key] = entry
     return ImportPlan(applied=applied,
                       replaced_existing=replaced_existing,
-                      internal_replaced=internal_replaced)
+                      internal_replaced=internal_replaced,
+                      unchanged=unchanged)
 
 
 def clean_expired_keys(events: Dict[str, dict],
