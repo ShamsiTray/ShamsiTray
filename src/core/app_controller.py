@@ -788,8 +788,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         event manager's own edit/delete/import, the calendar's context menu.
         A committed save can itself introduce an expired event (a past-dated
         auto-delete add), so the expiry cleanup rides along quietly first;
-        any commit that cleanup makes re-enters through this same hook and
-        stops after one pass, because the second cleanup finds nothing."""
+        the commit it makes is announced by this already-running composition
+        (the service swallows re-entrant announcements), and the steps below
+        run once on the settled store."""
         if self.calendar_widget is None:
             # The store is built and cleaned before the calendar exists: the
             # calendar reads the settled store straight from its constructor
