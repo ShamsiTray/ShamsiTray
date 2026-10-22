@@ -24,6 +24,10 @@ Persistence failures are reported through ``on_save_error`` (a plain callable
 the application points at its themed failure dialog); committed saves are
 announced through ``on_store_changed`` (the application's refresh composition,
 subscribed once) so no mutation caller re-composes "mutate then refresh".
+A commit made from inside the running composition is announced by that
+composition — re-entrant announcements are swallowed — so one user save
+cannot run the refresh twice (the ride-along expiry cleanup would, when it
+landed a removal).
 Both hooks fire with no arguments and keep this module Qt-free and testable.
 Interactive mutation paths pass ``notify=True``; background cleanup passes
 ``notify=False`` and only logs.
@@ -75,6 +79,10 @@ class EventService:
         # save pushes to the surfaces through; tests point both at recorders.
         self.on_save_error: Optional[Callable[[], None]] = None
         self.on_store_changed: Optional[Callable[[], None]] = None
+        # Announcements never re-enter while one is dispatching (see
+        # _announce_changed): a commit that the composition itself makes is
+        # announced by the composition already in flight.
+        self._announcing = False
         self.reload()
 
     # --- state ------------------------------------------------------------------
@@ -110,8 +118,7 @@ class EventService:
         half-applied file can never exist.
         """
         if save_user_events(self.events):
-            if self.on_store_changed is not None:
-                self.on_store_changed()
+            self._announce_changed()
             return True
         logger.error("Failed to persist user events (in-memory state restored).")
         self.events.clear()
@@ -119,6 +126,22 @@ class EventService:
         if notify and self.on_save_error is not None:
             self.on_save_error()
         return False
+
+    def _announce_changed(self) -> None:
+        """Fire the store hook for one committed save.
+
+        A commit performed by the composition itself dispatches during its own
+        announcement and is swallowed there: the composition already running is
+        that commit's announcement, and the final steps of its remaining pass
+        read the settled store — no re-entrant pass, no duplicate UI work.
+        """
+        if self.on_store_changed is None or self._announcing:
+            return
+        self._announcing = True
+        try:
+            self.on_store_changed()
+        finally:
+            self._announcing = False
 
     # --- mutations --------------------------------------------------------------
 

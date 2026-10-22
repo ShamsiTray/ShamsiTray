@@ -1487,6 +1487,24 @@ def test_a_committed_store_save_refreshes_every_surface_once(tray, qtbot):
     tray.event_manager_window = None
 
 
+def test_expiry_cleanup_inside_the_composition_keeps_one_pass(tray, monkeypatch):
+    """The ride-along cleanup's own commit is announced by the composition
+    already running: the surfaces see one pass on the settled store, not a
+    full refresh nested inside another."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    tray.event_service.events["1400-01-01"] = {
+        "text": "expired", "recurrence": "none", "remove_after_finish": True}
+    set_calls, _ = _spy(tray.calendar_widget, "set_user_events")
+    icon_calls, _ = _spy(tray, "update_tray_icon")
+
+    tray.event_service.upsert("1405-06-06",
+                              {"text": "باقی می‌ماند", "recurrence": "monthly",
+                               "remove_after_finish": False})
+
+    assert len(set_calls) == 1  # the cleanup's commit re-announced nothing
+    assert "1400-01-01" not in tray.event_service.events  # cleaned, pass rendered once
+
+
 def test_close_menu_then_closes_and_defers(tray, monkeypatch):
     menu = tray.contextMenu()
     closed = []

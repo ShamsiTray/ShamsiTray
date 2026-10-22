@@ -397,6 +397,24 @@ def test_clean_expired_drops_only_expired(service, monkeypatch):
     assert set(service.events) == {"1400-01-02", "0000-01-01"}
 
 
+def test_commit_inside_the_composition_does_not_reannounce(service, monkeypatch):
+    """A commit the running composition makes is announced by that
+    composition in flight: before the latch, the ride-along cleanup that
+    landed a removal ran the whole refresh twice per user save."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    announcements = []
+
+    def composition():
+        announcements.append(1)
+        service.clean_expired(notify=False)  # its commit re-enters; swallowed
+
+    service.on_store_changed = composition
+    assert service.add(jdatetime.date(1400, 1, 1), "past auto-delete",
+                       remove_after_finish=True) is True
+    assert announcements == [1]  # once, not one pass nested inside another
+    assert service.events == {}  # the past-dated add expired; cleanup still landed
+
+
 # --- transactional rollback ---------------------------------------------------------
 
 
