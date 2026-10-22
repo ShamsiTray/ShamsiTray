@@ -7,14 +7,14 @@ calendar window and the event manager for adding or editing user events.
 It includes a text area, a recurrence selector (one-time / monthly / yearly),
 an auto-delete checkbox for one-time events, plus save/cancel buttons.
 
-An optional date-selector row (year input / month / day combos) is shown for
-the event manager's «افزودن رویداد» flow (where the event date is not
-inherited from a clicked calendar cell) and for its edit flow, so an event's
-date can be changed from the manager too - prefilled with the event's real
-anchor date. It is hidden for the calendar so that flow behaves exactly as
-before. The year is a text input (Persian or Latin digits) rather than a
-bounded dropdown, so the flow keeps working no matter how far ahead the user
-plans.
+The event's date is picked through `DateSelectorRow`, the shared
+year/month/day row the module owns: the event manager's «افزودن رویداد»
+flow shows it (where the event date is not inherited from a clicked
+calendar cell) and so does its edit flow, prefilled with the event's real
+anchor date. It is hidden for the calendar so that flow behaves exactly
+as before. The year is a text input (Persian or Latin digits) rather than
+a bounded dropdown, so the flow keeps working no matter how far ahead the
+user plans.
 
 The module also owns the shared recurrence wording: ``recurrence_label`` and
 the ``delete_confirmation_message`` built from it, which the calendar's
@@ -112,7 +112,144 @@ class RTLTextEdit(QTextEdit):
             rect.adjust(5, 5, -5, -5)
             painter.drawText(rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, self.placeholder_text)
 
-class EventInputWidget(YearRangeValidationMixin, QWidget):
+class DateSelectorRow(YearRangeValidationMixin, QWidget):
+    """The Jalali year/month/day picking row, as its own widget.
+
+    The build, the day refill and the picked-date reading live here once so
+    every surface with a date selector composes the same row - and inherits
+    the shared red-border year validation with it. The recurrence answers
+    (which dimensions an event's key actually drops) stay with the editor;
+    a surface without that layer takes the row exactly as built. When the
+    red border should come with its explanation, the caller hands the mixin
+    its own hint label through ``set_hint_label``: the editor keeps its
+    label as a layout row of its own, and a row-owned placement would
+    re-shape that overlay.
+    """
+
+    changed = pyqtSignal()  # any dimension moved; the picked date may differ
+
+    ROW_LABEL = "تاریخ:"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        row_layout = QHBoxLayout(self)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+        self.row_label = QLabel(self.ROW_LABEL)
+        self.row_label.setObjectName("DateRowLabel")
+        row_layout.addWidget(self.row_label)
+        # Text input rather than a dropdown: no artificial year cap.
+        self.year_input = QLineEdit()
+        self.year_input.setValidator(QRegularExpressionValidator(QRegularExpression("^[0-9۰-۹]{0,4}$")))
+        self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.month_combo = QComboBox()
+        self.day_combo = QComboBox()
+        row_layout.addWidget(self.year_input)
+        row_layout.addWidget(self.month_combo, 1)
+        row_layout.addWidget(self.day_combo, 1)
+
+        # Maintenance before announcement: an emit always finds the day combo
+        # refilled for the new anchor, so a listener never reads a stale day.
+        self.year_input.textChanged.connect(self._on_anchor_changed)
+        self.year_input.textChanged.connect(self._update_year_error_state)
+        self.month_combo.currentIndexChanged.connect(self._on_anchor_changed)
+        self.year_input.textChanged.connect(self._emit_changed)
+        self.month_combo.currentIndexChanged.connect(self._emit_changed)
+        self.day_combo.currentIndexChanged.connect(self._emit_changed)
+
+    def _emit_changed(self, *_args):
+        self.changed.emit()
+
+    def set_date(self, anchor: jdatetime.date) -> None:
+        """Show ``anchor``: the field gets its year, the combos its month/day."""
+        self.year_input.setText(to_persian_digits(anchor.year))
+        self.month_combo.blockSignals(True)
+        self.month_combo.clear()
+        for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
+            self.month_combo.addItem(name, i)
+        center_combo_items(self.month_combo)
+        self.month_combo.setCurrentIndex(anchor.month - 1)
+        self.month_combo.blockSignals(False)
+        self._repopulate_days(anchor.year, anchor.month, anchor.day)
+
+    def _repopulate_days(self, year: int, month: int, keep_day: int):
+        """Fill the day combo with valid days for the year/month, clamping ``keep_day``."""
+        max_day = days_in_jalali_month(year, month)
+        self.day_combo.blockSignals(True)
+        self.day_combo.clear()
+        for day in range(1, max_day + 1):
+            self.day_combo.addItem(to_persian_digits(day), day)
+        center_combo_items(self.day_combo)
+        self.day_combo.setCurrentIndex(min(max(keep_day, 1), max_day) - 1)
+        self.day_combo.blockSignals(False)
+
+    def _picked_year(self) -> "int | None":
+        """The typed year as an int inside the supported range, or None while
+        the text is empty/incomplete/out of range."""
+        text = self.year_input.text().strip()
+        if not text:
+            return None
+        try:
+            year = int(from_persian_digits(text))
+        except (ValueError, TypeError):
+            return None
+        return year if MIN_EVENT_YEAR <= year <= MAX_EVENT_YEAR else None
+
+    def picked(self) -> Optional[jdatetime.date]:
+        """The picked date, or None while any dimension is missing or invalid.
+
+        The editor layers its own fallbacks on top (a recurring key drops the
+        year, a hidden row means "no picker at all"); a whole-row consumer
+        wants the strict answer.
+        """
+        year, month, day = (self._picked_year(), self.month_combo.currentData(), self.day_combo.currentData())
+        if None in (year, month, day):
+            return None
+        try:
+            return jdatetime.date(year, month, day)
+        except ValueError:
+            return None
+
+    def set_hint_label(self, label) -> None:
+        """Route the mixin's error explanation to a caller-owned label (its
+        visibility and text still follow the red border)."""
+        self.year_hint_label = label
+
+    # --- YearRangeValidationMixin host hooks ---
+
+    def _year_bounds(self):
+        return MIN_EVENT_YEAR, MAX_EVENT_YEAR
+
+    def _year_style_kwargs(self, errored: bool) -> dict:
+        return {"padding": "4px 8px", "center_text": True}
+
+    def _on_anchor_changed(self, *_args):
+        year = self._picked_year()
+        month = self.month_combo.currentData()
+        if year is None or month is None:
+            return
+        keep_day = self.day_combo.currentData() or 1
+        self._repopulate_days(year, month, keep_day)
+
+    def update_styles(self):
+        palette = APP_CONFIG.get_current_palette()
+        self.row_label.setStyleSheet(
+            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
+        self.year_input.setFixedHeight(34)
+        self.year_input.setFixedWidth(92)
+        # _apply_year_style keeps the red error border when the typed year is
+        # out of range, so the shared style goes through it instead of QSS.
+        self._apply_year_style()
+        for combo in (self.month_combo, self.day_combo):
+            combo.setStyleSheet(combo_stylesheet(palette, padding="4px 8px", center_text=True))
+            combo.setFixedHeight(34)
+            combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            center_combo_items(combo)
+        fit_combo_width(self.month_combo)
+
+
+class EventInputWidget(QWidget):
     """An integrated widget for adding or editing a user event."""
     saved = pyqtSignal(str, str, bool)  # text, recurrence, remove_after_finish
     canceled = pyqtSignal()
@@ -130,25 +267,15 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         main_layout.addWidget(self.title_label)
 
         # Optional date selector (event manager "add" flow); hidden by default.
-        self.date_row = QWidget(self)
-        date_layout = QHBoxLayout(self.date_row)
-        date_layout.setContentsMargins(0, 0, 0, 0)
-        date_layout.setSpacing(6)
-        date_label = QLabel("تاریخ:")
-        date_label.setObjectName("DateRowLabel")
-        date_layout.addWidget(date_label)
-        # Text input rather than a dropdown: no artificial year cap.
-        self.year_input = QLineEdit()
-        self.year_input.setValidator(QRegularExpressionValidator(QRegularExpression("^[0-9۰-۹]{0,4}$")))
-        self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.month_combo = QComboBox()
-        self.day_combo = QComboBox()
-        date_layout.addWidget(self.year_input)
-        date_layout.addWidget(self.month_combo, 1)
-        date_layout.addWidget(self.day_combo, 1)
-        self.date_row.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.date_row.hide()
+        self.date_row = DateSelectorRow(parent=self)
         main_layout.addWidget(self.date_row)
+        # The row owns the picked widgets; the editor keeps them under the
+        # names its interface has always had, so every reader (tests included)
+        # reaches the same widgets it always did.
+        self.year_input = self.date_row.year_input
+        self.month_combo = self.date_row.month_combo
+        self.day_combo = self.date_row.day_combo
+        self.date_row.hide()
 
         # Inline explanation for the red year border: "3213 is invalid" is
         # only useful once the user knows which years are valid.
@@ -156,6 +283,7 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         self.year_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.year_hint_label.hide()
         main_layout.addWidget(self.year_hint_label)
+        self.date_row.set_hint_label(self.year_hint_label)
 
         self.text_edit = RTLTextEdit("رویداد خود را وارد کنید")
         text_option = QTextOption()
@@ -195,11 +323,8 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         self.cancel_button.clicked.connect(self.canceled)
         self.recurrence_combo.currentIndexChanged.connect(self._on_recurrence_changed)
         self.text_edit.textChanged.connect(self._update_save_button_state)
-        self.year_input.textChanged.connect(self._on_date_anchor_changed)
-        self.year_input.textChanged.connect(self._update_year_error_state)
-        self.month_combo.currentIndexChanged.connect(self._on_date_anchor_changed)
 
-        self.update_styles()  # _year_error default lives on the shared mixin
+        self.update_styles()
         self._update_save_button_state()
 
     # --- date selector (optional row) ---
@@ -215,60 +340,11 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
             self.date_row.hide()
             # Editing an existing event drops the picker; a stale red hint from
             # a previous add attempt must not survive into that flow.
-            self._set_year_error(False)
+            self.date_row._set_year_error(False)
             return
         anchor = initial_date if initial_date is not None else jdatetime.date.today()
-        self.year_input.setText(to_persian_digits(anchor.year))
-
-        self.month_combo.blockSignals(True)
-        self.month_combo.clear()
-        for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
-            self.month_combo.addItem(name, i)
-        center_combo_items(self.month_combo)
-        self.month_combo.setCurrentIndex(anchor.month - 1)
-        self.month_combo.blockSignals(False)
-
-        self._repopulate_days(anchor.year, anchor.month, anchor.day)
+        self.date_row.set_date(anchor)
         self.date_row.show()
-
-    def _repopulate_days(self, year: int, month: int, keep_day: int):
-        """Fill the day combo with valid days for the year/month, clamping ``keep_day``."""
-        max_day = days_in_jalali_month(year, month)
-        self.day_combo.blockSignals(True)
-        self.day_combo.clear()
-        for day in range(1, max_day + 1):
-            self.day_combo.addItem(to_persian_digits(day), day)
-        center_combo_items(self.day_combo)
-        self.day_combo.setCurrentIndex(min(max(keep_day, 1), max_day) - 1)
-        self.day_combo.blockSignals(False)
-
-    def _picked_year(self) -> "int | None":
-        """The typed year as an int inside the supported range, or None while
-        the text is empty/incomplete/out of range."""
-        text = self.year_input.text().strip()
-        if not text:
-            return None
-        try:
-            year = int(from_persian_digits(text))
-        except (ValueError, TypeError):
-            return None
-        return year if MIN_EVENT_YEAR <= year <= MAX_EVENT_YEAR else None
-
-    # --- YearRangeValidationMixin host hooks ---
-
-    def _year_bounds(self):
-        return MIN_EVENT_YEAR, MAX_EVENT_YEAR
-
-    def _year_style_kwargs(self, errored: bool) -> dict:
-        return {"padding": "4px 8px", "center_text": True}
-
-    def _on_date_anchor_changed(self, *_args):
-        year = self._picked_year()
-        month = self.month_combo.currentData()
-        if year is None or month is None:
-            return
-        keep_day = self.day_combo.currentData() or 1
-        self._repopulate_days(year, month, keep_day)
 
     def event_date(self):
         """The picked jdatetime.date, or None when the selector is hidden or
@@ -284,7 +360,7 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         """
         if self.date_row.isHidden():
             return None
-        year, month, day = (self._picked_year(), self.month_combo.currentData(), self.day_combo.currentData())
+        year, month, day = (self.date_row._picked_year(), self.month_combo.currentData(), self.day_combo.currentData())
         if year is None and self.recurrence() != RECURRENCE_NONE:
             year = jdatetime.date.today().year  # dropped by make_event_key anyway
         if None in (year, month, day):
@@ -326,24 +402,10 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         # theme's grey rather than the one the widget was built with.
         self._apply_recurrence_item_states()
 
-        date_row_label = self.date_row.findChild(QLabel, "DateRowLabel")
-        if date_row_label:
-            date_row_label.setStyleSheet(
-                f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
-        self.year_input.setFixedHeight(34)
-        self.year_input.setFixedWidth(92)
-        # _apply_year_style keeps the red error border when the typed year is
-        # out of range, so the shared style goes through it instead of QSS.
-        self._apply_year_style()
+        self.date_row.update_styles()
         self.year_hint_label.setStyleSheet(
             f"color: {palette['HOLIDAY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"font-size: 12px; font-weight: bold; background: transparent; border: none;")
-        for combo in (self.month_combo, self.day_combo):
-            combo.setStyleSheet(combo_stylesheet(palette, padding="4px 8px", center_text=True))
-            combo.setFixedHeight(34)
-            combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-            center_combo_items(combo)
-        fit_combo_width(self.month_combo)
 
         self.remove_after_finish_checkbox.update_visuals()
 
@@ -441,7 +503,7 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         self.year_input.setEnabled(is_one_time)
         monthly = mode == RECURRENCE_MONTHLY
         self.month_combo.setEnabled(not monthly)
-        self._apply_year_style()
+        self.date_row._apply_year_style()
 
     def _on_save(self):
         text = self.text_edit.toPlainText().strip()
@@ -451,7 +513,7 @@ class EventInputWidget(YearRangeValidationMixin, QWidget):
         # date; an out-of-range year gets the red error border and blocks the
         # save so an unreachable event (e.g. year 3213) can never be created.
         if self.date_row.isVisible() and self.event_date() is None:
-            self._set_year_error(self._year_is_out_of_range())
+            self.date_row._set_year_error(self.date_row._year_is_out_of_range())
             self.year_input.setFocus()
             return
         self.saved.emit(text, self.recurrence(), self.remove_after_finish_checkbox.isChecked())
