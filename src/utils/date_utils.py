@@ -171,6 +171,26 @@ class DateDistance:
         """
         return self.years > 0 or self.months > 0
 
+    @property
+    def has_month_total(self) -> bool:
+        """True when a whole-months reading adds something to the breakdown.
+
+        Without a year, «۳ ماه و ۱۴ روز» already IS the months-and-days
+        reading, so a second line would only repeat it.
+        """
+        return self.years > 0
+
+    @property
+    def has_full_weeks(self) -> bool:
+        """True when the gap spans at least one whole week (7+ days, either way).
+
+        Under a week ``format_distance_weeks`` would only restate the day
+        total, so a surface asks this before showing a weeks line. Like
+        ``has_calendar_units`` it is not a substitute for the ``is_today``
+        branch.
+        """
+        return abs(self.total_days) >= 7
+
 def _add_jalali_years(jdate: jdatetime.date, count: int) -> jdatetime.date:
     """Shift by whole years, clamping to the target month's last valid day."""
     year = jdate.year + count
@@ -185,35 +205,73 @@ def _add_jalali_months(jdate: jdatetime.date, count: int) -> jdatetime.date:
     return jdatetime.date(year, month,
                           min(jdate.day, days_in_jalali_month(year, month)))
 
-def describe_date_distance(target: jdatetime.date,
-                           today: Optional[jdatetime.date] = None) -> DateDistance:
-    """Decompose the gap between ``target`` and ``today`` (today by default).
+def _describe_distance(target, today, add_years, add_months) -> DateDistance:
+    """The calendar-agnostic walk behind both describe_* entry points.
 
-    Units are taken largest first - years, then months, then the leftover
-    days - and each step clamps to the target month's last valid day, so the
-    result is order-dependent and is not flat field arithmetic: from
-    1403/12/30, one year on is 1404/12/29, because 1404 has no Esfand 30.
+    ``add_years`` / ``add_months`` are the calendar's clamping shifts. Units are
+    taken largest first - years, then months, then the leftover days - and each
+    step clamps to the target month's last valid day, so the result is
+    order-dependent and is not flat field arithmetic: from 1403/12/30, one year
+    on is 1404/12/29, because 1404 has no Esfand 30.
 
     The walk advances a cursor instead of recomputing from the original date
     on every iteration, which would be quadratic across wide year spans.
     """
-    today = today if today is not None else jdatetime.date.today()
     delta = (target - today).days
     lo, hi = (today, target) if delta >= 0 else (target, today)
 
     cursor = lo
     years = 0
-    while _add_jalali_years(cursor, 1) <= hi:
-        cursor = _add_jalali_years(cursor, 1)
+    while (nxt := _walk_step(cursor, add_years)) is not None and nxt <= hi:
+        cursor = nxt
         years += 1
 
     months = 0
-    while _add_jalali_months(cursor, 1) <= hi:
-        cursor = _add_jalali_months(cursor, 1)
+    while (nxt := _walk_step(cursor, add_months)) is not None and nxt <= hi:
+        cursor = nxt
         months += 1
 
     return DateDistance(years=years, months=months, days=(hi - cursor).days,
                         total_days=delta)
+
+def _walk_step(cursor, add_unit):
+    """``add_unit(cursor, 1)``, or None at the calendar's edge: the probes
+    must construct ``cursor.year + 1``, which both jdatetime and date raise
+    on past their last representable year - the walk is then already at the
+    widest date it can step to and simply stops."""
+    try:
+        return add_unit(cursor, 1)
+    except ValueError:
+        return None
+
+def describe_date_distance(target: jdatetime.date,
+                           today: Optional[jdatetime.date] = None) -> DateDistance:
+    """Decompose the gap between ``target`` and ``today`` (today by default),
+    in Jalali calendar units (see ``_describe_distance`` for the walk)."""
+    today = today if today is not None else jdatetime.date.today()
+    return _describe_distance(target, today, _add_jalali_years, _add_jalali_months)
+
+def _add_gregorian_years(gdate: datetime.date, count: int) -> datetime.date:
+    """Shift by whole years, clamping to the target month's last valid day."""
+    year = gdate.year + count
+    return datetime.date(year, gdate.month,
+                         min(gdate.day, days_in_gregorian_month(year, gdate.month)))
+
+def _add_gregorian_months(gdate: datetime.date, count: int) -> datetime.date:
+    """Shift by whole months, clamping to the target month's last valid day."""
+    year, month = gdate.year + count // 12, gdate.month + count % 12
+    if month > 12:
+        year, month = year + 1, month - 12
+    return datetime.date(year, month,
+                         min(gdate.day, days_in_gregorian_month(year, month)))
+
+def describe_gregorian_distance(target: datetime.date,
+                                today: Optional[datetime.date] = None) -> DateDistance:
+    """``describe_date_distance`` for two Gregorian dates: the same walk in
+    Gregorian calendar units. The day total is identical in both calendars;
+    only the years/months/days split differs (month lengths differ)."""
+    today = today if today is not None else datetime.date.today()
+    return _describe_distance(target, today, _add_gregorian_years, _add_gregorian_months)
 
 def _distance_status_word(distance: DateDistance) -> str:
     """The direction word; today is a caller branch, so it is never asked."""
@@ -223,16 +281,47 @@ def format_distance_total(distance: DateDistance) -> str:
     """«۶۹ روز مانده» - the day count and its direction. Not defined for today."""
     return f"{to_persian_digits(abs(distance.total_days))} روز {_distance_status_word(distance)}"
 
-def format_distance_breakdown(distance: DateDistance) -> str:
-    """«۲ سال و ۲ ماه و ۱ روز مانده». Not defined for today.
+def format_distance_units(distance: DateDistance) -> str:
+    """«۲ سال و ۲ ماه و ۱ روز» - the calendar breakdown with no direction word.
 
-    A non-today distance always has at least one non-zero unit, so the part
+    For surfaces where the direction is not part of the question (the
+    distance window measures two arbitrary dates). Not defined for today; a
+    non-today distance always has at least one non-zero unit, so the part
     list is never empty.
     """
     parts = [f"{to_persian_digits(count)} {unit}" for count, unit in
              ((distance.years, "سال"), (distance.months, "ماه"), (distance.days, "روز"))
              if count]
-    return f"{' و '.join(parts)} {_distance_status_word(distance)}"
+    return ' و '.join(parts)
+
+def format_distance_total_months(distance: DateDistance) -> str:
+    """«۶۸ ماه و ۲۰ روز» - years folded into months, plus the leftover days.
+
+    A direction-free sibling of ``format_distance_units``. Callers branch on
+    ``is_today`` first and on ``has_month_total`` (without a year it would
+    repeat the breakdown).
+    """
+    months = distance.years * 12 + distance.months
+    parts = [f"{to_persian_digits(count)} {unit}" for count, unit in
+             ((months, "ماه"), (distance.days, "روز")) if count]
+    return ' و '.join(parts)
+
+def format_distance_breakdown(distance: DateDistance) -> str:
+    """«۲ سال و ۲ ماه و ۱ روز مانده». Not defined for today."""
+    return f"{format_distance_units(distance)} {_distance_status_word(distance)}"
+
+def format_distance_weeks(distance: DateDistance) -> str:
+    """«۱۵ هفته و ۲ روز» - the day total as whole weeks plus the remainder.
+
+    Unlike the calendar breakdown this is a fixed conversion (7 days a week),
+    so it never depends on the anchor date, and it carries no direction word.
+    Callers branch on ``is_today`` first and on ``has_full_weeks`` (under a
+    week it would restate the day total).
+    """
+    weeks, days = divmod(abs(distance.total_days), 7)
+    parts = [f"{to_persian_digits(count)} {unit}" for count, unit in
+             ((weeks, "هفته"), (days, "روز")) if count]
+    return ' و '.join(parts)
 
 def validate_year_range(year: int, min_year: int, max_year: int, is_jalali: bool) -> Optional[str]:
     """Check a year against its allowed range, returning a Persian error message or None."""
@@ -242,13 +331,16 @@ def validate_year_range(year: int, min_year: int, max_year: int, is_jalali: bool
         return f"سال شمسی باید بین {to_persian_digits(min_year)} و {to_persian_digits(max_year)} باشد."
     return f"سال میلادی باید بین {min_year} و {max_year} باشد."
 
-def year_range_hint(min_year: int, max_year: int) -> str:
+def year_range_hint(min_year: int, max_year: int, persian_digits: bool = True) -> str:
     """The short range message for the year pickers: the red border says
     "wrong", this one shared template names the supported range the same way
     on every surface (the converter's validator above keeps its completed
-    sentences, which must name the calendar being rejected).
+    sentences, which must name the calendar being rejected). Gregorian
+    surfaces pass ``persian_digits=False`` to show the years as typed.
     """
-    return f"سال باید بین {to_persian_digits(min_year)} تا {to_persian_digits(max_year)} باشد"
+    lo, hi = ((to_persian_digits(min_year), to_persian_digits(max_year))
+              if persian_digits else (min_year, max_year))
+    return f"سال باید بین {lo} تا {hi} باشد"
 
 def ms_until_midnight(now: datetime.datetime) -> int:
     """Milliseconds from ``now`` local time until the next local midnight.

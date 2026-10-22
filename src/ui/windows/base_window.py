@@ -58,8 +58,23 @@ class BaseFramelessWindow(HoverDriverMixin, FramelessDragMixin, QWidget):
     # can be mid-edit in, and losing focus to another app is routine there.
     CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED = False
 
+    # Form windows set this True so a field never keeps its :focus accent ring
+    # once the user clicks away: clicking a no-focus surface (a label, a card,
+    # blank margins) moves keyboard focus nowhere on its own, so only something
+    # in this class can answer it. The press target that takes focus itself (a
+    # field, a button, a widget with click focus) is left to Qt's normal path.
+    CLEAR_FOCUS_ON_BLANK_CLICK = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Armed only while the opt-in applies: the application-level filter is
+        # no-op for every event this window is not the press site of, and is
+        # removed again in closeEvent (the controller rebuilds this window per
+        # open, so it must not survive the instance).
+        self._focus_clearer_armed = False
+        if self.CLEAR_FOCUS_ON_BLANK_CLICK:
+            QApplication.instance().installEventFilter(self)
+            self._focus_clearer_armed = True
         # Tracks the WindowStaysOnTopHint state this window was built with (Tool
         # windows start pinned, taskbar windows do not) so callers can toggle it
         # later without having to know which style they are looking at.
@@ -181,6 +196,38 @@ class BaseFramelessWindow(HoverDriverMixin, FramelessDragMixin, QWidget):
         at, self._outside_dismissed_at = self._outside_dismissed_at, None
         over_tray, self._outside_dismissed_over_tray = self._outside_dismissed_over_tray, False
         return at is not None and (time.monotonic() - at) <= max_age_s and over_tray
+
+    def _query_focused_widget(self):
+        """Where Qt holds keyboard focus right now. A seam like the hover
+        driver's ``_query_os_buttons``: offscreen test builds cannot activate
+        windows, so tests stand in for the query instead."""
+        return QApplication.focusWidget()
+
+    def eventFilter(self, obj, event):
+        # An application-level filter, but scoped to this window: the object's
+        # window must be this one (an open combo popup is its own top-level, so
+        # its press never claims to belong here) and it must not take focus
+        # itself - otherwise the code below would fight the press that is about
+        # to grant it. Together with the flag that means only no-focus surfaces
+        # of an opted-in form window reach the clearFocus() call.
+        if (self._focus_clearer_armed
+                and event.type() == QEvent.Type.MouseButtonPress
+                and obj.isWidgetType()
+                and obj.window() is self
+                and not obj.focusPolicy() & (Qt.FocusPolicy.ClickFocus | Qt.FocusPolicy.StrongFocus)):
+            focused = self._query_focused_widget()
+            if focused is not None:
+                focused.clearFocus()
+        return False
+
+    def closeEvent(self, event):
+        super().closeEvent(event)
+        # A destroyed QObject auto-drops its filters, but a closed window can
+        # live on (the controller keeps the reference until it replaces it), so
+        # drop the application-level one here instead.
+        if self._focus_clearer_armed:
+            QApplication.instance().removeEventFilter(self)
+            self._focus_clearer_armed = False
 
     def paintEvent(self, event):
         if self.rect().isEmpty():

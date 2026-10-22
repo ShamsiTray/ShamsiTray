@@ -103,7 +103,9 @@ def test_fas_icon_glyphs_are_distinct():
               APP_CONFIG.FAS.FA_SUN_SOLID, APP_CONFIG.FAS.FA_MOON_SOLID,
               APP_CONFIG.FAS.FA_XMARK, APP_CONFIG.FAS.FA_MINUS,
               APP_CONFIG.FAS.FA_TRASH, APP_CONFIG.FAS.FA_ARROWS_ROTATE,
-              APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION, APP_CONFIG.FAS.FA_CIRCLE_INFO]
+              APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION, APP_CONFIG.FAS.FA_CIRCLE_INFO,
+              APP_CONFIG.FAS.FA_SAVE, APP_CONFIG.FAS.FA_COPY,
+              APP_CONFIG.FAS.FA_CLOCK, APP_CONFIG.FAS.FA_WIFI]
     assert len(set(glyphs)) == len(glyphs)
     assert all(ord(g) > 0xE000 for g in glyphs)  # private-use area
 
@@ -154,7 +156,7 @@ def test_font_awesome_free_covers_every_used_glyph(qtbot):
                  "FA_MOON_SOLID", "FA_XMARK", "FA_MINUS", "FA_TRASH",
                  "FA_PEN", "FA_ARROWS_ROTATE", "FA_DOWNLOAD", "FA_UPLOAD",
                  "FA_CIRCLE_EXCLAMATION", "FA_CIRCLE_INFO", "FA_WIFI",
-                 "FA_SAVE", "FA_CLOCK"):
+                 "FA_SAVE", "FA_COPY", "FA_CLOCK"):
         glyph = ord(getattr(APP_CONFIG.FAS, name))
         assert metrics.inFontUcs4(glyph), f"{name} (U+{glyph:04X}) missing from {APP_CONFIG.FONT_AWESOME_FAMILY}"
 

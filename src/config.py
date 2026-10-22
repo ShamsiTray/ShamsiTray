@@ -204,6 +204,7 @@ class Config:
         FA_CIRCLE_INFO = '\uf05a'
         FA_WIFI = '\uf1eb'
         FA_SAVE = '\uf0c7'
+        FA_COPY = '\uf0c5'  # copy-all control on the distance card
         FA_CLOCK = '\uf017'
 
 APP_CONFIG = Config()

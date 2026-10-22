@@ -96,6 +96,9 @@ def build_tray_menu(tray):
     add_menu_action(tray, menu, "تبدیل تاریخ",
                     lambda: close_menu_then(tray, tray._open_date_converter))
     menu.add_divider()
+    add_menu_action(tray, menu, "فاصله دو تاریخ",
+                    lambda: close_menu_then(tray, tray._open_date_distance))
+    menu.add_divider()
     add_theme_toggle_action(tray, menu)
     menu.add_divider()
     add_startup_action(tray, menu)

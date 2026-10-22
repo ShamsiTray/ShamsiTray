@@ -9,12 +9,22 @@ import time
 import pytest
 
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QComboBox, QLabel, QWidget
 
 import ui.windows.base_window as base_window_module
 import utils.ui_helpers as ui_helpers_module
 from config import APP_CONFIG
 from ui.windows.base_window import BaseFramelessWindow
+
+
+class _FocusProbe:
+    """Stands in for Qt's held-focus query in offscreen builds, where windows
+    cannot be activated at all: records every clearFocus() the window issues."""
+
+    cleared = 0
+
+    def clearFocus(self):
+        self.cleared += 1
 
 
 def test_default_flags_are_tool_stays_on_top(qtbot):
@@ -272,6 +282,34 @@ def test_unpinning_an_ordinary_window_never_dismisses_it(qtbot, monkeypatch):
     window.set_always_on_top(False)
 
     assert window.isVisible()
+
+
+# --- click-to-clear focus -------------------------------------------------------------------
+
+def test_blank_click_focus_clearing_is_opt_in(qtbot, monkeypatch):
+    """A bare base window must not intercept clicks: only an opted-in form
+    window (the distance tool) arms its application-level filter."""
+    window = BaseFramelessWindow()
+    qtbot.addWidget(window)
+    assert not BaseFramelessWindow.CLEAR_FOCUS_ON_BLANK_CLICK
+    assert not window._focus_clearer_armed
+
+    from tests.qt_mousing import press
+
+    window.resize(220, 160)
+    field = QComboBox(window)
+    field.resize(100, 30)
+    label = QLabel(window)
+    label.move(0, 60)
+    window.show()
+    qtbot.waitExposed(window)
+
+    probe = _FocusProbe()
+    monkeypatch.setattr(window, "_query_focused_widget", lambda: probe)
+    QApplication.sendEvent(label, press(label))
+    # No opt-in, no interception: a press whose target cannot take focus
+    # still leaves Qt's focus state untouched.
+    assert probe.cleared == 0
 
 
 # --- hover driver ---------------------------------------------------------------------------

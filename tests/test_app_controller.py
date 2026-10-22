@@ -1348,6 +1348,16 @@ def test_open_date_converter_reuses_window(tray, qtbot):
     window.close()
 
 
+def test_open_date_distance_reuses_window(tray, qtbot):
+    tray._open_date_distance()
+    window = tray.distance_window
+    qtbot.addWidget(window)
+    assert window.isVisible()
+    tray._open_date_distance()
+    assert tray.distance_window is window  # activated, not recreated
+    window.close()
+
+
 def test_open_date_converter_recreates_after_close(tray, qtbot):
     tray._open_date_converter()
     first = tray.converter_window
