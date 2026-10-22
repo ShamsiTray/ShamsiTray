@@ -297,12 +297,20 @@ def next_occurrence_jdate(key: str, today: Optional[jdatetime.date] = None) -> O
     Yearly/monthly events roll forward to the next occurrence strictly
     today-or-later; day numbers that do not exist in a target month clamp
     down to that month's last day (e.g. monthly day 31 -> 30 in a 30-day
-    month).
+    month). A key that can never mean a date returns None: unparseable
+    keys, and the concrete-year wildcard-month shape ``normalize_event_key``
+    keeps out of the store - no occurrence exists for it.
     """
     parsed = parse_event_key(key)
     if parsed is None:
         return None
     year, month, day = parsed
+    if year is not None and month is None:
+        # The wildcard notation parses a concrete year with a wildcard
+        # month, but the shape carries no date at all (the store boundary
+        # rejects it); answered here so the whole read surface stays total
+        # instead of constructing date(year, None, day) inside jdatetime.
+        return None
     today = today or jdatetime.date.today()
 
     if year is not None:
@@ -379,6 +387,7 @@ def is_expired_one_time(events: Dict[str, dict], key: str,
     or later - so the recurrence check is part of the rule, read from the
     entry the store keeps under the key.
     """
+    today = today or jdatetime.date.today()
 
     def _past() -> bool:
         next_date = next_occurrence_jdate(key, today)
