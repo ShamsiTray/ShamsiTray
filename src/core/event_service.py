@@ -29,6 +29,10 @@ composition — re-entrant announcements are swallowed — so one user save
 cannot run the refresh twice (the ride-along expiry cleanup would, when it
 landed a removal).
 Both hooks fire with no arguments and keep this module Qt-free and testable.
+They sit after their transaction's outcome, so a listener that fails is
+logged and skipped - it can never invert a verdict (a refresh failure
+after a committed save leaves stale surfaces, not a failed save; a failed
+save-failure notice after a rollback stays in the log, not the caller).
 Interactive mutation paths pass ``notify=True``; background cleanup passes
 ``notify=False`` and only logs.
 """
@@ -124,7 +128,11 @@ class EventService:
         self.events.clear()
         self.events.update(snapshot)
         if notify and self.on_save_error is not None:
-            self.on_save_error()
+            try:
+                self.on_save_error()
+            except Exception:
+                logger.exception(
+                    "Save-failure notice could not be shown; the rollback already restored the store.")
         return False
 
     def _announce_changed(self) -> None:
@@ -134,12 +142,16 @@ class EventService:
         announcement and is swallowed there: the composition already running is
         that commit's announcement, and the final steps of its remaining pass
         read the settled store — no re-entrant pass, no duplicate UI work.
+        A failure inside the composition is logged, not propagated: the save
+        already committed, so the verdict cannot be revised.
         """
         if self.on_store_changed is None or self._announcing:
             return
         self._announcing = True
         try:
             self.on_store_changed()
+        except Exception:
+            logger.exception("Post-commit refresh failed; surfaces may be stale.")
         finally:
             self._announcing = False
 
