@@ -231,6 +231,32 @@ def test_is_expired_one_time_is_the_rule_clean_expired_layers_the_flag_on():
     assert event_io.is_expired_one_time({}, "1404-05-01", today) is False
 
 
+def test_is_expired_one_time_resolves_the_default_today():
+    """An omitted ``today`` resolves like the sibling date calls do - the
+    verdict answers, instead of the default reaching the comparison as
+    None and raising."""
+    real_today = jdatetime.date.today()
+    past = (real_today - jdatetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    future = (real_today + jdatetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    events = {
+        past: {"text": "past", "recurrence": "none", "remove_after_finish": False},
+        future: {"text": "future", "recurrence": "none", "remove_after_finish": False},
+    }
+    assert event_io.is_expired_one_time(events, past) is True
+    assert event_io.is_expired_one_time(events, future) is False
+
+
+def test_is_expired_one_time_fails_closed_on_wildcard_month_key():
+    """A concrete year with a wildcard month is not a one-time key shape
+    (normalize_event_key keeps it out of the store); fed to the public rule
+    directly it must fail closed, not raise inside next_occurrence_jdate."""
+    today = jdatetime.date(1404, 5, 10)
+    events = {"1404-00-05": {"text": "x", "recurrence": "none",
+                             "remove_after_finish": False}}
+    assert event_io.is_expired_one_time(events, "1404-00-05", today) is False
+    assert event_io.is_expired_one_time(events, "1404-00-05") is False
+
+
 # --- event-text preview for the themed cards ---
 
 def test_truncate_preview_keeps_short_text_whole():
