@@ -1282,9 +1282,9 @@ def test_event_year_input_rejects_years_beyond_calendar_range(manager):
     widget.day_combo.setCurrentIndex(widget.day_combo.findData(1))
     widget.year_input.setText(to_persian_digits(3213))
     assert widget.event_date() is None
-    assert widget._year_is_out_of_range() is True
+    assert widget.date_row._year_is_out_of_range() is True
     widget.year_input.setText(to_persian_digits(MIN_EVENT_YEAR))
-    assert widget._year_is_out_of_range() is False
+    assert widget.date_row._year_is_out_of_range() is False
     assert widget.event_date() == jdatetime.date(MIN_EVENT_YEAR, 1, 1)
     widget.year_input.setText(to_persian_digits(MAX_EVENT_YEAR))
     assert widget.event_date() == jdatetime.date(MAX_EVENT_YEAR, 1, 1)
@@ -1300,7 +1300,7 @@ def test_event_save_blocked_for_out_of_range_year(manager, qtbot):
     widget.year_input.setText(to_persian_digits(3213))
     widget._on_save()
     assert widget.isVisible()                    # editor stays open
-    assert widget._year_error is True            # red error border is on
+    assert widget.date_row._year_error is True   # red error border is on
     assert manager.controller.user_events == {}
 
 
