@@ -1598,6 +1598,33 @@ def test_import_without_collisions_never_asks(manager, monkeypatch, tmp_path):
     assert set(manager.controller.user_events) == {"1405-08-01", "1406-03-05"}
 
 
+def test_import_of_already_reflected_file_skips_and_never_asks(manager, monkeypatch, tmp_path):
+    """Entries the store already holds exactly are skips, not replacements:
+    re-importing an export neither replaces events nor asks about them, and
+    the summary names the skipped count."""
+    manager.controller.user_events = {"1405-08-01": _entry("already here"),
+                                      "0000-09-01": _entry("yearly store", "yearly")}
+    import_file = _write_import_file(
+        tmp_path,
+        {"1405-08-01": _entry("already here"),
+         "0000-09-01": _entry("yearly store", "yearly"),
+         "1406-02-14": _entry("fresh")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+
+    def boom(*a, **k):
+        raise AssertionError("identical entries must not reach the confirmation")
+
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(boom))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a[2])))
+    assert manager._import_events_from_dialog() is True
+    assert set(manager.controller.user_events) == {"1405-08-01", "0000-09-01", "1406-02-14"}
+    assert len(boxes) == 1
+    assert "تکراری نادیده گرفته شد" in boxes[0]
+
+
 def test_import_save_failure_leaves_disk_and_memory_untouched(manager, monkeypatch, tmp_path):
     """Review item #2, failure side: with the single atomic save there is no
     half-imported file to outlive the in-memory rollback."""

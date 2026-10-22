@@ -326,6 +326,8 @@ class EventService:
         The returned plan carries the exact set of existing events the import
         would replace (exact-key overwrites AND same-date cross-representation
         collisions), so the UI can confirm before anything is applied.
+        Entries the store already holds exactly ride through as the plan's
+        ``unchanged`` no-ops.
         """
         return build_import_plan(self.events, imported)
 

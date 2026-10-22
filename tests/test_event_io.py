@@ -436,6 +436,37 @@ def test_build_import_plan_no_collisions():
     assert set(plan.applied) == {"1406-03-05"}
 
 
+def test_build_import_plan_skips_store_identical_entries():
+    """Entries the store already holds exactly (same key, same normalized
+    entry) are no-op skips: they never enter the fold nor the replacement
+    set, and the rest of the file applies as if they were absent."""
+    existing = {
+        "1405-08-01": _entry("kept exactly"),
+        "1405-09-10": _entry("existing"),
+    }
+    imported = {
+        "1405-08-01": _entry("kept exactly"),   # identical -> unchanged
+        "1405-09-10": _entry("different text"),  # same key, other content
+        "1406-02-14": _entry("fresh"),           # new
+    }
+    plan = event_io.build_import_plan(existing, imported)
+    assert plan.unchanged == {"1405-08-01": _entry("kept exactly")}
+    assert set(plan.applied) == {"1405-09-10", "1406-02-14"}
+    assert set(plan.replaced_existing) == {"1405-09-10"}
+    assert plan.internal_replaced == 0
+
+
+def test_build_import_plan_same_text_other_key_shape_still_replaces():
+    """The skip is exact-form, not same-text: a yearly file key over a
+    one-time store key is a real takeover and stays a confirmed replace."""
+    existing = {"1405-08-01": _entry("same words")}
+    imported = {"0000-08-01": _entry("same words", "yearly")}
+    plan = event_io.build_import_plan(existing, imported)
+    assert plan.unchanged == {}
+    assert plan.applied == {"0000-08-01": _entry("same words", "yearly")}
+    assert set(plan.replaced_existing) == {"1405-08-01"}
+
+
 # --- canonical-key collisions are accounted for ---------------------------------
 
 
