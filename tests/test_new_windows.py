@@ -146,19 +146,22 @@ def test_manager_count_label_reflects_active_filter(manager):
 
 
 def test_manager_header_stays_put_when_a_filter_empties_the_list(manager):
-    """Hiding the list used to hand its slot to the title row, so the header and
-    the filter row slid down whenever a search matched nothing."""
+    """Hiding the list used to hand its slot to the title row, so the caption
+    bar's controls and the filter row slid down whenever a search matched
+    nothing."""
     manager.user_events["1405-01-01"] = {"text": "نخست", "recurrence": RECURRENCE_NONE,
                                          "remove_after_finish": False}
     manager.refresh_list()
     QApplication.processEvents()
-    before = (manager.title_label.geometry().y(), manager.search_input.geometry().y())
+    before = (manager.count_label.geometry().y(), manager.add_button.geometry().y(),
+              manager.search_input.geometry().y())
 
     manager.search_input.setText("zzzz-nothing-matches")
     QApplication.processEvents()
 
     assert manager.empty_label.isVisible()
-    after = (manager.title_label.geometry().y(), manager.search_input.geometry().y())
+    after = (manager.count_label.geometry().y(), manager.add_button.geometry().y(),
+             manager.search_input.geometry().y())
     assert after == before
 
 

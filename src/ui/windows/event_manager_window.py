@@ -217,7 +217,7 @@ class EventManagerWindow(BaseFramelessWindow):
     events_changed = pyqtSignal()
     TASKBAR_ICON = True  # taskbar entry so a minimized manager can be reopened
 
-    WIDTH, HEIGHT = 580, 560
+    WIDTH, HEIGHT = 580, 528
 
     def __init__(self, controller):
         super().__init__()
@@ -252,22 +252,18 @@ class EventManagerWindow(BaseFramelessWindow):
         main_layout.setSpacing(10)
 
         self.title_bar = WindowTitleBar(self.close, self.showMinimized)
-        main_layout.addLayout(self.title_bar)
-        main_layout.addSpacing(2)
-
-        header_row = QHBoxLayout()
-        self.title_label = QLabel("مدیریت رویدادها")
+        # The caption bar IS the header row: its far edge carries the event
+        # counter and the add button, so the content needs no repeated name of
+        # its own (the window is titled in the taskbar and the tray menu row).
         self.count_label = QLabel("")
-        header_row.addWidget(self.title_label)
-        header_row.addStretch()
-        header_row.addWidget(self.count_label)
-        header_row.addSpacing(10)
         self.add_button = QPushButton("افزودن رویداد")
         self.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_button.clicked.connect(self._on_add_requested)
-        header_row.addWidget(self.add_button)
-        header_row.addSpacing(10)           # back to the header's 18px margin line
-        main_layout.addLayout(header_row)
+        self.title_bar.addWidget(self.count_label)
+        self.title_bar.addSpacing(10)
+        self.title_bar.addWidget(self.add_button)
+        main_layout.addLayout(self.title_bar)
+        main_layout.addSpacing(2)
 
         filter_row = QHBoxLayout()
         self.search_input = QLineEdit()
@@ -790,8 +786,6 @@ class EventManagerWindow(BaseFramelessWindow):
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         self.title_bar.update_styles()
-        self.title_label.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 18px; font-weight: bold; background: transparent; border: none;")
         self.count_label.setStyleSheet(
             f"color: {palette['GREY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; font-weight: bold; background: transparent; border: none;")
         self.add_button.setStyleSheet(accent_button_stylesheet(palette, padding="6px 14px"))
