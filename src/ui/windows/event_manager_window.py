@@ -808,9 +808,13 @@ class EventManagerWindow(BaseFramelessWindow):
         ghost_style = ghost_button_stylesheet(palette)
         self.import_button.setStyleSheet(ghost_style)
         self.export_button.setStyleSheet(ghost_style)
-        self.scroll_area.setStyleSheet("QScrollArea { background: transparent; }"
-                                       + scrollbar_stylesheet(palette,
-                                                              bottom_margin=SCROLL_BOTTOM_PAD_PX))
+        # Opaque in the window's own fill (see the viewer's scroll area): a
+        # transparent viewport redraws the translucent glass under every
+        # scrolled row and the motion ghosts.
+        self.scroll_area.setStyleSheet(
+            f"QScrollArea {{ background: {palette['BACKGROUND_COLOR']}; }}"
+            + scrollbar_stylesheet(palette,
+                                   bottom_margin=SCROLL_BOTTOM_PAD_PX))
         self.list_container.setStyleSheet("background: transparent;")
         self._restyle_dynamic_children()
         self.event_input_widget.update_styles()
