@@ -262,6 +262,9 @@ class EventManagerWindow(BaseFramelessWindow):
         self.title_bar.addWidget(self.count_label)
         self.title_bar.addSpacing(10)
         self.title_bar.addWidget(self.add_button)
+        # The window's left band is the rail's 8px strip; this pad brings the
+        # controls to the 18px content margin the rows keep on the other side.
+        self.title_bar.addSpacing(10)
         main_layout.addLayout(self.title_bar)
         main_layout.addSpacing(2)
 

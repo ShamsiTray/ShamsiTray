@@ -36,6 +36,10 @@ class WindowTitleBar(QHBoxLayout):
 
     def __init__(self, on_close, on_minimize=None, title: str = ""):
         super().__init__()
+        # One gap for every item pair in the row: 30px icons, and - on the
+        # windows whose bars host controls at the far edge - those controls
+        # ride the same rhythm instead of the platform's default.
+        self.setSpacing(8)
         self.exit_button = QPushButton(APP_CONFIG.FAS.FA_XMARK)
         self.minimize_button = QPushButton(APP_CONFIG.FAS.FA_MINUS)
         for button in (self.exit_button, self.minimize_button):

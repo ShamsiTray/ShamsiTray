@@ -218,6 +218,9 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.title_bar.addWidget(self.prev_year_btn)
         self.title_bar.addWidget(self.year_combo)
         self.title_bar.addWidget(self.next_year_btn)
+        # The window's left band is the rail's 8px strip; this pad brings the
+        # stepper to the 18px content margin the rows keep on the other side.
+        self.title_bar.addSpacing(10)
         main_layout.addLayout(self.title_bar)
 
         self.count_label = QLabel("")
