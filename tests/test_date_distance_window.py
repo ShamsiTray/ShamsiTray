@@ -18,10 +18,11 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QLabel
 
 from config import APP_CONFIG
+from ui.widgets.calendar_switch import CALENDAR_JALALI
 from ui.widgets.event_input import DateSelectorRow, GregorianDateSelectorRow
 from ui.widgets.tooltip import CustomTooltip
-from ui.windows.date_distance_window import (CALENDAR_GREGORIAN, CALENDAR_JALALI,
-                                             COPIED_MESSAGE, COPY_ALL_CORNER_INSET_PX,
+from ui.windows.date_distance_window import (CALENDAR_GREGORIAN, COPIED_MESSAGE,
+                                             COPY_ALL_CORNER_INSET_PX,
                                              GREGORIAN_YEAR_MAX,
                                              GREGORIAN_YEAR_MIN, HERO_MIN_CONTRAST,
                                              JALALI_YEAR_MAX, JALALI_YEAR_MIN,

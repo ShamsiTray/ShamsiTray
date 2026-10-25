@@ -22,7 +22,8 @@ ShamsiTray is a Python PyQt6 system-tray calendar app for Windows that displays 
                          # EventManagerWindow, HolidayViewerWindow, TutorialWindow,
                          # BaseFramelessWindow (+ window-chrome helpers)
       widgets/           # CalendarDayCell, Tooltip, EventInput, GoToDate, Checkbox (custom),
-                         # ConfirmDialog (themed), ConfirmOverlay (in-calendar), Menu widgets,
+                         # ConfirmDialog (themed), ConfirmOverlay (in-calendar), CalendarSwitch
+                         # («شمسی | میلادی» pill of the date tools' caption bars), Menu widgets,
                          # tray-menu builder, OverlayBlocker (one dimmer behind every overlay)
     utils/
       date_utils.py      # Jalali/Gregorian helpers, formatting, digit conversion, leap-year, validation

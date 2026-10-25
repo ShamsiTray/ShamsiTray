@@ -38,12 +38,13 @@ cannot answer without it, so it says why instead of going quiet.
 import datetime
 
 import jdatetime
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QCursor
-from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QPushButton,
+from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QStackedWidget, QVBoxLayout, QWidget)
 
 from config import APP_CONFIG
+from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CalendarSwitch
 from ui.widgets.event_input import DateSelectorRow, GregorianDateSelectorRow
 from ui.widgets.tooltip import CustomTooltip, TooltipButton
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
@@ -56,8 +57,6 @@ from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
 
-CALENDAR_JALALI = "jalali"
-CALENDAR_GREGORIAN = "gregorian"
 # The hero number is large text: WCAG asks 3:1 of it (4.5:1 is for body text).
 HERO_MIN_CONTRAST = 3.0
 COPIED_MESSAGE = "کپی شد"
@@ -196,57 +195,6 @@ class CopyRow(QWidget):
             copy_with_flash(self.copy_text())
         else:
             super().mousePressEvent(event)
-
-
-class CalendarSwitch(QFrame):
-    """The شمسی | میلادی segmented control of the caption row."""
-    calendar_changed = pyqtSignal(str)  # CALENDAR_JALALI / CALENDAR_GREGORIAN
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setObjectName("CalendarSwitch")
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(0)
-        self.jalali_button = QPushButton("شمسی")
-        self.gregorian_button = QPushButton("میلادی")
-        self._calendar = CALENDAR_JALALI
-        for button, calendar in ((self.jalali_button, CALENDAR_JALALI),
-                                 (self.gregorian_button, CALENDAR_GREGORIAN)):
-            button.setCheckable(True)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(lambda _checked=False, c=calendar: self.set_calendar(c))
-            layout.addWidget(button)
-        self._sync_checked()
-
-    @property
-    def calendar(self) -> str:
-        return self._calendar
-
-    def set_calendar(self, calendar: str) -> None:
-        if calendar == self._calendar:
-            self._sync_checked()  # a click on the checked segment must not uncheck it
-            return
-        self._calendar = calendar
-        self._sync_checked()
-        self.calendar_changed.emit(calendar)
-
-    def _sync_checked(self) -> None:
-        self.jalali_button.setChecked(self._calendar == CALENDAR_JALALI)
-        self.gregorian_button.setChecked(self._calendar == CALENDAR_GREGORIAN)
-
-    def update_styles(self) -> None:
-        palette = APP_CONFIG.get_current_palette()
-        font = f"font-family: '{APP_CONFIG.FONT_FAMILY}';"
-        self.setStyleSheet(
-            f"QFrame#CalendarSwitch {{ background-color: {palette['INPUT_BG_COLOR']}; "
-            f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 11px; }}"
-            f"QPushButton {{ {font} font-size: 14px; font-weight: bold; padding: 5px 20px; "
-            f"border: none; border-radius: 8px; background: transparent; "
-            f"color: {palette['WEEKDAY_NAMES_COLOR']}; }}"
-            f"QPushButton:hover:!checked {{ color: {palette['TEXT_COLOR']}; }}"
-            f"QPushButton:checked {{ background-color: {palette['ACCENT_COLOR']}; color: #ffffff; }}")
 
 
 class ResultCard(QFrame):
