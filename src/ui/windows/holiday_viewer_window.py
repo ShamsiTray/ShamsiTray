@@ -162,7 +162,7 @@ class HolidayRowWidget(QFrame):
 class HolidayViewerWindow(BaseFramelessWindow):
     """Read-only list of official holidays grouped by Persian month."""
 
-    WIDTH, HEIGHT = 430, 560
+    WIDTH, HEIGHT = 430, 528
     TASKBAR_ICON = True  # taskbar entry so a minimized viewer can be reopened
 
     def __init__(self, holidays_cache: Dict[int, Dict[Tuple[int, int], List[str]]]):
@@ -195,19 +195,18 @@ class HolidayViewerWindow(BaseFramelessWindow):
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
         # The scrollbar's rail hangs in the left padding band instead of the
-        # margin line the header rows keep (the constraint is owned by the
-        # manager's main_layout comment); content compensation is the same
+        # 18px margin line the content rows keep (the constraint is owned by
+        # the manager's main_layout comment); content compensation is the same
         # trailing addSpacing there.
         main_layout.setContentsMargins(8, 14, 18, 14)
         main_layout.setSpacing(10)
 
         self.title_bar = WindowTitleBar(self.close, self.showMinimized)
-        main_layout.addLayout(self.title_bar)
-
-        header_row = QHBoxLayout()
-        self.title_label = QLabel("تعطیلات رسمی")
         # Year stepper buttons (older year on the right, like the calendar's
         # month arrows); the combo alone lists only years that have data.
+        # The caption bar IS the header row: its far edge carries the stepper,
+        # and the content keeps no headline of its own (the window is titled
+        # by the taskbar/Alt-Tab native title and the tray menu row).
         self.prev_year_btn = QPushButton("❯")
         self.prev_year_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prev_year_btn.clicked.connect(self._go_to_prev_year)
@@ -216,13 +215,10 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self.next_year_btn.clicked.connect(self._go_to_next_year)
         self.year_combo = QComboBox()
         self.year_combo.currentIndexChanged.connect(self._fill_year)
-        header_row.addWidget(self.title_label)
-        header_row.addStretch()
-        header_row.addWidget(self.prev_year_btn)
-        header_row.addWidget(self.year_combo)
-        header_row.addWidget(self.next_year_btn)
-        header_row.addSpacing(10)           # back to the header's 18px margin line
-        main_layout.addLayout(header_row)
+        self.title_bar.addWidget(self.prev_year_btn)
+        self.title_bar.addWidget(self.year_combo)
+        self.title_bar.addWidget(self.next_year_btn)
+        main_layout.addLayout(self.title_bar)
 
         self.count_label = QLabel("")
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -465,8 +461,6 @@ class HolidayViewerWindow(BaseFramelessWindow):
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         self.title_bar.update_styles()
-        self.title_label.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 18px; font-weight: bold; background: transparent; border: none;")
         self.count_label.setStyleSheet(
             f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; background: transparent; border: none;")
         self._update_summary()
