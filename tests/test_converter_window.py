@@ -360,6 +360,41 @@ def test_copy_payloads_are_rebuilt_on_every_conversion(window):
     assert QApplication.clipboard().text() == format_jalali_numeric(jdatetime.date(1404, 6, 15))
 
 
+def test_elapsed_line_copies_the_span_in_latin_digits(window):
+    """The elapsed row is a copy row like the date values, and the clipboard
+    gets the SPAN alone - no «فاصله زمانی:» caption, no «مانده/گذشته» - in
+    Latin digits, the form the distance window's breakdown row shows."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    from utils.date_utils import format_distance_units, from_persian_digits
+
+    target = jdatetime.date.today() + datetime.timedelta(days=400)
+    _convert_jalali(window, target)
+    distance = describe_date_distance(target, today=jdatetime.date.today())
+    QApplication.clipboard().clear()
+    window._copy_to_clipboard(window.elapsed_text)
+    pasted = QApplication.clipboard().text()
+    assert pasted == from_persian_digits(format_distance_units(distance))
+    assert "مانده" not in pasted and "گذشته" not in pasted
+    assert window.elapsed_text.cursor().shape() == Qt.CursorShape.PointingHandCursor
+
+
+def test_elapsed_today_line_click_copies_nothing(window):
+    """«تاریخ امروز است.» has nothing worth pasting: its payload stamps empty,
+    so the click leaves the clipboard alone and the cursor stays an arrow -
+    the same treatment as the distance window's equal-dates message."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+
+    QApplication.clipboard().clear()
+    QApplication.clipboard().setText("sentinel")
+    _convert_jalali(window, jdatetime.date.today())
+    assert window.elapsed_text.text() == "تاریخ امروز است."
+    window._copy_to_clipboard(window.elapsed_text)
+    assert QApplication.clipboard().text() == "sentinel"
+    assert window.elapsed_text.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+
 def test_enter_converts_through_the_button_when_submittable(window):
     """The routing must not swallow Enter for a valid year — it goes through the
     button and still converts."""
