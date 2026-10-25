@@ -852,6 +852,18 @@ def test_holiday_viewer_count_label_shows_days_only():
     window.close()
 
 
+def test_holiday_viewer_summary_sits_on_a_distinct_chip():
+    """The summary wears the field chip: bare text on the flat window fill had
+    no edge to read against."""
+    holidays = {1403: {(1, 1): ["عید"]}}
+    window = HolidayViewerWindow(holidays)
+    window.year_combo.setCurrentIndex(window.year_combo.findData(1403))
+    assert window.count_label.objectName() == "SummaryCard"
+    style = window.count_label.styleSheet()
+    assert "border" in style and "background:" in style and "border: none" not in style
+    window.close()
+
+
 def test_split_lunar_date():
     """Bracketed lunar dates split out of the title for muted inline rendering."""
     assert split_lunar_date("تاسوعای حسینی [ ۹ محرم ]") == ("تاسوعای حسینی", "۹ محرم")

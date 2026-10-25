@@ -224,6 +224,8 @@ class HolidayViewerWindow(BaseFramelessWindow):
         main_layout.addLayout(self.title_bar)
 
         self.count_label = QLabel("")
+        self.count_label.setObjectName("SummaryCard")
+        self.count_label.setFixedHeight(36)
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.count_label)
         self._next_row: Optional[QWidget] = None
@@ -469,8 +471,14 @@ class HolidayViewerWindow(BaseFramelessWindow):
     def update_styles(self):
         palette = APP_CONFIG.get_current_palette()
         self.title_bar.update_styles()
+        # The summary is its own surface: bare text on the window's flat fill
+        # had nothing to read against, so it wears the field chip the inputs
+        # and steppers already carry. The counts inside take the accent
+        # through legible_on (_update_summary).
         self.count_label.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px; background: transparent; border: none;")
+            f"background: {palette['INPUT_BG_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']};"
+            f" border-radius: 10px; color: {palette['TEXT_COLOR']};"
+            f" font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 13px;")
         self._update_summary()
         self.year_combo.setStyleSheet(combo_stylesheet(palette, padding="4px 12px", center_text=True))
         self.year_combo.setFixedHeight(36)
