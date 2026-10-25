@@ -704,6 +704,16 @@ def test_event_input_date_selector_day_clamping():
     assert widget.day_combo.currentData() == 30  # clamped from 31
 
 
+def test_event_input_date_selector_months_are_numbered():
+    """The manager's editor months read «۰۶ - شهریور» like every other date
+    surface (converter, go-to-date, distance window); itemData stays 1..12."""
+    widget = EventInputWidget()
+    widget.set_date_selector_visible(True, initial_date=jdatetime.date(1403, 6, 2))
+    assert [widget.month_combo.itemData(i) for i in range(widget.month_combo.count())] \
+        == list(range(1, 13))
+    assert widget.month_combo.itemText(5) == "۰۶ - شهریور"
+
+
 def test_event_input_date_selector_hidden_by_default():
     widget = EventInputWidget()
     assert widget.date_row.isHidden()

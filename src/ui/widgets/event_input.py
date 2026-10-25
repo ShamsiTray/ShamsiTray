@@ -165,7 +165,7 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
         # reverse of what shows).
         self.ltr_date_order = ltr_date_order
         # ``numbered_months`` labels the months «۰۶ - شهریور» like the converter
-        # and go-to-date do; the default keeps the editor's bare names.
+        # and go-to-date do; the default keeps them bare.
         self.numbered_months = numbered_months
         # ``flag_empty_year`` gives an EMPTY year the same red border and hint as
         # a wrong one. The shared mixin treats empty as "not out of range" (a
@@ -385,7 +385,7 @@ class EventInputWidget(QWidget):
         main_layout.addWidget(self.title_label)
 
         # Optional date selector (event manager "add" flow); hidden by default.
-        self.date_row = DateSelectorRow(parent=self)
+        self.date_row = DateSelectorRow(parent=self, numbered_months=True)
         main_layout.addWidget(self.date_row)
         # The row owns the picked widgets; the editor keeps them under the
         # names its interface has always had, so every reader (tests included)
