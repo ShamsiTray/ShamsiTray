@@ -41,8 +41,8 @@ class WindowTitleBar(QHBoxLayout):
         for button in (self.exit_button, self.minimize_button):
             button.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 10))
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignTop)
-        self.addWidget(self.minimize_button, alignment=Qt.AlignmentFlag.AlignTop)
+        self.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self.addWidget(self.minimize_button, alignment=Qt.AlignmentFlag.AlignVCenter)
         if title:
             title_label = QLabel(title)
             title_label.setObjectName("WindowTitleLabel")
