@@ -849,6 +849,43 @@ def rgba_string(color_hex: str, alpha: float, *, channel_max: int = 255) -> str:
     return f"rgba({color.red()}, {color.green()}, {color.blue()}, {alpha_value})"
 
 
+def _luminance(color: QColor) -> float:
+    """WCAG relative luminance of an opaque colour."""
+    def channel(value: float) -> float:
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+    return (0.2126 * channel(color.redF()) + 0.7152 * channel(color.greenF())
+            + 0.0722 * channel(color.blueF()))
+
+
+def contrast_ratio(first: QColor, second: QColor) -> float:
+    high, low = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def legible_on(color_hex: str, background_hex: str, min_ratio: float = 3.0) -> str:
+    """``color_hex`` nudged lighter (dark ground) or darker (light ground) until
+    it clears ``min_ratio`` against the background; unchanged when it already does.
+
+    The accent is tuned as a button fill with white text on it (the dark
+    theme's #398439 reads about 2:1 on the card), so text that borrows the
+    accent's hue reaches it through this instead of using it raw."""
+    color, background = QColor(color_hex), QColor(background_hex)
+    lighten = _luminance(background) < 0.5
+    for _ in range(12):
+        if contrast_ratio(color, background) >= min_ratio:
+            break
+        color = color.lighter(112) if lighten else color.darker(112)
+    return color.name()
+
+
+def mix_colors(first_hex: str, second_hex: str, weight: float = 0.5) -> str:
+    """``first`` blended toward ``second`` by ``weight`` (0 = first, 1 = second)."""
+    a, b = QColor(first_hex), QColor(second_hex)
+    return QColor(round(a.red() + (b.red() - a.red()) * weight),
+                  round(a.green() + (b.green() - a.green()) * weight),
+                  round(a.blue() + (b.blue() - a.blue()) * weight)).name()
+
+
 def plain_menu_stylesheet(palette: dict, *, dividers: bool = False) -> str:
     """The stock-QMenu popup look shared by the tray menu and the calendar's
     go-to-date popup: one rounded frame clause, optionally followed by the
