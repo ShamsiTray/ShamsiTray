@@ -34,7 +34,7 @@ from utils.date_utils import (describe_date_distance, persian_month_name,
 from utils.logger import setup_logging
 from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
                               center_combo_items, combo_stylesheet,
-                              fit_combo_width, rgba_string,
+                              fit_combo_width, legible_on, rgba_string,
                               scrollbar_stylesheet)
 from .base_window import BaseFramelessWindow
 
@@ -425,7 +425,12 @@ class HolidayViewerWindow(BaseFramelessWindow):
         if not self._summary:
             return
         count, year, fridays = self._summary
-        accent = APP_CONFIG.get_current_palette()["ACCENT_COLOR"]
+        palette = APP_CONFIG.get_current_palette()
+        # The accent is a button fill (barely 2:1 against the dark ground), so
+        # the PRINTED numbers take the hue through legible_on while the white
+        # word on it stays crisp - the raw accent is what blended into the
+        # window here.
+        accent = legible_on(palette["ACCENT_COLOR"], palette["BACKGROUND_COLOR"])
         rlm = "\u200f"
         text = (f"<b style='color:{accent}'>{to_persian_digits(count)}</b> روز تعطیل در سال "
                 f"{to_persian_digits(year)}{rlm}")
@@ -483,9 +488,15 @@ class HolidayViewerWindow(BaseFramelessWindow):
         for button in (self.prev_year_btn, self.next_year_btn):
             button.setStyleSheet(nav_style)
             button.setFixedSize(32, 36)
-        self.scroll_area.setStyleSheet("QScrollArea { background: transparent; }"
-                                       + scrollbar_stylesheet(palette,
-                                                              bottom_margin=SCROLL_BOTTOM_PAD_PX))
+        # The viewport is OPAQUE in the window's own fill: a transparent
+        # viewport makes every scrolled repaint redraw the translucent glass
+        # behind it, and the moving rows trail/ghost across the window (the
+        # "trippy" scroll). Same colour, so nothing visibly changes when
+        # standing still.
+        self.scroll_area.setStyleSheet(
+            f"QScrollArea {{ background: {palette['BACKGROUND_COLOR']}; }}"
+            + scrollbar_stylesheet(palette,
+                                   bottom_margin=SCROLL_BOTTOM_PAD_PX))
         self.list_container.setStyleSheet("background: transparent;")
         self.empty_label.setStyleSheet(
             f"color: {palette['GREY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 15px; font-weight: bold; background: transparent;")
