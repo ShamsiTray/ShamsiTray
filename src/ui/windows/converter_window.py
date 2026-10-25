@@ -14,6 +14,7 @@ from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QC
 from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
 
 from config import APP_CONFIG
+from ui.widgets.calendar_switch import CALENDAR_JALALI, CalendarSwitch
 from utils.date_utils import (describe_date_distance, format_distance_breakdown,
                               format_distance_units, format_gregorian_long,
                               format_gregorian_numeric, format_jalali_long,
@@ -63,9 +64,13 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self._initialize_date_inputs()
         self._apply_windows_styles()
 
+    def _input_is_jalali(self) -> bool:
+        """The pill's verdict: which calendar the input row speaks."""
+        return self.calendar_switch.calendar == CALENDAR_JALALI
+
     def _current_year_bounds(self):
         """(min, max) year for the active input mode (jalali vs gregorian)."""
-        if self.conversion_type_combo.currentText() == "شمسی به میلادی":
+        if self._input_is_jalali():
             return self.MIN_JALALI_YEAR, self.MAX_JALALI_YEAR
         return self.MIN_GREGORIAN_YEAR, self.MAX_GREGORIAN_YEAR
 
@@ -79,7 +84,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         of range, the error strip stays up and says what to enter - the red
         border alone left the user guessing."""
         lo, hi = self._current_year_bounds()
-        if self.conversion_type_combo.currentText() == "شمسی به میلادی":
+        if self._input_is_jalali():
             return f"سال شمسی باید بین {to_persian_digits(lo)} و {to_persian_digits(hi)} باشد."
         return f"سال میلادی باید بین {lo} و {hi} باشد."
 
@@ -135,13 +140,17 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
     def _create_title_bar(self) -> QHBoxLayout:
         self.title_bar = WindowTitleBar(self.close, self.showMinimized)
+        # Same seat as the distance window's switch: added after the bar's own
+        # stretch, so the pill sits at the far edge in both windows.
+        self.calendar_switch = CalendarSwitch()
+        self.title_bar.addWidget(self.calendar_switch)
         return self.title_bar
 
     def _create_input_section(self) -> QHBoxLayout:
         grid = QGridLayout()
         grid.setHorizontalSpacing(15)
         grid.setVerticalSpacing(5)
-        labels = {"نوع تبدیل": (0, 0), "روز": (0, 1), "ماه": (0, 2), "سال": (0, 3)}
+        labels = {"روز": (0, 0), "ماه": (0, 1), "سال": (0, 2)}
         self.input_labels = []
         for text, pos in labels.items():
             label = QLabel(text)
@@ -149,23 +158,19 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             grid.addWidget(label, pos[0], pos[1])
             self.input_labels.append(label)
 
-        self.conversion_type_combo = QComboBox()
         self.day_combo = QComboBox()
         # «۰۶ - شهریور» mixes digits with Persian text, which is bidi-ambiguous:
         # DigitsFirstCombo pins the digits-first order on every platform.
         self.month_combo = DigitsFirstCombo()
-
-        self._set_combo_items(self.conversion_type_combo, ["شمسی به میلادی", "میلادی به شمسی"])
         self.year_input = QLineEdit()
         self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         regex = QRegularExpression("^[0-9۰-۹]{0,4}$")
         validator = QRegularExpressionValidator(regex)
         self.year_input.setValidator(validator)
 
-        grid.addWidget(self.conversion_type_combo, 1, 0)
-        grid.addWidget(self.day_combo, 1, 1)
-        grid.addWidget(self.month_combo, 1, 2)
-        grid.addWidget(self.year_input, 1, 3)
+        grid.addWidget(self.day_combo, 1, 0)
+        grid.addWidget(self.month_combo, 1, 1)
+        grid.addWidget(self.year_input, 1, 2)
         wrapper_layout = QHBoxLayout()
         wrapper_layout.addStretch(1)
         wrapper_layout.addLayout(grid)
@@ -250,13 +255,13 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
         combo_style = combo_stylesheet(palette, center_text=True)
         self.title_bar.update_styles()
+        self.calendar_switch.update_styles()
         for label in self.input_labels:
              label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
              label.setFixedHeight(input_field_height)
-        self.conversion_type_combo.setFixedSize(220, input_field_height)
         self.day_combo.setFixedSize(80, input_field_height)
         self.month_combo.setFixedSize(140, input_field_height)
-        for combo in [self.conversion_type_combo, self.day_combo, self.month_combo]:
+        for combo in [self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
         self.year_input.setFixedSize(100, input_field_height)
         self._apply_year_style()
@@ -276,7 +281,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.status_message.setStyleSheet("color: red; font-weight: bold; font-size: 18px;")
 
     def _connect_signals(self):
-        self.conversion_type_combo.currentIndexChanged.connect(self._on_conversion_type_changed)
+        self.calendar_switch.calendar_changed.connect(self._on_calendar_changed)
         self.month_combo.currentIndexChanged.connect(self._update_day_dropdown)
         self.year_input.textChanged.connect(self._update_day_dropdown)
         self.year_input.textChanged.connect(self._update_year_error_state)
@@ -288,19 +293,17 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         # تبدیل then swallows the key on an empty or invalid year exactly like a
         # click would. _convert_date keeps its own guard for other callers.
         self.year_input.returnPressed.connect(self.convert_button.click)
-        # The bounds are mode-dependent (_year_bounds defers to the combo), so
+        # The bounds are mode-dependent (_year_bounds defers to the switch), so
         # the button follows them automatically. Only the year text needs a
-        # signal today: a mode switch refills the field with today's date, which
-        # is inside both ranges, so it never needs a separate re-derivation.
+        # signal today: a calendar flip refills the field with today's date,
+        # which is inside both ranges, so it never needs a separate re-derivation.
         self.year_input.textChanged.connect(self._update_convert_state)
         # Derive it once up front too, so the window never opens with a stale
         # button state.
         self._update_convert_state()
-        self.conversion_type_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.day_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.month_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.year_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
     def _make_copy_row(self, label: QLabel):
         """Route a result label's left click through _copy_to_clipboard."""
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -324,12 +327,12 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     def _apply_windows_styles(self):
         apply_windows_styles(self)
 
-    def _initialize_date_inputs(self): self._on_conversion_type_changed()
-    def _on_conversion_type_changed(self):
+    def _initialize_date_inputs(self): self._on_calendar_changed()
+    def _on_calendar_changed(self):
         self._clear_results()
-        is_jalali_to_greg = self.conversion_type_combo.currentText() == "شمسی به میلادی"
-        today = jdatetime.date.today() if is_jalali_to_greg else datetime.date.today()
-        if is_jalali_to_greg:
+        is_jalali_input = self._input_is_jalali()
+        today = jdatetime.date.today() if is_jalali_input else datetime.date.today()
+        if is_jalali_input:
             self.year_input.setText(to_persian_digits(str(today.year)))
             months = [f"{to_persian_digits(str(i+1).zfill(2))} - {name}" for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS)]
             self.day_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -341,7 +344,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self._set_combo_items(self.month_combo, months)
         self.month_combo.setCurrentIndex(today.month - 1)
         self._update_day_dropdown()
-        day_str_to_set = to_persian_digits(today.day) if is_jalali_to_greg else str(today.day)
+        day_str_to_set = to_persian_digits(today.day) if is_jalali_input else str(today.day)
         if self.day_combo.findText(day_str_to_set) != -1:
             self.day_combo.setCurrentText(day_str_to_set)
 
@@ -354,7 +357,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         Preserves the currently selected day when possible.
         """
         current_day_text = self.day_combo.currentText()
-        is_jalali_input = self.conversion_type_combo.currentText() == "شمسی به میلادی"
+        is_jalali_input = self._input_is_jalali()
         try:
             year_str = self.year_input.text()
             year = int(from_persian_digits(year_str)) if year_str else 1
@@ -416,7 +419,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         All validation is done BEFORE creating date objects to prevent invalid states.
         """
         self._clear_results()
-        is_jalali_input = self.conversion_type_combo.currentText() == "شمسی به میلادی"
+        is_jalali_input = self._input_is_jalali()
 
         try:
             year_text = self.year_input.text().strip()

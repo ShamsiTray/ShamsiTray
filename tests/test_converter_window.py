@@ -4,6 +4,7 @@ import datetime
 import jdatetime
 import pytest
 
+from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CALENDAR_JALALI
 from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import (describe_date_distance, format_distance_breakdown,
                               to_persian_digits)
@@ -24,7 +25,7 @@ def make_converter():
 
 
 def set_jalali_input(window, year_text, month_index, day_text):
-    window.conversion_type_combo.setCurrentIndex(0)          # «شمسی به میلادی»
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     window.month_combo.setCurrentIndex(month_index)
     window.year_input.setText(year_text)
     window.day_combo.setCurrentText(day_text)
@@ -32,7 +33,8 @@ def set_jalali_input(window, year_text, month_index, day_text):
 
 def test_default_state_is_today_jalali_to_gregorian(window):
     today = jdatetime.date.today()
-    assert window.conversion_type_combo.currentText() == "شمسی به میلادی"
+    assert window.calendar_switch.calendar == CALENDAR_JALALI
+    assert window.calendar_switch.jalali_button.isChecked()
     assert window.year_input.text() == to_persian_digits(str(today.year))
     assert window.month_combo.currentIndex() == today.month - 1
     assert window.day_combo.currentText() == to_persian_digits(str(today.day))
@@ -55,7 +57,7 @@ def test_convert_known_jalali_date(window):
 
 
 def test_convert_known_gregorian_date(window):
-    window.conversion_type_combo.setCurrentIndex(1)          # «میلادی به شمسی»
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     window.month_combo.setCurrentIndex(2)                    # March
     window.year_input.setText("2024")
     window.day_combo.setCurrentText("20")
@@ -103,7 +105,7 @@ def test_day_dropdown_respects_jalali_month_lengths(window):
 
 
 def test_day_dropdown_respects_gregorian_feb(window):
-    window.conversion_type_combo.setCurrentIndex(1)
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     window.month_combo.setCurrentIndex(1)          # February
     window.year_input.setText("2024")
     window._update_day_dropdown()
@@ -122,12 +124,12 @@ def test_changing_inputs_hides_results(window):
     assert not window.middle_divider.isVisible()
 
 
-def test_conversion_type_switch_resets_to_today(window):
-    window.conversion_type_combo.setCurrentIndex(1)
+def test_calendar_switch_resets_to_today(window):
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     today = datetime.date.today()
     assert window.year_input.text() == str(today.year)
     assert window.month_combo.currentIndex() == today.month - 1
-    window.conversion_type_combo.setCurrentIndex(0)
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     jtoday = jdatetime.date.today()
     assert window.year_input.text() == to_persian_digits(str(jtoday.year))
 
@@ -208,7 +210,7 @@ def test_valid_year_hides_the_range_message(window):
 
 def test_range_message_follows_the_calendar_mode(window):
     window.show()
-    window.conversion_type_combo.setCurrentIndex(1)  # «میلادی به شمسی»
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     window.year_input.setText("3000")
     assert window.status_message.isVisible()
     assert str(DateConverterWindow.MAX_GREGORIAN_YEAR) in window.status_message.text()
@@ -230,7 +232,7 @@ def test_range_message_follows_the_calendar_mode(window):
 def test_convert_button_enabled_only_for_submittable_jalali_year(window, year_text, expected_enabled):
     """In «شمسی به میلادی» the تبدیل button tracks the Jalali bounds: empty /
     non-numeric / out of range grey it out, a year inside 1–1600 enables it."""
-    window.conversion_type_combo.setCurrentIndex(0)
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     window.year_input.setText(to_persian_digits(year_text) if year_text.isdigit() else year_text)
     assert window.convert_button.isEnabled() is expected_enabled
 
@@ -239,11 +241,11 @@ def test_convert_button_uses_gregorian_bounds_in_the_other_mode(window):
     """The bounds are mode-dependent, so the same text can be valid under one
     calendar and not the other: 1601 is out of range for Jalali but perfectly
     valid for Gregorian."""
-    window.conversion_type_combo.setCurrentIndex(1)  # «میلادی به شمسی»
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     window.year_input.setText("1601")
     assert window.convert_button.isEnabled()
 
-    window.conversion_type_combo.setCurrentIndex(0)  # back to Jalali
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     window.year_input.setText("1601")                 # mode switch resets the year to today
     assert not window.convert_button.isEnabled()
 
@@ -256,24 +258,24 @@ def test_convert_button_state_recomputes_on_mode_switch(window):
     pins the invariant (a valid year never leaves the button greyed out) rather
     than a specific verdict.
     """
-    window.conversion_type_combo.setCurrentIndex(0)
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     window.year_input.setText(to_persian_digits(1601))
     assert not window.convert_button.isEnabled()
 
-    window.conversion_type_combo.setCurrentIndex(1)
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     assert window.convert_button.isEnabled()
 
-    window.conversion_type_combo.setCurrentIndex(0)
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     assert window.convert_button.isEnabled()
 
 
 def test_year_bounds_actually_differ_per_mode(window):
     """The mode-dependence the button relies on: the two calendars have
     different supported ranges, so a year can pass one and fail the other."""
-    window.conversion_type_combo.setCurrentIndex(0)  # Jalali input
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
     assert window._year_bounds() == (DateConverterWindow.MIN_JALALI_YEAR,
                                      DateConverterWindow.MAX_JALALI_YEAR)
-    window.conversion_type_combo.setCurrentIndex(1)  # Gregorian input
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
     assert window._year_bounds() == (DateConverterWindow.MIN_GREGORIAN_YEAR,
                                      DateConverterWindow.MAX_GREGORIAN_YEAR)
 
