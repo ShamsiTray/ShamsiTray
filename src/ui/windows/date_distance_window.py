@@ -39,7 +39,7 @@ import datetime
 
 import jdatetime
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QCursor
+from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QStackedWidget, QVBoxLayout, QWidget)
 
@@ -53,6 +53,7 @@ from utils.date_utils import (describe_date_distance, describe_gregorian_distanc
                               format_distance_weeks, from_persian_digits,
                               to_persian_digits, year_range_hint)
 from utils.logger import setup_logging
+from utils.ui_helpers import legible_on, mix_colors
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -102,44 +103,6 @@ class DistanceGregorianRow(DistanceRowMetrics, GregorianDateSelectorRow):
 
     YEAR_MIN = GREGORIAN_YEAR_MIN
     YEAR_MAX = GREGORIAN_YEAR_MAX
-
-
-def _luminance(color: QColor) -> float:
-    """WCAG relative luminance of an opaque colour."""
-    def channel(value: float) -> float:
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-    return (0.2126 * channel(color.redF()) + 0.7152 * channel(color.greenF())
-            + 0.0722 * channel(color.blueF()))
-
-
-def contrast_ratio(first: QColor, second: QColor) -> float:
-    high, low = sorted((_luminance(first), _luminance(second)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
-
-
-def legible_on(color_hex: str, background_hex: str, min_ratio: float = HERO_MIN_CONTRAST) -> str:
-    """``color_hex`` nudged lighter (dark ground) or darker (light ground) until
-    it clears ``min_ratio`` against the background; unchanged when it already does.
-
-    The accent is tuned as a button fill with white text on it (the dark
-    theme's #398439 reads about 2:1 on the card), so the hero number borrows
-    the accent's hue through this instead of using it raw.
-    """
-    color, background = QColor(color_hex), QColor(background_hex)
-    lighten = _luminance(background) < 0.5
-    for _ in range(12):
-        if contrast_ratio(color, background) >= min_ratio:
-            break
-        color = color.lighter(112) if lighten else color.darker(112)
-    return color.name()
-
-
-def mix_colors(first_hex: str, second_hex: str, weight: float = 0.5) -> str:
-    """``first`` blended toward ``second`` by ``weight`` (0 = first, 1 = second)."""
-    a, b = QColor(first_hex), QColor(second_hex)
-    return QColor(round(a.red() + (b.red() - a.red()) * weight),
-                  round(a.green() + (b.green() - a.green()) * weight),
-                  round(a.blue() + (b.blue() - a.blue()) * weight)).name()
 
 
 def copy_with_flash(text: str) -> None:

@@ -26,11 +26,11 @@ from ui.windows.date_distance_window import (CALENDAR_GREGORIAN, COPIED_MESSAGE,
                                              GREGORIAN_YEAR_MAX,
                                              GREGORIAN_YEAR_MIN, HERO_MIN_CONTRAST,
                                              JALALI_YEAR_MAX, JALALI_YEAR_MIN,
-                                             DateDistanceWindow, DistanceRowMetrics,
-                                             contrast_ratio, legible_on, mix_colors)
+                                             DateDistanceWindow, DistanceRowMetrics)
 from utils.date_utils import (describe_date_distance, describe_gregorian_distance,
                               format_distance_total_months, format_distance_units,
                               format_distance_weeks, to_persian_digits, year_range_hint)
+from utils.ui_helpers import contrast_ratio, legible_on, mix_colors
 
 from tests.qt_mousing import press
 
