@@ -43,13 +43,16 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     # 623 even though Jalali year 1 technically begins on 622-03-21. Kept at
     # 623 on purpose - do not "fix" this back to 622 without asking.
     MIN_GREGORIAN_YEAR, MAX_GREGORIAN_YEAR = 623, 2200
+    # The «نوع تبدیل» column left this much width; the three field columns
+    # need ~390 and the pill bar ~280, so the window fits tightly at 470.
+    WINDOW_WIDTH = 470
     TASKBAR_ICON = True  # show in the taskbar so a minimized window is reachable
 
     def __init__(self):
         super().__init__()
         self._initial_height = 260
         self.setWindowTitle("تبدیل تاریخ")
-        self.setFixedSize(650, self._initial_height)
+        self.setFixedSize(self.WINDOW_WIDTH, self._initial_height)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         # Label identity -> clipboard payload, rebuilt by _display_results on
@@ -403,14 +406,14 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             self.middle_divider.hide()
 
         if self.height() != self._initial_height:
-            self.setFixedSize(650, self._initial_height)
+            self.setFixedSize(self.WINDOW_WIDTH, self._initial_height)
 
     def _show_error(self, message: str):
         self._hide_results()
         self.status_message.setText(message)
         self.status_message.show()
         new_height = self._initial_height + self.status_message.sizeHint().height() + 20
-        self.setFixedSize(650, new_height)
+        self.setFixedSize(self.WINDOW_WIDTH, new_height)
 
 
     def _convert_date(self):
@@ -478,7 +481,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.leap_year_status_opacity_effect.setOpacity(1.0 if is_leap else 0.5)
         self.middle_divider.show()
         self.output_widget.show()
-        self.setFixedSize(650, 470)
+        self.setFixedSize(self.WINDOW_WIDTH, 470)
 
     def _update_elapsed_time(self, target_date: datetime.date):
         """Show the gap between the converted date and today.
