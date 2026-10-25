@@ -11,7 +11,9 @@ import datetime
 import jdatetime
 from PyQt6.QtCore import Qt, QRegularExpression
 from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
-from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGraphicsOpacityEffect
+from PyQt6.QtWidgets import (QBoxLayout, QComboBox, QFrame, QGridLayout,
+                            QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                            QVBoxLayout, QWidget, QGraphicsOpacityEffect)
 
 from config import APP_CONFIG
 from ui.widgets.calendar_switch import CALENDAR_JALALI, CalendarSwitch
@@ -46,11 +48,13 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     # The «نوع تبدیل» column left this much width; the three field columns
     # need ~390 and the pill bar ~280, so the window fits tightly at 470.
     WINDOW_WIDTH = 470
+    # Holding the two stacked calendar blocks instead of the two-column grid.
+    RESULTS_HEIGHT = 460
     TASKBAR_ICON = True  # show in the taskbar so a minimized window is reachable
 
     def __init__(self):
         super().__init__()
-        self._initial_height = 260
+        self._initial_height = 220
         self.setWindowTitle("تبدیل تاریخ")
         self.setFixedSize(self.WINDOW_WIDTH, self._initial_height)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -153,13 +157,6 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         grid = QGridLayout()
         grid.setHorizontalSpacing(15)
         grid.setVerticalSpacing(5)
-        labels = {"روز": (0, 0), "ماه": (0, 1), "سال": (0, 2)}
-        self.input_labels = []
-        for text, pos in labels.items():
-            label = QLabel(text)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(label, pos[0], pos[1])
-            self.input_labels.append(label)
 
         self.day_combo = QComboBox()
         # «۰۶ - شهریور» mixes digits with Persian text, which is bidi-ambiguous:
@@ -171,9 +168,9 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         validator = QRegularExpressionValidator(regex)
         self.year_input.setValidator(validator)
 
-        grid.addWidget(self.day_combo, 1, 0)
-        grid.addWidget(self.month_combo, 1, 1)
-        grid.addWidget(self.year_input, 1, 2)
+        grid.addWidget(self.day_combo, 0, 0)
+        grid.addWidget(self.month_combo, 0, 1)
+        grid.addWidget(self.year_input, 0, 2)
         wrapper_layout = QHBoxLayout()
         wrapper_layout.addStretch(1)
         wrapper_layout.addLayout(grid)
@@ -181,62 +178,68 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         return wrapper_layout
 
     def _create_output_section(self) -> QWidget:
-            widget = QWidget()
-            layout = QVBoxLayout(widget)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(10)
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
 
-            self.output_grid = QGridLayout()
-            self.output_grid.setContentsMargins(20, 0, 20, 0)
-            self.output_grid.setVerticalSpacing(0)
-            self.output_grid.setHorizontalSpacing(20)
+        self.gregorian_date_value_1 = QLabel("...")
+        self.gregorian_date_value_2 = QLabel("...")
+        self.jalali_date_value_1 = QLabel("...")
+        self.jalali_date_value_2 = QLabel("...")
 
-            greg_title = QLabel("تاریخ میلادی")
-            greg_title.setObjectName("OutputTitleLabel")
-            greg_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2,
+                self.jalali_date_value_1, self.jalali_date_value_2]:
+            self._make_copy_row(lbl)
+            lbl.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            jalali_title = QLabel("تاریخ شمسی")
-            jalali_title.setObjectName("OutputTitleLabel")
-            jalali_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Each calendar is its own stacked block, its numeric and long rows
+        # sharing one line: at the pill window's width the old two-column grid
+        # let the Gregorian long form reach past the window edge, while a
+        # full-width line holds the longest of either calendar with slack to
+        # spare. Each block pins its own direction, so a Gregorian row reads
+        # year, month, day from the left edge like its numeric head does.
+        def block(title_text: str, value_a: QLabel, value_b: QLabel,
+                  direction: QBoxLayout.Direction) -> None:
+            title = QLabel(title_text)
+            title.setObjectName("OutputTitleLabel")
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(title)
+            row = QHBoxLayout()
+            row.setDirection(direction)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(16)
+            row.addStretch(1)
+            row.addWidget(value_a)
+            row.addWidget(value_b)
+            row.addStretch(1)
+            layout.addLayout(row)
 
-            self.gregorian_date_value_1 = QLabel("...")
-            self.gregorian_date_value_2 = QLabel("...")
-            self.jalali_date_value_1 = QLabel("...")
-            self.jalali_date_value_2 = QLabel("...")
+        block("تاریخ میلادی", self.gregorian_date_value_1,
+              self.gregorian_date_value_2,
+              QBoxLayout.Direction.LeftToRight)
+        self.output_divider = self._create_divider()
+        layout.addWidget(self.output_divider)
+        block("تاریخ شمسی", self.jalali_date_value_1,
+              self.jalali_date_value_2,
+              QBoxLayout.Direction.RightToLeft)
 
-            for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2,
-                    self.jalali_date_value_1, self.jalali_date_value_2]:
-                self._make_copy_row(lbl)
-                lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addSpacing(10)
 
-            self.output_grid.addWidget(greg_title, 0, 0)
-            self.output_grid.addWidget(jalali_title, 0, 2)
+        self.elapsed_text = QLabel("...")
+        # A copy row like the date values; its payload and cursor are
+        # stamped per conversion (_update_elapsed_time), so «تاریخ امروز
+        # است.» can opt the line out of copying.
+        self._make_copy_row(self.elapsed_text)
+        self.leap_year_status = QLabel("...")
+        self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
+        self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
 
-            self.output_grid.addWidget(self.gregorian_date_value_1, 1, 0)
-            self.output_grid.addWidget(self.jalali_date_value_1, 1, 2)
+        layout.addWidget(self.elapsed_text)
+        layout.addWidget(self.leap_year_status)
 
-            self.output_grid.addWidget(self.gregorian_date_value_2, 2, 0)
-            self.output_grid.addWidget(self.jalali_date_value_2, 2, 2)
-
-            self.output_grid.setColumnStretch(1, 1)
-
-            layout.addLayout(self.output_grid)
-            layout.addSpacing(10)
-
-            self.elapsed_text = QLabel("...")
-            # A copy row like the date values; its payload and cursor are
-            # stamped per conversion (_update_elapsed_time), so «تاریخ امروز
-            # است.» can opt the line out of copying.
-            self._make_copy_row(self.elapsed_text)
-            self.leap_year_status = QLabel("...")
-            self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
-            self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
-
-            layout.addWidget(self.elapsed_text)
-            layout.addWidget(self.leap_year_status)
-
-            return widget
+        return widget
 
     def _create_divider(self) -> QFrame:
         divider = QFrame()
@@ -259,9 +262,6 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         combo_style = combo_stylesheet(palette, center_text=True)
         self.title_bar.update_styles()
         self.calendar_switch.update_styles()
-        for label in self.input_labels:
-             label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
-             label.setFixedHeight(input_field_height)
         self.day_combo.setFixedSize(80, input_field_height)
         self.month_combo.setFixedSize(140, input_field_height)
         for combo in [self.day_combo, self.month_combo]:
@@ -271,6 +271,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.convert_button.setFixedHeight(50)
         self.convert_button.setStyleSheet(accent_button_stylesheet(palette, padding="0px 18px", font_size=16))
         self.middle_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
+        self.output_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
         for label in self.output_widget.findChildren(QLabel):
             if label.objectName() == "OutputTitleLabel":
                  label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 16, QFont.Weight.Bold))
@@ -451,7 +452,6 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
                 j_date = jdatetime.date.fromgregorian(date=g_date)
 
             self._display_results(j_date, g_date, is_jalali_input)
-
         except (ValueError, TypeError) as e:
             self._show_error("تاریخ ورودی نامعتبر است.")
             logger.warning(f"Date conversion failed: {e}")
@@ -481,7 +481,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.leap_year_status_opacity_effect.setOpacity(1.0 if is_leap else 0.5)
         self.middle_divider.show()
         self.output_widget.show()
-        self.setFixedSize(self.WINDOW_WIDTH, 470)
+        self.setFixedSize(self.WINDOW_WIDTH, self.RESULTS_HEIGHT)
 
     def _update_elapsed_time(self, target_date: datetime.date):
         """Show the gap between the converted date and today.
