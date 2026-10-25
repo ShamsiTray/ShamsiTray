@@ -15,12 +15,13 @@ from PyQt6.QtWidgets import QComboBox, QFrame, QGridLayout, QApplication, QHBoxL
 
 from config import APP_CONFIG
 from utils.date_utils import (describe_date_distance, format_distance_breakdown,
-                              format_gregorian_long, format_gregorian_numeric,
-                              format_jalali_long, format_jalali_numeric,
-                              from_persian_digits, to_persian_digits,
-                              is_gregorian_leap_year, is_jalali_leap_year,
-                              days_in_jalali_month, days_in_gregorian_month,
-                              validate_year_range, gregorian_month_name)
+                              format_distance_units, format_gregorian_long,
+                              format_gregorian_numeric, format_jalali_long,
+                              format_jalali_numeric, from_persian_digits,
+                              to_persian_digits, is_gregorian_leap_year,
+                              is_jalali_leap_year, days_in_jalali_month,
+                              days_in_gregorian_month, validate_year_range,
+                              gregorian_month_name)
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet)
@@ -197,10 +198,8 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
             for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2,
                     self.jalali_date_value_1, self.jalali_date_value_2]:
-                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                lbl.setWordWrap(False)
+                self._make_copy_row(lbl)
                 lbl.setCursor(Qt.CursorShape.PointingHandCursor)
-                lbl.mousePressEvent = (lambda event, label=lbl: self._copy_to_clipboard(label) if event.button() == Qt.MouseButton.LeftButton else None)
 
             self.output_grid.addWidget(greg_title, 0, 0)
             self.output_grid.addWidget(jalali_title, 0, 2)
@@ -217,7 +216,10 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             layout.addSpacing(10)
 
             self.elapsed_text = QLabel("...")
-            self.elapsed_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # A copy row like the date values; its payload and cursor are
+            # stamped per conversion (_update_elapsed_time), so «تاریخ امروز
+            # است.» can opt the line out of copying.
+            self._make_copy_row(self.elapsed_text)
             self.leap_year_status = QLabel("...")
             self.leap_year_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
@@ -298,6 +300,12 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.day_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.month_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.year_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _make_copy_row(self, label: QLabel):
+        """Route a result label's left click through _copy_to_clipboard."""
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(False)
+        label.mousePressEvent = (lambda event, label=label: self._copy_to_clipboard(label) if event.button() == Qt.MouseButton.LeftButton else None)
 
     def _copy_to_clipboard(self, label: QLabel):
         """Copy the row's clipboard payload and show a brief confirmation.
@@ -476,10 +484,22 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         «۲ سال و ۲ ماه» means two Jalali years to the user reading it. That also
         means the line matches the calendar's own «فاصله تا امروز» notice, since
         both go through the shared date-distance helper.
+
+        The line joins the copy rows: clicking it copies the span alone - the
+        direction-free units the distance window's breakdown row shows - in
+        Latin digits, and today's «تاریخ امروز است.» nothing, with the cursor
+        dropping to the arrow to say so.
         """
         distance = describe_date_distance(
             jdatetime.date.fromgregorian(date=target_date))
         if distance.is_today:
             self.elapsed_text.setText("تاریخ امروز است.")
+            self.elapsed_text.setCursor(Qt.CursorShape.ArrowCursor)
+            # _copy_to_clipboard falls back to label.text() on a missing key,
+            # so "nothing to copy" is a stamped-empty payload, not an absent one.
+            self._copy_payloads[id(self.elapsed_text)] = ""
             return
         self.elapsed_text.setText(f"فاصله زمانی: {format_distance_breakdown(distance)}")
+        self.elapsed_text.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_payloads[id(self.elapsed_text)] = from_persian_digits(
+            format_distance_units(distance))
