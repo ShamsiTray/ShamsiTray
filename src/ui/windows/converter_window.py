@@ -11,7 +11,7 @@ import datetime
 import jdatetime
 from PyQt6.QtCore import Qt, QRegularExpression
 from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
-from PyQt6.QtWidgets import (QBoxLayout, QComboBox, QFrame, QGridLayout,
+from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
                             QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton,
                             QVBoxLayout, QWidget, QGraphicsOpacityEffect)
 
@@ -24,7 +24,7 @@ from utils.date_utils import (describe_date_distance, format_distance_breakdown,
                               to_persian_digits, is_gregorian_leap_year,
                               is_jalali_leap_year, days_in_jalali_month,
                               days_in_gregorian_month, validate_year_range,
-                              gregorian_month_name)
+                              gregorian_weekday_name, persian_weekday_name)
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet)
@@ -48,8 +48,6 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     # The «نوع تبدیل» column left this much width; the three field columns
     # need ~390 and the pill bar ~280, so the window fits tightly at 470.
     WINDOW_WIDTH = 470
-    # Holding the two stacked calendar blocks instead of the two-column grid.
-    RESULTS_HEIGHT = 460
     TASKBAR_ICON = True  # show in the taskbar so a minimized window is reachable
 
     def __init__(self):
@@ -187,42 +185,55 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.gregorian_date_value_2 = QLabel("...")
         self.jalali_date_value_1 = QLabel("...")
         self.jalali_date_value_2 = QLabel("...")
+        self.gregorian_weekday_label = QLabel("...")
+        self.jalali_weekday_label = QLabel("...")
 
         for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2,
-                self.jalali_date_value_1, self.jalali_date_value_2]:
+                self.jalali_date_value_1, self.jalali_date_value_2,
+                self.gregorian_weekday_label, self.jalali_weekday_label]:
             self._make_copy_row(lbl)
             lbl.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        # Each calendar is its own stacked block, its numeric and long rows
-        # sharing one line: at the pill window's width the old two-column grid
-        # let the Gregorian long form reach past the window edge, while a
-        # full-width line holds the longest of either calendar with slack to
-        # spare. Each block pins its own direction, so a Gregorian row reads
-        # year, month, day from the left edge like its numeric head does.
-        def block(title_text: str, value_a: QLabel, value_b: QLabel,
-                  direction: QBoxLayout.Direction) -> None:
+        # The two calendars sit side by side, each in its own field card:
+        # the stacked blocks lined six result lines up and read as one pile,
+        # while bare columns were text on the flat fill with nothing to read
+        # against - the same failure the viewer's summary chip fixed. The
+        # weekday rides its own last line because the full long form is too
+        # wide for two columns at this window's width.
+        def result_card(title_text: str, value_a: QLabel, value_b: QLabel,
+                        weekday: QLabel) -> QWidget:
+            card = QWidget()
+            # A named QWidget subclass paints no stylesheet background without
+            # this attribute (the OverlayBlocker pixel lesson).
+            card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            card.setObjectName("ResultCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(10, 6, 10, 8)
+            card_layout.setSpacing(3)
             title = QLabel(title_text)
             title.setObjectName("OutputTitleLabel")
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(title)
-            row = QHBoxLayout()
-            row.setDirection(direction)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(16)
-            row.addStretch(1)
-            row.addWidget(value_a)
-            row.addWidget(value_b)
-            row.addStretch(1)
-            layout.addLayout(row)
+            card_layout.addWidget(title)
+            card_layout.addWidget(value_a)
+            card_layout.addWidget(value_b)
+            card_layout.addWidget(weekday)
+            return card
 
-        block("تاریخ میلادی", self.gregorian_date_value_1,
-              self.gregorian_date_value_2,
-              QBoxLayout.Direction.LeftToRight)
-        self.output_divider = self._create_divider()
-        layout.addWidget(self.output_divider)
-        block("تاریخ شمسی", self.jalali_date_value_1,
-              self.jalali_date_value_2,
-              QBoxLayout.Direction.RightToLeft)
+        self.gregorian_card = result_card(
+            "تاریخ میلادی", self.gregorian_date_value_1,
+            self.gregorian_date_value_2, self.gregorian_weekday_label)
+        self.jalali_card = result_card(
+            "تاریخ شمسی", self.jalali_date_value_1, self.jalali_date_value_2,
+            self.jalali_weekday_label)
+
+        cards_row = QHBoxLayout()
+        cards_row.setContentsMargins(0, 0, 0, 0)
+        cards_row.setSpacing(12)
+        # First added sits on the right edge under the window's RTL, the seat
+        # the original two-column grid gave the Gregorian column.
+        cards_row.addWidget(self.gregorian_card)
+        cards_row.addWidget(self.jalali_card)
+        layout.addLayout(cards_row)
 
         layout.addSpacing(10)
 
@@ -271,7 +282,6 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.convert_button.setFixedHeight(50)
         self.convert_button.setStyleSheet(accent_button_stylesheet(palette, padding="0px 18px", font_size=16))
         self.middle_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
-        self.output_divider.setStyleSheet(f"color: {palette['CALENDAR_BORDER_COLOR']};")
         for label in self.output_widget.findChildren(QLabel):
             if label.objectName() == "OutputTitleLabel":
                  label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 16, QFont.Weight.Bold))
@@ -280,6 +290,18 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.jalali_date_value_2.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.gregorian_date_value_1.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 15, QFont.Weight.Bold))
         self.gregorian_date_value_2.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 14))
+        # The weekday is the card's muted footnote line; the cards themselves
+        # share the surface language of the form fields and the holiday
+        # viewer's summary chip.
+        for card in (self.gregorian_card, self.jalali_card):
+            card.setStyleSheet(f"background: {palette['INPUT_BG_COLOR']};"
+                               f" border: 1px solid {palette['CALENDAR_BORDER_COLOR']};"
+                               f" border-radius: 10px;")
+        self.gregorian_weekday_label.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 12))
+        self.jalali_weekday_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
+        for weekday_label in (self.gregorian_weekday_label,
+                              self.jalali_weekday_label):
+            weekday_label.setStyleSheet(f"color: {palette['WEEKDAY_NAMES_COLOR']};")
         self.elapsed_text.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.leap_year_status.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
         self.status_message.setStyleSheet("color: red; font-weight: bold; font-size: 18px;")
@@ -458,19 +480,28 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
     def _display_results(self, j_date: jdatetime.date, g_date: datetime.date, is_jalali_input: bool):
         self.jalali_date_value_1.setText(to_persian_digits(j_date.strftime("%Y/%m/%d")))
-        self.jalali_date_value_2.setText(format_jalali_long(j_date))
+        self.jalali_date_value_2.setText(format_jalali_long(j_date, with_weekday=False))
+        self.jalali_weekday_label.setText(persian_weekday_name(j_date.weekday()))
         self.gregorian_date_value_1.setText(g_date.strftime("%Y-%m-%d"))
-        self.gregorian_date_value_2.setText(f"{g_date.strftime('%A')} - {gregorian_month_name(g_date.month)} {g_date.day}, {g_date.year}")
+        # The date part comes from the shared formatter, not strftime: %A/%B
+        # follow the process locale, so the same line showed Persian names on
+        # a Persian Windows install (the format_gregorian_long docstring).
+        self.gregorian_date_value_2.setText(
+            format_gregorian_long(g_date, persian_digits=False, with_weekday=False))
+        self.gregorian_weekday_label.setText(gregorian_weekday_name(g_date.weekday()))
         # What each row puts on the clipboard, keyed by label identity and
         # rebuilt on every conversion: the labels show Persian digits, so
         # copying label.text() gave the user a date in a different numeral
         # system than the calendar's «کپی تاریخ» menu produces for the same day.
-        # The payloads come from the shared formatters so both surfaces agree.
+        # The payloads come from the shared formatters so both surfaces agree;
+        # the weekday rows copy the names they display.
         self._copy_payloads = {
             id(self.jalali_date_value_1): format_jalali_numeric(j_date),
             id(self.jalali_date_value_2): format_jalali_long(j_date, persian_digits=False),
+            id(self.jalali_weekday_label): persian_weekday_name(j_date.weekday()),
             id(self.gregorian_date_value_1): format_gregorian_numeric(j_date),
             id(self.gregorian_date_value_2): format_gregorian_long(g_date, persian_digits=False),
+            id(self.gregorian_weekday_label): gregorian_weekday_name(g_date.weekday()),
         }
 
         self._update_elapsed_time(g_date)
@@ -481,7 +512,12 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.leap_year_status_opacity_effect.setOpacity(1.0 if is_leap else 0.5)
         self.middle_divider.show()
         self.output_widget.show()
-        self.setFixedSize(self.WINDOW_WIDTH, self.RESULTS_HEIGHT)
+        # The window follows the results' own measured height instead of a
+        # guessed constant: a height cut wrong either way reads broken - the
+        # last line on the floor when tight, dead space when generous.
+        self.layout().activate()
+        height = max(self._initial_height, self.layout().totalMinimumSize().height())
+        self.setFixedSize(self.WINDOW_WIDTH, height)
 
     def _update_elapsed_time(self, target_date: datetime.date):
         """Show the gap between the converted date and today.
