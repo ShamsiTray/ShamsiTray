@@ -42,6 +42,13 @@ def persian_weekday_name(weekday: int) -> str:
         return APP_CONFIG.PERSIAN_WEEKDAY_NAMES[weekday]
     raise ValueError("Weekday out of range (must be 0-6)")
 
+def gregorian_weekday_name(weekday: int) -> str:
+    """Get Gregorian weekday name (0=Monday), from the app's own table like
+    the month names - never the process locale."""
+    if 0 <= weekday < 7:
+        return APP_CONFIG.GREGORIAN_WEEKDAY_NAMES[weekday]
+    raise ValueError("Weekday out of range (must be 0-6)")
+
 def format_jalali_numeric(jdate: jdatetime.date) -> str:
     """Numeric Jalali string «1405/07/01» (English digits, zero-padded).
 
@@ -358,12 +365,15 @@ def ms_until_midnight(now: datetime.datetime) -> int:
     return max(0, int((next_midnight.timestamp() - now.timestamp()) * 1000))
 
 
-def format_jalali_long(jdate, *, persian_digits=True):
+def format_jalali_long(jdate, *, persian_digits=True, with_weekday=True):
     day_str = to_persian_digits(jdate.day) if persian_digits else str(jdate.day)
     year_str = to_persian_digits(jdate.year) if persian_digits else str(jdate.year)
-    return persian_weekday_name(jdate.weekday()) + " " + day_str + " " + persian_month_name(jdate.month) + " " + year_str
+    date_part = day_str + " " + persian_month_name(jdate.month) + " " + year_str
+    if not with_weekday:
+        return date_part
+    return persian_weekday_name(jdate.weekday()) + " " + date_part
 
-def format_gregorian_long(gdate, *, persian_digits=True):
+def format_gregorian_long(gdate, *, persian_digits=True, with_weekday=True):
     """Readable Gregorian date, e.g. «Tuesday 21 October 2025».
 
     The weekday and month names come from the app's own tables rather than
@@ -371,12 +381,15 @@ def format_gregorian_long(gdate, *, persian_digits=True):
     returned Persian names on a Persian Windows install and English ones
     elsewhere. ``persian_digits`` defaults True to match ``format_jalali_long`` -
     the two are read side by side, and the copy entry that wants Latin digits
-    asks for them explicitly.
+    asks for them explicitly. ``with_weekday=False`` drops the leading weekday:
+    the converter's side-by-side result cards read the weekday as their own line.
     """
     if not 1 <= gdate.month <= 12 or not 0 <= gdate.weekday() <= 6:
         raise ValueError("Gregorian month or weekday out of range")
     day_str = to_persian_digits(gdate.day) if persian_digits else str(gdate.day)
     year_str = to_persian_digits(gdate.year) if persian_digits else str(gdate.year)
-    return (f"{APP_CONFIG.GREGORIAN_WEEKDAY_NAMES[gdate.weekday()]} {day_str} "
-            f"{gregorian_month_name(gdate.month)} {year_str}")
+    date_part = f"{day_str} {gregorian_month_name(gdate.month)} {year_str}"
+    if not with_weekday:
+        return date_part
+    return f"{gregorian_weekday_name(gdate.weekday())} {date_part}"
 

@@ -7,6 +7,8 @@ import pytest
 from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CALENDAR_JALALI
 from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import (describe_date_distance, format_distance_breakdown,
+                              format_gregorian_long, format_jalali_long,
+                              gregorian_weekday_name, persian_weekday_name,
                               to_persian_digits)
 
 
@@ -208,6 +210,46 @@ def test_valid_year_hides_the_range_message(window):
     assert window.height() == window._initial_height
 
 
+def test_results_window_height_follows_the_content(window):
+    """The results grow the window to the layout's real minimum instead of a
+    guessed constant - too tight lands the last line on the floor, too tall
+    leaves dead space below."""
+    window.show()
+    _convert_jalali(window, jdatetime.date(1404, 1, 1))
+    expected = max(window._initial_height, window.layout().totalMinimumSize().height())
+    assert window.height() == expected
+
+
+def test_result_cards_sit_side_by_side(window, qtbot):
+    """The two calendars share one row instead of stacking: the two result
+    cards land on the same height, stay horizontally disjoint with the
+    Gregorian card on the right (the original grid's seat), and the pill
+    window keeps its width. The cards share one parent, so their geometries
+    are directly comparable - the value labels are not."""
+    window.show()
+    _convert_jalali(window, jdatetime.date(1403, 1, 1))
+    qtbot.wait(10)
+    greg = window.gregorian_card.geometry()
+    jal = window.jalali_card.geometry()
+    assert greg.y() == jal.y()
+    assert not greg.intersects(jal)
+    assert greg.x() > jal.x()
+    assert window.width() == DateConverterWindow.WINDOW_WIDTH
+
+
+def test_weekday_rides_its_own_card_line(window):
+    """The date columns carry the date alone - the weekday is each card's
+    footnote line, named from the app's own tables, not the process locale."""
+    j_date = jdatetime.date(1403, 1, 1)
+    _convert_jalali(window, j_date)
+    g_date = j_date.togregorian()
+    assert window.jalali_weekday_label.text() == persian_weekday_name(j_date.weekday())
+    assert window.jalali_date_value_2.text() == format_jalali_long(j_date, with_weekday=False)
+    assert window.gregorian_weekday_label.text() == gregorian_weekday_name(g_date.weekday())
+    assert window.gregorian_date_value_2.text() == format_gregorian_long(
+        g_date, persian_digits=False, with_weekday=False)
+
+
 def test_range_message_follows_the_calendar_mode(window):
     window.show()
     window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
@@ -326,7 +368,8 @@ def test_copy_payloads_use_latin_digits_while_labels_show_persian(window):
     digits from here."""
     from PyQt6.QtWidgets import QApplication
     from utils.date_utils import (format_gregorian_long, format_gregorian_numeric,
-                                   format_jalali_long, format_jalali_numeric)
+                                   format_jalali_long, format_jalali_numeric,
+                                   gregorian_weekday_name, persian_weekday_name)
 
     set_jalali_input(window, "۱۴۰۳", 0, "۱")
     window._convert_date()
@@ -337,9 +380,11 @@ def test_copy_payloads_use_latin_digits_while_labels_show_persian(window):
     for label, expected in (
         (window.jalali_date_value_1, format_jalali_numeric(j_date)),
         (window.jalali_date_value_2, format_jalali_long(j_date, persian_digits=False)),
+        (window.jalali_weekday_label, persian_weekday_name(j_date.weekday())),
         (window.gregorian_date_value_1, format_gregorian_numeric(j_date)),
         (window.gregorian_date_value_2,
          format_gregorian_long(g_date, persian_digits=False)),
+        (window.gregorian_weekday_label, gregorian_weekday_name(g_date.weekday())),
     ):
         window._copy_to_clipboard(label)
         assert clipboard.text() == expected

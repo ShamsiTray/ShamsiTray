@@ -22,6 +22,7 @@ from utils.date_utils import (
     format_jalali_numeric,
     from_persian_digits,
     gregorian_month_name,
+    gregorian_weekday_name,
     is_gregorian_leap_year,
     is_jalali_leap_year,
     ms_until_midnight,
@@ -493,6 +494,23 @@ def test_jalali_and_gregorian_long_agree_on_one_day():
     assert format_jalali_long(j_date, persian_digits=False) == "پنج\u200cشنبه 29 آبان 1404"
     assert (format_gregorian_long(j_date.togregorian(), persian_digits=False)
             == "Thursday 20 November 2025")
+
+
+def test_long_formatters_can_drop_the_weekday():
+    """with_weekday=False keeps the same date spelling, only without the
+    leading name - the converter's side-by-side cards read the weekday as
+    their own line."""
+    j_date = jdatetime.date(1404, 8, 29)
+    assert format_jalali_long(j_date, with_weekday=False) == "۲۹ آبان ۱۴۰۴"
+    g_date = j_date.togregorian()
+    assert (format_gregorian_long(g_date, persian_digits=False, with_weekday=False)
+            == "20 November 2025")
+
+
+def test_gregorian_weekday_name_reads_the_table():
+    assert gregorian_weekday_name(datetime.date(2025, 10, 20).weekday()) == "Monday"
+    with pytest.raises(ValueError):
+        gregorian_weekday_name(7)
 
 
 def test_format_jalali_long_agrees_with_weekday_and_month_names():
