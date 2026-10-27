@@ -86,7 +86,7 @@ def _switch_to_gregorian(window):
 
 @pytest.fixture
 def flashes(monkeypatch):
-    """Record every «کپی شد» flash instead of showing it."""
+    """Record every «✓ کپی شد» flash instead of showing it."""
     seen = []
     monkeypatch.setattr(CustomTooltip.instance(), "flash_tooltip",
                         lambda text, pos, *a, **k: seen.append(text))
@@ -545,7 +545,7 @@ def test_clicking_each_line_copies_it_and_flashes_copied(window, qtbot, flashes)
         _clipboard().clear()
         qtbot.mouseClick(widget, Qt.MouseButton.LeftButton)
         assert _clipboard().text() == expected
-    assert flashes == [COPIED_MESSAGE] * 4 and COPIED_MESSAGE == "کپی شد"
+    assert flashes == [COPIED_MESSAGE] * 4 and COPIED_MESSAGE == "✓ کپی شد"
 
 
 def test_clicking_the_hero_number_or_unit_copies_the_whole_hero(window, qtbot, flashes):

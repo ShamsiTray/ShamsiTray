@@ -1,13 +1,14 @@
 """Tests for ui.widgets.tooltip: the custom rounded tooltip that bypasses
 Qt6's native tooltip rendering, and the hover mixin that routes widgets to it."""
 from PyQt6.QtCore import QPoint, QPointF, Qt
-from PyQt6.QtGui import QCursor, QEnterEvent
+from PyQt6.QtGui import QColor, QCursor, QEnterEvent
 from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG
 from tests.qt_mousing import press
-from ui.widgets.tooltip import (TOOLTIP_DELAY_MS, CustomTooltip, TooltipButton,
-                                TooltipLabel)
+from ui.widgets.tooltip import (COPIED_TEXT, TOOLTIP_DELAY_MS, TONE_MIN_CONTRAST,
+                                CustomTooltip, TooltipButton, TooltipLabel)
+from utils.ui_helpers import contrast_ratio, legible_on
 
 
 def setup_function(function):
@@ -125,6 +126,33 @@ def test_danger_tone_colours_the_border_and_the_text(qtbot):
 
     assert palette["HOLIDAY_COLOR"] in tooltip._label.styleSheet()
     assert palette["BACKGROUND_COLOR"] in tooltip._label.styleSheet()
+
+
+def test_flash_copied_shows_the_checkmark_text_in_the_accent_tone(qtbot):
+    """Every copy confirmation - converter, distance, and the calendar's morphed
+    row - says the same «✓ کپی شد» and wears the same accent colour."""
+    tooltip = CustomTooltip.instance()
+    qtbot.addWidget(tooltip)
+    palette = APP_CONFIG.get_current_palette()
+
+    tooltip.flash_copied(QPoint(200, 200))
+
+    accent = legible_on(palette["ACCENT_COLOR"], palette["BACKGROUND_COLOR"],
+                        TONE_MIN_CONTRAST["success"])
+    assert tooltip._label.text() == COPIED_TEXT == "✓ کپی شد"
+    assert accent in tooltip._label.styleSheet()
+    assert tooltip._auto_hide_timer.isActive()
+    tooltip.hide()
+
+
+def test_the_copy_confirmation_clears_the_body_text_contrast_floor():
+    """The flash is 12px bold (normal text), and the dark accent alone is only
+    3.01:1 on the tooltip ground - the tone is floored so a future palette tune
+    cannot quietly drop the confirmation to unreadable."""
+    palette = APP_CONFIG.get_current_palette()
+    accent = legible_on(palette["ACCENT_COLOR"], palette["BACKGROUND_COLOR"],
+                        TONE_MIN_CONTRAST["success"])
+    assert contrast_ratio(QColor(accent), QColor(palette["BACKGROUND_COLOR"])) >= 4.5
 
 
 def test_an_unknown_tone_falls_back_to_neutral(qtbot):

@@ -14,6 +14,7 @@ from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import QLabel, QPushButton, QWidget, QVBoxLayout, QApplication
 
 from config import APP_CONFIG
+from utils.ui_helpers import legible_on
 
 # The one hover delay every custom tooltip waits - the day cell reads it too, so
 # the grid and the event manager cannot drift apart. It sits near Qt's own native
@@ -25,8 +26,20 @@ TOOLTIP_DELAY_MS = 700
 # so both themes stay legible. An absent tone means "neutral" - content tooltips
 # (a holiday's reason, an event's text) colour their own lines already. "danger"
 # is for the one action that destroys data, and resolves to the palette's warning
-# colour for the border and the text.
-TOOLTIP_TONES = {"danger": "HOLIDAY_COLOR"}
+# colour for the border and the text. "success" is the accent colour, for a
+# confirmation that something worked (a copy).
+TOOLTIP_TONES = {"danger": "HOLIDAY_COLOR", "success": "ACCENT_COLOR"}
+
+# The contrast floor a tone's colour has to clear on the tooltip's own ground.
+# The copy confirmation is 12px bold - normal text, not the large text WCAG's
+# 3:1 bar covers - so the success tone takes the body floor; the dark accent
+# lands at 3.01:1 raw, which is why it is nudged rather than used as-is.
+TONE_MIN_CONTRAST = {"success": 4.5}
+
+# The one copy confirmation. The calendar's «کپی تاریخ» row morphs into this
+# text and the converter / distance windows flash it as a tooltip, so a copy
+# reads the same wherever it happened.
+COPIED_TEXT = "✓ کپی شد"
 
 
 class CustomTooltip(QWidget):
@@ -67,14 +80,19 @@ class CustomTooltip(QWidget):
             cls._instance = CustomTooltip()
         return cls._instance
 
-    def flash_tooltip(self, text: str, global_pos: QPoint, duration_ms: int = 600):
+    def flash_tooltip(self, text: str, global_pos: QPoint, duration_ms: int = 600,
+                      tone: str = "neutral"):
         """Show a transient confirmation (e.g. «کپی شد») that hides itself.
 
         Restarting the single shot on every call is the point: two copies in a
         row never shorten each other's feedback window.
         """
-        self.show_tooltip(text, global_pos)
+        self.show_tooltip(text, global_pos, tone=tone)
         self._auto_hide_timer.start(duration_ms)
+
+    def flash_copied(self, global_pos: QPoint):
+        """The app-wide «✓ کپی شد» confirmation, in the success tone."""
+        self.flash_tooltip(COPIED_TEXT, global_pos, tone="success")
 
     def show_tooltip(self, text: str, global_pos: QPoint, owner=None, tone: str = "neutral"):
         # An explicit show must never be auto-hidden by a flash still counting
@@ -89,8 +107,13 @@ class CustomTooltip(QWidget):
 
         palette = APP_CONFIG.get_current_palette()
         # An unknown tone falls back to neutral instead of raising: a typo must
-        # never leave a tooltip unstyled.
+        # never leave a tooltip unstyled. A tone that declares a floor is nudged
+        # to it, so the palette stays the hue owner; a tone without one keeps
+        # its palette colour verbatim.
         accent = palette.get(TOOLTIP_TONES.get(tone, ""))
+        floor = TONE_MIN_CONTRAST.get(tone)
+        if accent and floor:
+            accent = legible_on(accent, palette["BACKGROUND_COLOR"], floor)
         self._label.setStyleSheet(
             "QLabel {"
             f"background-color: {palette['BACKGROUND_COLOR']}; "

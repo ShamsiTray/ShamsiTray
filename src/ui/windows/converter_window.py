@@ -348,7 +348,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             clipboard = QApplication.clipboard()
             clipboard.setText(text)
             global_pos = QCursor.pos()
-            CustomTooltip.instance().flash_tooltip("کپی شد", global_pos)
+            CustomTooltip.instance().flash_copied(global_pos)
 
     def _apply_windows_styles(self):
         apply_windows_styles(self)
