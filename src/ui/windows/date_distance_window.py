@@ -21,10 +21,11 @@ without one it would repeat the breakdown), the weeks line needs a whole week
 (``has_full_weeks``).
 
 Every result line is a copy target: a click copies the sentence shown (in Latin
-digits, the app-wide copy convention) and flashes «کپی شد» at the cursor, as the
-converter's rows do. One «کپی همه» glyph is pinned inside the card's top-right
-corner (the RTL reading-start corner) and copies every line the card currently
-shows as one clipboard block, shown and hidden with the results.
+digits, the app-wide copy convention) and flashes the app-wide «✓ کپی شد» at the
+cursor in the success tone, as the converter's rows do. One «کپی همه» glyph is
+pinned inside the card's top-right corner (the RTL reading-start corner) and
+copies every line the card currently shows as one clipboard block, shown and
+hidden with the results.
 
 The measurement is direction-agnostic. The numbers are the absolute gap, so the
 order of the two rows never changes what is shown, and the sentences come from
@@ -46,7 +47,7 @@ from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
 from config import APP_CONFIG
 from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CalendarSwitch
 from ui.widgets.event_input import DateSelectorRow, GregorianDateSelectorRow
-from ui.widgets.tooltip import CustomTooltip, TooltipButton
+from ui.widgets.tooltip import COPIED_TEXT, CustomTooltip, TooltipButton
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (describe_date_distance, describe_gregorian_distance,
                               format_distance_total_months, format_distance_units,
@@ -60,7 +61,7 @@ logger = setup_logging(__name__)
 
 # The hero number is large text: WCAG asks 3:1 of it (4.5:1 is for body text).
 HERO_MIN_CONTRAST = 3.0
-COPIED_MESSAGE = "کپی شد"
+COPIED_MESSAGE = COPIED_TEXT
 # The «کپی همه» glyph is an absolute child of the result card, pinned inside
 # its top-right corner - the RTL reading-start corner; this inset is the only
 # number that moves it.
@@ -109,9 +110,9 @@ class DistanceGregorianRow(DistanceRowMetrics, GregorianDateSelectorRow):
 
 
 def copy_with_flash(text: str, at: QPoint | None = None) -> None:
-    """Put ``text`` on the clipboard and flash «کپی شد» at ``at``: the
-    converter's copy rows confirm a click the same way, so a mouse caller
-    leaves ``at`` at the cursor, while a keyboard activation passes the
+    """Put ``text`` on the clipboard and flash the app-wide «✓ کپی شد» at
+    ``at``: the converter's copy rows confirm a click the same way, so a mouse
+    caller leaves ``at`` at the cursor, while a keyboard activation passes the
     widget it was launched from.
 
     The clipboard gets Latin digits, not the Persian digits on screen: that is
@@ -122,7 +123,7 @@ def copy_with_flash(text: str, at: QPoint | None = None) -> None:
         return
     QApplication.clipboard().setText(from_persian_digits(text))
     anchor = at if at is not None else QCursor.pos()
-    CustomTooltip.instance().flash_tooltip(COPIED_MESSAGE, anchor)
+    CustomTooltip.instance().flash_copied(anchor)
 
 
 class CopyLabel(QLabel):

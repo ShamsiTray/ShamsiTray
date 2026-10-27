@@ -23,7 +23,7 @@ from utils.date_utils import (
 from utils.ui_helpers import clamp_popup_to_work_area
 from .menu_widgets import (CenteredTextMenu, MenuActionWidget,
                            attach_centered_submenu, centered_menu_stylesheet)
-from .tooltip import TOOLTIP_DELAY_MS, CustomTooltip
+from .tooltip import COPIED_TEXT, TOOLTIP_DELAY_MS, CustomTooltip
 
 # Clipboard payloads of the «کپی تاریخ» submenu entries, built from the
 # right-clicked day's own Jalali date (the Gregorian half derives from it).
@@ -128,7 +128,7 @@ class CopyDateMenu(CenteredTextMenu):
         the feedback - accent caption on a soft pill, every other row greyed -
         and after ``COPY_MORPH_MS`` the menus close as the natural end of the
         interaction. A second copy during the hold restarts it, never stacks."""
-        action.setText("✓ کپی شد")
+        action.setText(COPIED_TEXT)
         action.setData("copy_done")
         for other, _text, _enabled, _mode in self._copy_rows:
             other.setEnabled(other is action)
