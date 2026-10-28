@@ -8,13 +8,15 @@ from PyQt6.QtWidgets import QApplication, QComboBox, QWidget
 
 from config import APP_CONFIG
 from tests.qt_mousing import press, release
-from utils.ui_helpers import (MENU_EDGE_MARGIN, DigitsFirstCombo, FramelessDragMixin,
+from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
+                              DigitsFirstCombo, FramelessDragMixin,
                               ReservedRailScrollArea, accent_button_stylesheet,
                               center_combo_items, clamp_popup_to_work_area,
-                              combo_stylesheet, create_tray_pixmap,
-                              danger_button_stylesheet, error_line_edit_stylesheet,
-                              fit_combo_width, ghost_button_stylesheet,
-                              line_edit_stylesheet, nudge_popup_inside_work_area,
+                              combo_stylesheet, copied_pill_ground,
+                              create_tray_pixmap, danger_button_stylesheet,
+                              error_line_edit_stylesheet, fit_combo_width,
+                              ghost_button_stylesheet, line_edit_stylesheet,
+                              mix_colors, nudge_popup_inside_work_area,
                               paint_rounded_card, rgba_string,
                               scrollbar_stylesheet,
                               window_title_button_stylesheets)
@@ -701,3 +703,14 @@ def test_rgba_string_float_form_for_the_viewers_rows():
     """channel_max=1 keeps the CSS 0-1 float notation the holiday viewer's
     rows were tuned with, unchanged in the emitted text."""
     assert rgba_string("#00ff00", 0.14, channel_max=1) == "rgba(0, 255, 0, 0.14)"
+
+
+def test_copied_pill_ground_blends_the_menu_pill_wash():
+    """The one pill colour behind «✓ کپی شد» is the background blended toward
+    the accent at the copy menu's own tuned fraction (opacity 36/255), so the
+    two surfaces of the confirmation - the floating flash and the calendar's
+    morphed copy row - paint the same ground."""
+    palette = APP_CONFIG.get_current_palette()
+    expected = mix_colors(palette["BACKGROUND_COLOR"], palette["ACCENT_COLOR"],
+                          COPIED_WASH_ALPHA / 255)
+    assert copied_pill_ground(palette) == expected != palette["BACKGROUND_COLOR"]

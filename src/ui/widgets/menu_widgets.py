@@ -14,7 +14,10 @@ from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPai
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QWidget
 
 from config import APP_CONFIG
-from utils.ui_helpers import nudge_popup_inside_work_area
+from utils.ui_helpers import (copied_pill_ground, legible_on,
+                              nudge_popup_inside_work_area)
+
+from .tooltip import TONE_MIN_CONTRAST
 
 # The day-cell menu's item box, shared by the QSS rules in
 # calendar_day_cell._menu_stylesheet and by CenteredTextMenu's painter so the
@@ -362,16 +365,20 @@ class CenteredTextMenu(QMenu):
             copy_done = action.data() == "copy_done"
             if copy_done:
                 # The copied row is the copy feedback: a soft accent pill
-                # behind the whole row, its caption flipped to accent.
-                highlight = QColor(palette["ACCENT_COLOR"])
-                highlight.setAlpha(36)
+                # behind the whole row, caption floored to the success tone on
+                # that wash - the shared copied_pill_ground blend, so the two
+                # surfaces of one confirmation (this row and the floating
+                # flash) cannot drift apart.
+                ground = copied_pill_ground(palette)
+                color = QColor(legible_on(palette["ACCENT_COLOR"], ground,
+                                          TONE_MIN_CONTRAST["success"]))
                 shape = QPainterPath()
                 shape.addRoundedRect(QRectF(geo.adjusted(2, 2, -2, -2)), 6, 6)
-                painter.fillPath(shape, highlight)
-            color = QColor(
-                palette["ACCENT_COLOR"] if copy_done else
-                palette["TEXT_COLOR"] if action.isEnabled() else
-                palette["GREY_COLOR"])
+                painter.fillPath(shape, QColor(ground))
+            else:
+                color = QColor(
+                    palette["TEXT_COLOR"] if action.isEnabled() else
+                    palette["GREY_COLOR"])
             # The arrow's column is always the row's leading pad - the physical
             # left under RTL, the mirrored right under LTR - so the content
             # rect leans on the direction-correct side of the row.
@@ -388,18 +395,22 @@ class CenteredTextMenu(QMenu):
             # arrow clearance needs no per-row ink inset (the constants' note
             # carries that rationale).
             advance = metrics.horizontalAdvance(text)
+            painter.save()
+            if copy_done:
+                # The copied caption carries a leading neutral ✓: under the
+                # menu's RTL bidi base its side is undecided and the glyph
+                # lands far right. The row pins its paint direction LTR so the
+                # checkmark stays left on every locale - the floating flash's
+                # <span dir="ltr"> answers the same push.
+                painter.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
             if advance > content.width():
                 # Overhang safety net (only injected geometry produces a row
                 # narrower than its caption): the glyphs are centered and
                 # clipped to the content rect, reaching neither gutter.
-                painter.save()
                 painter.setClipRect(content)
-                painter.setPen(color)
-                painter.drawText(content, align, text)
-                painter.restore()
-                continue
             painter.setPen(color)
             painter.drawText(content, align, text)
+            painter.restore()
 
     def _paint_submenu_arrow(self, painter: QPainter, row: QRect, rtl: bool,
                              color: QColor):

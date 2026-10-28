@@ -8,7 +8,7 @@ from config import APP_CONFIG
 from tests.qt_mousing import press
 from ui.widgets.tooltip import (COPIED_TEXT, TOOLTIP_DELAY_MS, TONE_MIN_CONTRAST,
                                 CustomTooltip, TooltipButton, TooltipLabel)
-from utils.ui_helpers import contrast_ratio, legible_on
+from utils.ui_helpers import contrast_ratio, copied_pill_ground, legible_on
 
 
 def setup_function(function):
@@ -130,29 +130,56 @@ def test_danger_tone_colours_the_border_and_the_text(qtbot):
 
 def test_flash_copied_shows_the_checkmark_text_in_the_accent_tone(qtbot):
     """Every copy confirmation - converter, distance, and the calendar's morphed
-    row - says the same «✓ کپی شد» and wears the same accent colour."""
+    row - says the same «✓ کپی شد» in the floored accent. The pill label leads
+    with LRM (U+200E): a strong LTR bidi mark wins the paragraph's first-strong
+    auto-detection before «ک» can hand it to RTL, so the checkmark stays left -
+    measured under forced app-RTL and app-LTR renders. COPIED_TEXT itself stays
+    mark-free - the menu's copied row paints it verbatim."""
     tooltip = CustomTooltip.instance()
     qtbot.addWidget(tooltip)
     palette = APP_CONFIG.get_current_palette()
 
     tooltip.flash_copied(QPoint(200, 200))
 
-    accent = legible_on(palette["ACCENT_COLOR"], palette["BACKGROUND_COLOR"],
+    ground = copied_pill_ground(palette)
+    accent = legible_on(palette["ACCENT_COLOR"], ground,
                         TONE_MIN_CONTRAST["success"])
-    assert tooltip._label.text() == COPIED_TEXT == "✓ کپی شد"
+    assert COPIED_TEXT == "✓ کپی شد"
+    assert tooltip._label.text() == f"\u200e{COPIED_TEXT}"
     assert accent in tooltip._label.styleSheet()
     assert tooltip._auto_hide_timer.isActive()
     tooltip.hide()
 
 
 def test_the_copy_confirmation_clears_the_body_text_contrast_floor():
-    """The flash is 12px bold (normal text), and the dark accent alone is only
-    3.01:1 on the tooltip ground - the tone is floored so a future palette tune
-    cannot quietly drop the confirmation to unreadable."""
+    """The flash is 12px bold (normal text), and the accent is under 4.5:1 on
+    the pill wash - the tone is floored against the wash ground so a future
+    palette tune cannot quietly drop the confirmation to unreadable."""
     palette = APP_CONFIG.get_current_palette()
-    accent = legible_on(palette["ACCENT_COLOR"], palette["BACKGROUND_COLOR"],
+    ground = copied_pill_ground(palette)
+    accent = legible_on(palette["ACCENT_COLOR"], ground,
                         TONE_MIN_CONTRAST["success"])
-    assert contrast_ratio(QColor(accent), QColor(palette["BACKGROUND_COLOR"])) >= 4.5
+    assert ground != palette["BACKGROUND_COLOR"]  # a wash, not the flat ground
+    assert contrast_ratio(QColor(accent), QColor(ground)) >= 4.5
+
+
+def test_flash_copied_wears_the_shared_copy_pill(qtbot):
+    """The flash is the calendar copy menu's pill with the float's own chrome:
+    the shared wash fill, framed in the floored accent - wash alone only reads
+    where a container (the menu's frame) defines the shape for it."""
+    tooltip = CustomTooltip.instance()
+    qtbot.addWidget(tooltip)
+    palette = APP_CONFIG.get_current_palette()
+
+    tooltip.flash_copied(QPoint(200, 200))
+
+    ground = copied_pill_ground(palette)
+    accent = legible_on(palette["ACCENT_COLOR"], ground,
+                        TONE_MIN_CONTRAST["success"])
+    sheet = tooltip._label.styleSheet()
+    assert f"background-color: {ground}" in sheet
+    assert f"border: 1px solid {accent}" in sheet
+    tooltip.hide()
 
 
 def test_an_unknown_tone_falls_back_to_neutral(qtbot):
