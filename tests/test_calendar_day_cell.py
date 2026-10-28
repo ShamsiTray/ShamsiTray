@@ -14,7 +14,8 @@ from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
                                      MENU_ITEM_PADDING_TRAIL,
                                      MENU_ITEM_PADDING_V,
                                      centered_menu_stylesheet)
-from ui.widgets.tooltip import TOOLTIP_DELAY_MS, CustomTooltip
+from ui.widgets.tooltip import TOOLTIP_DELAY_MS, TONE_MIN_CONTRAST, CustomTooltip
+from utils.ui_helpers import copied_pill_ground, legible_on
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -715,9 +716,10 @@ def test_copied_feedback_shows_immediately(qtbot, cell, open_menu):
 
 def test_copied_row_paints_the_accent_pill(qtbot, dark_palette):
     """The morph must show up in ink, not only in action data: the copied row
-    gains an accent pill reaching its full row (past the content rect, into
-    the arrow gutter), its caption core flips to ACCENT_COLOR while the other
-    copy rows grey out."""
+    gains the shared accent-pill wash reaching its full row (past the content
+    rect, into the arrow gutter), its caption sits at the success tone's
+    contrast floor on that wash - the floating flash's own recipe - while the
+    other copy rows grey out."""
     palette = dark_palette
     parent = QMenu()
     qtbot.addWidget(parent)
@@ -745,18 +747,15 @@ def test_copied_row_paints_the_accent_pill(qtbot, dark_palette):
     img = _grab(m)
     geo = m.actionGeometry(copied)
     content = _content_rect(geo)
-    # the expected blend of the pill over the flat background (alpha 36/255)
-    accent = QColor(palette["ACCENT_COLOR"])
-    bgc = QColor(bg)
-    alpha = 36 / 255
-    expected = QColor(
-        int(bgc.red() + (accent.red() - bgc.red()) * alpha),
-        int(bgc.green() + (accent.green() - bgc.green()) * alpha),
-        int(bgc.blue() + (accent.blue() - bgc.blue()) * alpha))
+    # the pill paint is the shared opaque wash: the background blended toward
+    # the accent at the menu pill's tuned fraction (copied_pill_ground)
+    expected = QColor(copied_pill_ground(palette))
+    accent = QColor(legible_on(palette["ACCENT_COLOR"], expected.name(),
+                               TONE_MIN_CONTRAST["success"]))
     probe = img.pixelColor(gutters[0].x(), gutters[0].y())
     assert _close(probe, expected, tol=4), \
         f"the copied row's pill is missing at its gutter: {probe.name()} vs {expected.name()}"
-    # caption core flips to accent...
+    # caption core flips to the floored accent...
     ink = _ink_bbox(img, content, bg)
     assert ink is not None, "no caption after the morph"
     assert _close(_lightest_pixel(img, ink), accent)

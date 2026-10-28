@@ -14,7 +14,7 @@ from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import QLabel, QPushButton, QWidget, QVBoxLayout, QApplication
 
 from config import APP_CONFIG
-from utils.ui_helpers import legible_on
+from utils.ui_helpers import copied_pill_ground, legible_on
 
 # The one hover delay every custom tooltip waits - the day cell reads it too, so
 # the grid and the event manager cannot drift apart. It sits near Qt's own native
@@ -81,20 +81,26 @@ class CustomTooltip(QWidget):
         return cls._instance
 
     def flash_tooltip(self, text: str, global_pos: QPoint, duration_ms: int = 600,
-                      tone: str = "neutral"):
+                      tone: str = "neutral", pill: bool = False):
         """Show a transient confirmation (e.g. «کپی شد») that hides itself.
 
         Restarting the single shot on every call is the point: two copies in a
-        row never shorten each other's feedback window.
+        row never shorten each other's feedback window. ``pill`` opts into the
+        copy pill: the calendar copy menu's wash ground instead of the
+        reference-info box.
         """
-        self.show_tooltip(text, global_pos, tone=tone)
+        self.show_tooltip(text, global_pos, tone=tone, pill=pill)
         self._auto_hide_timer.start(duration_ms)
 
     def flash_copied(self, global_pos: QPoint):
-        """The app-wide «✓ کپی شد» confirmation, in the success tone."""
-        self.flash_tooltip(COPIED_TEXT, global_pos, tone="success")
+        """The app-wide «✓ کپی شد» confirmation: the success tone on the copy
+        pill, one look with the calendar's morphed copy row. The text travels
+        plain - the label half (show_tooltip's pill branch) carries the checkmark's
+        LRM pin, so no caller of flash_tooltip ever sees markup or marks."""
+        self.flash_tooltip(COPIED_TEXT, global_pos, tone="success", pill=True)
 
-    def show_tooltip(self, text: str, global_pos: QPoint, owner=None, tone: str = "neutral"):
+    def show_tooltip(self, text: str, global_pos: QPoint, owner=None,
+                     tone: str = "neutral", pill: bool = False):
         # An explicit show must never be auto-hidden by a flash still counting
         # down - a holiday or event tooltip arriving right after a copy would
         # vanish mid-read.
@@ -112,17 +118,42 @@ class CustomTooltip(QWidget):
         # its palette colour verbatim.
         accent = palette.get(TOOLTIP_TONES.get(tone, ""))
         floor = TONE_MIN_CONTRAST.get(tone)
+        if pill:
+            # The copy pill borrows the calendar copy menu's wash ground.
+            ground = copied_pill_ground(palette)
+        else:
+            ground = palette["BACKGROUND_COLOR"]
         if accent and floor:
-            accent = legible_on(accent, palette["BACKGROUND_COLOR"], floor)
+            # Floored against the actual surface - the pill's accent-tinted
+            # wash, not the flat background.
+            accent = legible_on(accent, ground, floor)
+        # The menu SURFACE owns the pill's chrome (the frame, hairlines and
+        # rows around it define the shape), so wash alone reads there. A
+        # floating flash has no such frame - it frames ITSELF, in the
+        # caption's floored accent: the reference box's border over the
+        # pill's wash.
+        border = f"1px solid {accent or palette['CALENDAR_BORDER_COLOR']}"
         self._label.setStyleSheet(
             "QLabel {"
-            f"background-color: {palette['BACKGROUND_COLOR']}; "
+            f"background-color: {ground}; "
             f"color: {accent or palette['TEXT_COLOR']}; "
-            f"border: 1px solid {accent or palette['CALENDAR_BORDER_COLOR']}; "
+            f"border: {border}; "
             "border-radius: 8px; padding: 5px 9px; "
             f"font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 12px; font-weight: bold;"
             "}")
 
+        if pill:
+            # The copy confirmation leads with LRM (U+200E, a strong
+            # Left-to-Right bidi character): the paragraph's first-strong
+            # auto-detection would otherwise follow «ک» and push a leading
+            # neutral ✓ to the far right - on every locale, app direction
+            # aside. Measured under forced app-RTL and app-LTR renders: an
+            # inline <span dir="ltr"> is a no-op in Qt rich text and a
+            # widget-level pin cannot reach the label's paragraph base; the
+            # menu's copied row answers the same pull with its own painter
+            # pin. The mark rides the label, not flash_tooltip's arguments,
+            # so the text contract stays plain.
+            text = f"\u200e{text}"
         self._label.setText(text)
         self.adjustSize()
 

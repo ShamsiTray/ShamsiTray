@@ -886,6 +886,21 @@ def mix_colors(first_hex: str, second_hex: str, weight: float = 0.5) -> str:
                   round(a.blue() + (b.blue() - a.blue()) * weight)).name()
 
 
+# The copy confirmation's accent fraction: the calendar copy menu's morphed row
+# was tuned with accent at alpha 36/255 over its box ground, and the floating
+# flash needs an opaque surface (it hovers over anything), so both blend the
+# accent into the background at this fraction instead of floating a wash.
+COPIED_WASH_ALPHA = 36
+
+
+def copied_pill_ground(palette: dict) -> str:
+    """The one pill colour behind «✓ کپی شد»: the calendar's morphed menu row
+    and the floating flash blend the same wash from here, so the two surfaces
+    of one confirmation cannot drift apart."""
+    return mix_colors(palette["BACKGROUND_COLOR"], palette["ACCENT_COLOR"],
+                      COPIED_WASH_ALPHA / 255)
+
+
 def plain_menu_stylesheet(palette: dict, *, dividers: bool = False) -> str:
     """The stock-QMenu popup look shared by the tray menu and the calendar's
     go-to-date popup: one rounded frame clause, optionally followed by the
