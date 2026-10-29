@@ -199,7 +199,11 @@ class HolidayViewerWindow(BaseFramelessWindow):
         # the manager's main_layout comment); content compensation is the same
         # trailing addSpacing there.
         main_layout.setContentsMargins(8, 14, 18, 14)
-        main_layout.setSpacing(10)
+        # Per-seam spacing, not a uniform one: the summary chip rides closer
+        # to the list (6px) than to the caption bar (10px), so a row cut at
+        # the viewport's top edge reads as scrolling under the chip instead
+        # of floating in a band of glass between two different surfaces.
+        main_layout.setSpacing(0)
 
         self.title_bar = WindowTitleBar(self.close, self.showMinimized)
         # Year stepper buttons (older year on the right, like the calendar's
@@ -222,12 +226,14 @@ class HolidayViewerWindow(BaseFramelessWindow):
         # stepper to the 18px content margin the rows keep on the other side.
         self.title_bar.addSpacing(10)
         main_layout.addLayout(self.title_bar)
+        main_layout.addSpacing(10)
 
         self.count_label = QLabel("")
         self.count_label.setObjectName("SummaryCard")
         self.count_label.setFixedHeight(36)
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.count_label)
+        main_layout.addSpacing(6)
         self._next_row: Optional[QWidget] = None
         self._next_header: Optional[QWidget] = None
         self._summary: Optional[Tuple[int, int, int]] = None
@@ -250,6 +256,9 @@ class HolidayViewerWindow(BaseFramelessWindow):
 
         self.empty_label = QLabel("داده‌ای برای نمایش وجود ندارد.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Layout spacing is 0 (per-seam spacing above); this keeps the empty
+        # state's own seam under the chip.
+        self.empty_label.setContentsMargins(0, 6, 0, 0)
         main_layout.addWidget(self.empty_label)
 
         self._populate_years()
