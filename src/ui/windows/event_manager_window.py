@@ -36,7 +36,7 @@ from typing import Dict, Optional
 
 import jdatetime
 from pathlib import Path
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QStackedWidget, QVBoxLayout,
@@ -72,6 +72,17 @@ logger = setup_logging(__name__)
 
 _MONTH_ANY = 0  # «همه ماه‌ها» filter value
 _TYPE_PAST = "past"  # «گذشته» filter value: only already-passed one-time events
+
+# How long the scroll handler waits after the last scrollbar step before the
+# next scroll counts as a new gesture. Wheel scrolling arrives as a burst of
+# valueChanged ticks (a fast flick: dozens per second); the per-row tooltip
+# dismissal costs O(rows) Python per call, measured ~9 ms at 150 rows - spent
+# per tick that was ~the whole budget of fast scrolling and the list lurched.
+# The dismissal runs once when a gesture starts; ticks inside one gesture only
+# restart this timer, O(1) each. Pending tooltips need no per-tick cancel
+# anyway: _show_custom_tooltip refuses to pop when the cursor is no longer
+# inside its widget, so a timer firing mid-scroll guards itself.
+SCROLL_SETTLE_MS = 200
 
 # Marker on rows whose one-time event is flagged to delete itself once its
 # date has passed (the «حذف پس از گذشت تاریخ» checkbox in the editor).
@@ -230,6 +241,17 @@ class EventManagerWindow(BaseFramelessWindow):
         # skips its rebuild while it still matches. Sound as a shallow copy
         # because store entries are replaced, never mutated in place.
         self._built_from: Optional[Dict[str, dict]] = None
+        # The rows refresh_list built, in list order. The scroll handler reads
+        # this instead of findChildren per tick - a recursive tree scan plus
+        # fresh Python wrappers on every wheel step was most of the dismissal's
+        # per-tick cost (see SCROLL_SETTLE_MS).
+        self._rows: list = []
+        self._scrolling = False
+        self._scroll_settle_timer = QTimer(self)
+        self._scroll_settle_timer.setSingleShot(True)
+        self._scroll_settle_timer.setInterval(SCROLL_SETTLE_MS)
+        self._scroll_settle_timer.timeout.connect(
+            lambda: setattr(self, "_scrolling", False))
         self.setWindowTitle("مدیریت رویدادها")
         self.setFixedSize(self.WIDTH, self.HEIGHT)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -330,7 +352,7 @@ class EventManagerWindow(BaseFramelessWindow):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidget(self.list_container)
-        self.scroll_area.verticalScrollBar().valueChanged.connect(self._dismiss_row_tooltips)
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
 
         self.empty_label = QLabel("رویدادی یافت نشد.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -420,6 +442,7 @@ class EventManagerWindow(BaseFramelessWindow):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+        self._rows = []
 
         today = jdatetime.date.today()
         show_past = self.past_checkbox.isChecked()
@@ -456,6 +479,7 @@ class EventManagerWindow(BaseFramelessWindow):
             row.edit_requested.connect(self._on_edit_requested)
             row.delete_requested.connect(self._on_delete_requested)
             self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
+            self._rows.append(row)
             shown += 1
 
         total = len(self.user_events)
@@ -478,6 +502,18 @@ class EventManagerWindow(BaseFramelessWindow):
         self._restyle_dynamic_children()
         self._built_from = dict(self.user_events)
 
+    def _on_list_scrolled(self):
+        """Run the row-tooltip dismissal once per scroll gesture.
+
+        Every wheel tick lands here, so the per-tick work is a flag check and
+        a timer restart; the full per-row dismissal runs when a gesture starts
+        (see SCROLL_SETTLE_MS for the measurement behind the shape).
+        """
+        if not self._scrolling:
+            self._scrolling = True
+            self._dismiss_row_tooltips()
+        self._scroll_settle_timer.start()
+
     def _dismiss_row_tooltips(self):
         """Drop the rows' hover tooltips when the list moves under them.
 
@@ -487,7 +523,7 @@ class EventManagerWindow(BaseFramelessWindow):
         what it owns, leaving a «کپی شد» flash alone - the shared tooltip has one
         window for the whole app.
         """
-        for row in self.list_container.findChildren(EventRow):
+        for row in self._rows:
             row.cancel_pending_tooltip()
 
     # --- mutations ---

@@ -1856,6 +1856,47 @@ def test_scrolling_the_list_dismisses_row_tooltips(manager, qtbot):
     assert not button._tooltip_timer.isActive()
 
 
+def test_scroll_dismissal_runs_once_per_gesture(manager, qtbot):
+    """Wheel scrolling arrives as a burst of valueChanged ticks, and the
+    per-row dismissal costs O(rows) Python per call - measured ~9 ms per tick
+    at 150 rows, most of a fast flick's budget, which is what lurched the
+    list. One gesture runs the dismissal once; ticks inside it only restart
+    the settle timer, and a tick after the settle window is a new gesture."""
+    today = jdatetime.date.today()
+    for offset in range(25):
+        manager.controller.add_user_event(today + datetime.timedelta(days=offset),
+                                          f"رویداد {offset}", "none", False)
+    manager.refresh_list()
+    qtbot.wait(10)  # let the scroll area lay out so the bar has a range to move in
+
+    from ui.windows.event_manager_window import SCROLL_SETTLE_MS
+
+    calls = []
+    manager._dismiss_row_tooltips = lambda: calls.append(1)
+    scrollbar = manager.scroll_area.verticalScrollBar()
+    for _ in range(3):
+        scrollbar.setValue(scrollbar.value() + 10)
+    assert len(calls) == 1
+
+    qtbot.wait(SCROLL_SETTLE_MS + 50)
+    scrollbar.setValue(scrollbar.value() + 10)
+    assert len(calls) == 2
+
+
+def test_dismissal_reads_the_rows_refresh_list_built(manager):
+    """The scroll path reads the row cache refresh_list built - not a
+    findChildren scan of the whole tree on every wheel tick."""
+    today = jdatetime.date.today()
+    for offset in range(3):
+        manager.controller.add_user_event(today + datetime.timedelta(days=offset),
+                                          f"رویداد {offset}", "none", False)
+    manager.refresh_list()
+
+    layout = manager.rows_layout
+    shown = [layout.itemAt(i).widget() for i in range(layout.count() - 1)]
+    assert manager._rows == shown
+
+
 def test_rebuilding_the_list_drops_a_row_tooltip(manager):
     """Every filter change rebuilds the rows, and a row that is deleted would
     otherwise leave its tooltip floating over the list."""
