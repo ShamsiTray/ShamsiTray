@@ -7,7 +7,8 @@ import pytest
 from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CALENDAR_JALALI
 from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import (describe_date_distance, format_distance_breakdown,
-                              format_gregorian_long, format_jalali_long,
+                              format_gregorian_long, format_gregorian_numeric,
+                              format_jalali_long, format_jalali_numeric,
                               gregorian_weekday_name, persian_weekday_name,
                               to_persian_digits)
 
@@ -52,7 +53,7 @@ def test_open_does_not_focus_the_year_field(window, qtbot):
 def test_convert_known_jalali_date(window):
     set_jalali_input(window, "۱۴۰۳", 0, "۱")
     window._convert_date()
-    assert window.gregorian_date_value_1.text() == "2024-03-20"
+    assert window.gregorian_date_value_1.text() == "2024/03/20"
     assert window.jalali_date_value_1.text() == to_persian_digits("1403/01/01")
     assert window.output_widget.isVisible()
     assert window.leap_year_status.text() != ""
@@ -65,7 +66,7 @@ def test_convert_known_gregorian_date(window):
     window.day_combo.setCurrentText("20")
     window._convert_date()
     assert window.jalali_date_value_1.text() == to_persian_digits("1403/01/01")
-    assert window.gregorian_date_value_1.text() == "2024-03-20"
+    assert window.gregorian_date_value_1.text() == "2024/03/20"
 
 
 def test_convert_today_shows_is_today_message(window):
@@ -365,11 +366,9 @@ def test_copy_payloads_use_latin_digits_while_labels_show_persian(window):
 
     Copying label.text() put the Persian-digit DISPLAY text on the clipboard,
     so the same day copied to Latin digits from the calendar and to Persian
-    digits from here."""
+    digits from here. The Gregorian numeric row is Latin on both sides - its
+    display IS its payload."""
     from PyQt6.QtWidgets import QApplication
-    from utils.date_utils import (format_gregorian_long, format_gregorian_numeric,
-                                   format_jalali_long, format_jalali_numeric,
-                                   gregorian_weekday_name, persian_weekday_name)
 
     set_jalali_input(window, "۱۴۰۳", 0, "۱")
     window._convert_date()
@@ -380,18 +379,42 @@ def test_copy_payloads_use_latin_digits_while_labels_show_persian(window):
     for label, expected in (
         (window.jalali_date_value_1, format_jalali_numeric(j_date)),
         (window.jalali_date_value_2, format_jalali_long(j_date, persian_digits=False)),
-        (window.jalali_weekday_label, persian_weekday_name(j_date.weekday())),
         (window.gregorian_date_value_1, format_gregorian_numeric(j_date)),
         (window.gregorian_date_value_2,
          format_gregorian_long(g_date, persian_digits=False)),
-        (window.gregorian_weekday_label, gregorian_weekday_name(g_date.weekday())),
     ):
         window._copy_to_clipboard(label)
         assert clipboard.text() == expected
 
     # The visible Jalali rows still read in Persian digits - only the clipboard
-    # payload is Latin, which is the whole point.
+    # payload is Latin, which is the whole point. The Gregorian numeric row
+    # shows the exact slash form it copies.
     assert window.jalali_date_value_1.text() == "۱۴۰۳/۰۱/۰۱"
+    assert window.gregorian_date_value_1.text() == format_gregorian_numeric(j_date)
+    assert window.gregorian_date_value_1.text() == "2024/03/20"
+
+
+def test_weekday_footnotes_are_display_only(window):
+    """The weekday footnote has nothing to click: the long-form payload
+    already carries the weekday, so a separate one-word copy row would be a
+    stray second way to copy the same string. A press on the footnote leaves
+    the clipboard alone, the payload dict has no entry for it, and the cursor
+    stays the arrow no copy affordance promises."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+
+    from tests.qt_mousing import press
+
+    set_jalali_input(window, "۱۴۰۳", 0, "۱")
+    window._convert_date()
+    QApplication.clipboard().clear()
+    QApplication.clipboard().setText("sentinel")
+    for weekday_label in (window.jalali_weekday_label,
+                          window.gregorian_weekday_label):
+        press(weekday_label)
+        assert QApplication.clipboard().text() == "sentinel"
+        assert id(weekday_label) not in window._copy_payloads
+        assert weekday_label.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
 def test_copy_payloads_are_rebuilt_on_every_conversion(window):

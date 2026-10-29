@@ -188,11 +188,17 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.gregorian_weekday_label = QLabel("...")
         self.jalali_weekday_label = QLabel("...")
 
-        for lbl in [self.gregorian_date_value_1, self.gregorian_date_value_2,
-                self.jalali_date_value_1, self.jalali_date_value_2,
-                self.gregorian_weekday_label, self.jalali_weekday_label]:
+        # Only the four date values are copy rows: the weekday footnotes are
+        # display-only, so the long-form payload (which carries the weekday) is
+        # the one place a weekday reaches the clipboard - no separate one-word
+        # copy row to click.
+        for lbl in (self.gregorian_date_value_1, self.gregorian_date_value_2,
+                    self.jalali_date_value_1, self.jalali_date_value_2):
             self._make_copy_row(lbl)
             lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        for lbl in (self.gregorian_weekday_label, self.jalali_weekday_label):
+            # _make_copy_row owned the footnote's centering; it stays.
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # The two calendars sit side by side, each in its own field card:
         # the stacked blocks lined six result lines up and read as one pile,
@@ -479,10 +485,14 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             logger.warning(f"Date conversion failed: {e}")
 
     def _display_results(self, j_date: jdatetime.date, g_date: datetime.date, is_jalali_input: bool):
-        self.jalali_date_value_1.setText(to_persian_digits(j_date.strftime("%Y/%m/%d")))
+        # Both numeric displays come from the shared formatters, so the shape
+        # the user sees is the shape the clipboard gets where the digits allow:
+        # the Gregorian row is Latin on both sides, the Jalali row is Persian
+        # on screen and Latin on the clipboard (the app-wide copy convention).
+        self.jalali_date_value_1.setText(to_persian_digits(format_jalali_numeric(j_date)))
         self.jalali_date_value_2.setText(format_jalali_long(j_date, with_weekday=False))
         self.jalali_weekday_label.setText(persian_weekday_name(j_date.weekday()))
-        self.gregorian_date_value_1.setText(g_date.strftime("%Y-%m-%d"))
+        self.gregorian_date_value_1.setText(format_gregorian_numeric(j_date))
         # The date part comes from the shared formatter, not strftime: %A/%B
         # follow the process locale, so the same line showed Persian names on
         # a Persian Windows install (the format_gregorian_long docstring).
@@ -492,16 +502,15 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         # What each row puts on the clipboard, keyed by label identity and
         # rebuilt on every conversion: the labels show Persian digits, so
         # copying label.text() gave the user a date in a different numeral
-        # system than the calendar's «کپی تاریخ» menu produces for the same day.
-        # The payloads come from the shared formatters so both surfaces agree;
-        # the weekday rows copy the names they display.
+        # system than the calendar's «کپی تاریخ» menu produces for the same
+        # day. The payloads come from the shared formatters so both surfaces
+        # agree; the weekday rides the long-form payloads alone - the footnote
+        # rows are display-only, so there is nothing separate to click for it.
         self._copy_payloads = {
             id(self.jalali_date_value_1): format_jalali_numeric(j_date),
             id(self.jalali_date_value_2): format_jalali_long(j_date, persian_digits=False),
-            id(self.jalali_weekday_label): persian_weekday_name(j_date.weekday()),
             id(self.gregorian_date_value_1): format_gregorian_numeric(j_date),
             id(self.gregorian_date_value_2): format_gregorian_long(g_date, persian_digits=False),
-            id(self.gregorian_weekday_label): gregorian_weekday_name(g_date.weekday()),
         }
 
         self._update_elapsed_time(g_date)
