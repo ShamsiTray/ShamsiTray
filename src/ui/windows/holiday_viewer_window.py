@@ -448,7 +448,10 @@ class HolidayViewerWindow(BaseFramelessWindow):
         font = APP_CONFIG.FONT_FAMILY
         accent, holiday = p["ACCENT_COLOR"], p["HOLIDAY_COLOR"]
         is_dark = QColor(p["BACKGROUND_COLOR"]).lightness() < 128
-        hover = "rgba(255, 255, 255, 0.05)" if is_dark else "rgba(0, 0, 0, 0.04)"
+        # A bare pointer-position cue for scanning a long list, not an
+        # affordance (the rows are inert); quiet enough to never read as
+        # clickable next to the accent-tinted «next» row's wash.
+        hover = "rgba(255, 255, 255, 0.03)" if is_dark else "rgba(0, 0, 0, 0.02)"
         self.list_container.setStyleSheet(f"""
             QWidget {{ background: transparent; font-family: '{font}'; }}
             QFrame#HolidayRow {{ background: transparent; border: 1px solid transparent; border-radius: 10px; }}
