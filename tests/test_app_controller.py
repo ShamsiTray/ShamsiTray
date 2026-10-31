@@ -192,9 +192,9 @@ def test_auto_notification_respects_ignored_version(tray):
 
 
 def test_auto_notification_fires_for_new_version(tray, qtbot):
-    """The popup is deferred out of the checker's signal path (singleShot 0):
-    _conclude() must be able to finish its check_concluded bookkeeping while
-    nobody is blocking inside a modal dialog."""
+    """The popup is deferred out of the checker's signal path (a zero-interval
+    timer): _conclude() must be able to finish its check_concluded bookkeeping
+    while nobody is blocking inside a modal dialog."""
     tray._manual_update_check = False
     popup_calls, _ = _spy(tray, "_show_update_popup")
     tray._on_app_update_available("9.9.9", "http://x", "")
@@ -1515,18 +1515,15 @@ def test_expiry_cleanup_inside_the_composition_keeps_one_pass(tray, monkeypatch)
     assert "1400-01-01" not in tray.event_service.events  # cleaned, pass rendered once
 
 
-def test_close_menu_then_closes_and_defers(tray, monkeypatch):
+def test_close_menu_then_closes_and_defers(tray, qtbot, monkeypatch):
     menu = tray.contextMenu()
     closed = []
     monkeypatch.setattr(menu, "close", lambda: closed.append(1))
-    scheduled = []
-    monkeypatch.setattr(tray_menu_module.QTimer, "singleShot",
-                        lambda ms, cb: scheduled.append(cb))
     marker = []
     tray_menu_module.close_menu_then(tray, lambda: marker.append(1))
     assert closed == [1]
-    assert marker == []          # deferred
-    scheduled[0]()               # run the deferred callback
+    assert marker == []          # deferred, never synchronous
+    qtbot.wait(100)              # let the 50ms deferral fire
     assert marker == [1]
 
 

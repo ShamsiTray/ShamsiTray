@@ -31,7 +31,17 @@ def close_menu_then(tray, callback):
     menu = tray.contextMenu()
     if menu:
         menu.close()
-    QTimer.singleShot(50, callback)
+    # A child timer, not a static singleShot: the deferral dies with the tray
+    # instead of opening a dialog inside some later event loop. The callback
+    # is parked on the tray and the slot is that tray's own bound method -
+    # the receiver-aware deferral shape (CalendarDayCell._emit_after_menu_close
+    # documents the rule).
+    tray._menu_deferral_payload = callback
+    timer = QTimer(tray)
+    timer.setSingleShot(True)
+    timer.timeout.connect(tray._run_menu_deferral)
+    tray._menu_deferral = timer
+    timer.start(50)
 
 
 def add_menu_action(tray, menu, text, slot):

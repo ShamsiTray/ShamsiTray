@@ -200,7 +200,7 @@ def test_context_menu_remove_enabled_with_user_event(qtbot, open_menu):
 
 
 def test_add_event_emission_is_delayed_until_menu_gone(cell, qtbot):
-    """_emit_after_menu_close closes first, emits via singleShot."""
+    """_emit_after_menu_close closes first and defers the emission."""
     received = []
     cell.add_event_requested.connect(lambda j: received.append(j))
 

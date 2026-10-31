@@ -177,7 +177,20 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.event_removed_by_key.connect(self.remove_user_event_by_key)
         self.calendar_widget.event_updated_by_key.connect(self.update_user_event_by_key)
 
-        QTimer.singleShot(1000, self._prewarm_calendar)
+        # A static singleShot holds the bound method - and with it the whole
+        # controller - until it fires, so a controller with no other references
+        # is kept alive (and its prewarm then fires inside some later event
+        # loop). A child timer dies with the controller: the prewarm can never
+        # outlive its owner.
+        self._prewarm_timer = QTimer(self)
+        self._prewarm_timer.setSingleShot(True)
+        self._prewarm_timer.setInterval(1000)
+        self._prewarm_timer.timeout.connect(self._prewarm_calendar)
+        self._prewarm_timer.start()
+
+        # Parked here by tray_menu.close_menu_then; see _run_menu_deferral.
+        self._menu_deferral = None
+        self._menu_deferral_payload = None
 
         self._load_settings()
         self._validate_and_apply_startup_setting()
@@ -263,7 +276,9 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def _setup_timers(self):
         self.minute_timer = QTimer(self)
-        self.minute_timer.timeout.connect(lambda: self.update_tray_icon(force=False))
+        # A bound method, not a lambda: timeout passes no arguments, and
+        # update_tray_icon's default is exactly the False the lambda applied.
+        self.minute_timer.timeout.connect(self.update_tray_icon)
         self.minute_timer.start(60 * 1000)
         self._time_change_messages = 0
         self._time_change_timer = QTimer(self)
@@ -378,6 +393,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         # opening; closes the one-tick window in which a second
         # app_update_available could schedule a duplicate dialog.
         self._update_popup_pending = False
+        # The deferred popup's payload, parked here by the scheduling path and
+        # consumed by _show_deferred_update_popup.
+        self._popup_payload = None
         self._download_dialog = None
         self._auto_check_retries = 0
         # Quiet holiday-refetch retries; reset whenever a holiday fetch succeeds.
@@ -489,7 +507,25 @@ class SystemTrayIcon(QSystemTrayIcon):
                 self._active_update_popup.activateWindow()
             return
         self._update_popup_pending = True
-        QTimer.singleShot(0, lambda: self._show_update_popup(version, installer_url, sha256))
+        # The deferral must never outlive this controller: a static singleShot
+        # holds the callback - and with it the controller - until it fires, so
+        # a controller that dies first leaves the popup deferral behind, and
+        # its modal exec then opens inside some later event loop's dispatch
+        # (the shape that access-violated the suite). A child timer is
+        # destroyed with its controller, so the deferral dies with its owner.
+        # The payload rides the controller and the slot is its own bound
+        # method - the receiver-aware deferral shape
+        # (CalendarDayCell._emit_after_menu_close documents the rule).
+        self._popup_payload = (version, installer_url, sha256)
+        self._popup_timer = QTimer(self)
+        self._popup_timer.setSingleShot(True)
+        self._popup_timer.timeout.connect(self._show_deferred_update_popup)
+        self._popup_timer.start()
+
+    def _show_deferred_update_popup(self):
+        version, installer_url, sha256 = self._popup_payload
+        self._popup_payload = None
+        self._show_update_popup(version, installer_url, sha256)
 
     def _show_update_popup(self, version: str, installer_url: str, sha256: str):
         self._update_popup_pending = False
@@ -1155,6 +1191,14 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.warning(f"Startup registry key is incorrect. Found: '{current_value}', Expected: '{expected_value}'")
         logger.info("Re-applying startup registry key.")
         self._set_startup_registry(True)
+
+    def _run_menu_deferral(self):
+        """Run the callback the tray menu's close-then-open deferral parked
+        here (see tray_menu.close_menu_then)."""
+        timer, self._menu_deferral = self._menu_deferral, None
+        callback, self._menu_deferral_payload = self._menu_deferral_payload, None
+        timer.deleteLater()
+        callback()
 
     def _show_or_raise(self, window_attr: str, factory):
         """Shared window-opener: create+show the window stored on ``window_attr``,

@@ -258,6 +258,23 @@ deselected by default (`pytest.ini` sets `-m "not windows_integration"`):
 ```powershell
 pytest -m windows_integration
 ```
+
+Every booted `SystemTrayIcon` is disposed between tests by the autouse
+`dispose_tray_controllers` fixture: pytest-qt and scheduled callbacks would
+otherwise hold every controller (and its pending timers) alive for the whole
+run, and a stray timer that fires inside a later test's event loop — one whose
+modal work re-enters a foreign dispatch — is what access-violated long runs.
+No deferral may use the static `QTimer.singleShot`: it keeps its callback (and
+whatever the callback captures) alive past its owner's death and then fires
+inside a later event loop. Every deferral — day-menu emission, tray-menu and
+go-to-date openers, the viewer's auto-scroll, the prewarm, the update popup —
+is a receiver-aware child `QTimer` that dies with its widget. A deferral's
+safety is its sender's lifetime: the slot is a bound method of that owner
+(receiver-tied — PyQt decomposes a bound-method connection and lets it die
+with the receiver, while a plain callable stays pinned by the sender's
+connection for the sender's lifetime) and any payload rides the owner, not
+the timer.
+
 Test modules (in `tests/`): every module of the app has a dedicated file —
 persistence/settings: `json_settings`, `settings_migration`, `event_io`,
 `holiday_io`, `event_service`; core: `update_checker` (pure helpers + full

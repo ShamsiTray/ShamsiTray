@@ -405,7 +405,15 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self._restyle_dynamic_children()
         self.scroll_area.verticalScrollBar().setValue(0)
         if self._next_row is not None:
-            QTimer.singleShot(0, self._scroll_to_next)
+            # A child timer, not a static singleShot: the deferral dies with
+            # this viewer instead of scrolling a rebuilt list later. Stored
+            # here and slotted to a bound method - the receiver-aware deferral
+            # shape (CalendarDayCell._emit_after_menu_close).
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._scroll_to_next)
+            self._scroll_timer = timer
+            timer.start(0)
 
     @staticmethod
     def _safe_date(year: int, md: Tuple[int, int]):

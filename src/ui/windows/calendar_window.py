@@ -537,7 +537,15 @@ class PersianCalendarWidget(BaseFramelessWindow):
             # dismissed - the same sequencing the tray menu uses, avoiding
             # focus/platform weirdness of dialogs over open menus.
             menu.close()
-            QTimer.singleShot(50, self._open_go_to_date_window)
+            # A child timer, not a static singleShot: the deferral dies with
+            # this calendar instead of opening a popup in some later loop.
+            # Stored here and slotted to a bound method - the receiver-aware
+            # deferral shape (CalendarDayCell._emit_after_menu_close).
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._open_go_to_date_window)
+            self._goto_deferral_timer = timer
+            timer.start(50)
 
         go_to_action.triggered.connect(_open_after_menu_close)
         action = QWidgetAction(self)
