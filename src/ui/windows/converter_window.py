@@ -195,6 +195,9 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         for lbl in (self.gregorian_date_value_1, self.gregorian_date_value_2,
                     self.jalali_date_value_1, self.jalali_date_value_2):
             self._make_copy_row(lbl)
+            # The name is the styling hook the shared CopyRow sheet in
+            # update_styles reaches (the generic unnamed-label loop skips it).
+            lbl.setObjectName("CopyRow")
             lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         for lbl in (self.gregorian_weekday_label, self.jalali_weekday_label):
             # _make_copy_row owned the footnote's centering; it stays.
@@ -244,6 +247,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         layout.addSpacing(10)
 
         self.elapsed_text = QLabel("...")
+        self.elapsed_text.setObjectName("CopyRow")
         # A copy row like the date values; its payload and cursor are
         # stamped per conversion (_update_elapsed_time), so «تاریخ امروز
         # است.» can opt the line out of copying.
@@ -253,7 +257,11 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
         self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
 
-        layout.addWidget(self.elapsed_text)
+        # Centered AND shrink-wrapped: the alignment flag stops the layout
+        # stretching the row to the full width, so the wash hugs the text
+        # (the pill the elapsed_style padding shapes) instead of becoming a
+        # window-wide bar. A text change re-measures and re-centers it.
+        layout.addWidget(self.elapsed_text, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.leap_year_status)
 
         return widget
@@ -292,6 +300,33 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             if label.objectName() == "OutputTitleLabel":
                  label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 16, QFont.Weight.Bold))
                  label.setStyleSheet(f"color: {palette['ACCENT_COLOR']}; padding: 5px;")
+        # The copy rows wear one shared sheet (the generic loop above skips
+        # named labels). The wash is the row's copy affordance - the viewer's
+        # inert-row recipe, one step stronger, because here the row really is
+        # clickable; the small radius turns the band into a row rather than a
+        # highlighter stroke. «تاریخ امروز است.» opts its row out through the
+        # copyable property, since there is nothing the click would copy.
+        is_dark = QColor(palette['BACKGROUND_COLOR']).lightness() < 128
+        hover = "rgba(255, 255, 255, 0.05)" if is_dark else "rgba(0, 0, 0, 0.04)"
+        # The four date rows live inside the cards, so their wash spans the
+        # card's inner width and reads as a row highlight. The elapsed line
+        # stands alone on the open fill: full width would read as a second
+        # card, so it shrink-wraps its text (added centered in the layout)
+        # and its own sheet's horizontal padding shapes the band.
+        copy_row_style = (
+            f"QLabel#CopyRow {{ color: {palette['TEXT_COLOR']};"
+            f" border-radius: 6px; padding: 2px 0; }}"
+            f"QLabel#CopyRow:hover {{ background: {hover}; }}"
+            "QLabel#CopyRow[copyable=\"false\"]:hover { background: transparent; }")
+        elapsed_style = (
+            f"QLabel#CopyRow {{ color: {palette['TEXT_COLOR']};"
+            f" border-radius: 6px; padding: 2px 14px; }}"
+            f"QLabel#CopyRow:hover {{ background: {hover}; }}"
+            "QLabel#CopyRow[copyable=\"false\"]:hover { background: transparent; }")
+        for row in (self.jalali_date_value_1, self.jalali_date_value_2,
+                    self.gregorian_date_value_1, self.gregorian_date_value_2):
+            row.setStyleSheet(copy_row_style)
+        self.elapsed_text.setStyleSheet(elapsed_style)
         self.jalali_date_value_1.setFont(QFont(APP_CONFIG.FONT_FAMILY, 15, QFont.Weight.Bold))
         self.jalali_date_value_2.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.gregorian_date_value_1.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 15, QFont.Weight.Bold))
@@ -549,8 +584,21 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             # _copy_to_clipboard falls back to label.text() on a missing key,
             # so "nothing to copy" is a stamped-empty payload, not an absent one.
             self._copy_payloads[id(self.elapsed_text)] = ""
+            self._set_elapsed_copyable(False)
             return
         self.elapsed_text.setText(f"فاصله زمانی: {format_distance_breakdown(distance)}")
         self.elapsed_text.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_payloads[id(self.elapsed_text)] = from_persian_digits(
             format_distance_units(distance))
+        self._set_elapsed_copyable(True)
+
+    def _set_elapsed_copyable(self, copyable: bool):
+        """Gate the elapsed row's hover wash with its copy state.
+
+        The wash must not promise a copy «تاریخ امروز است.» cannot deliver -
+        the cursor already drops to the arrow, the wash drops with it. QSS
+        caches property selectors, so the flip needs an explicit re-polish.
+        """
+        self.elapsed_text.setProperty("copyable", copyable)
+        self.elapsed_text.style().unpolish(self.elapsed_text)
+        self.elapsed_text.style().polish(self.elapsed_text)

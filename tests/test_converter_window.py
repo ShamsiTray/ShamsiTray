@@ -465,6 +465,47 @@ def test_elapsed_today_line_click_copies_nothing(window):
     assert window.elapsed_text.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
+def test_copy_rows_wear_the_hover_wash(window):
+    """The five copy rows share the CopyRow sheet: a hover wash that says
+    the row is clickable, rounded so the band reads as a row. The four date
+    rows live inside the cards, so their wash spans the card width; the
+    elapsed line stands alone and shrink-wraps its text instead - a
+    window-wide bar would read as a second card. The weekday footnotes stay
+    display-only and get neither the name nor a hover rule."""
+    for row in (window.jalali_date_value_1, window.jalali_date_value_2,
+                window.gregorian_date_value_1, window.gregorian_date_value_2):
+        assert row.objectName() == "CopyRow"
+        assert ":hover" in row.styleSheet()
+        assert "border-radius" in row.styleSheet()
+        assert "padding: 2px 0" in row.styleSheet()
+    assert window.elapsed_text.objectName() == "CopyRow"
+    assert ":hover" in window.elapsed_text.styleSheet()
+    assert "border-radius" in window.elapsed_text.styleSheet()
+    assert "padding: 2px 14px" in window.elapsed_text.styleSheet()
+    for footnote in (window.jalali_weekday_label, window.gregorian_weekday_label):
+        assert footnote.objectName() != "CopyRow"
+        assert ":hover" not in footnote.styleSheet()
+
+
+def test_elapsed_row_shrinks_to_its_text(window):
+    """The elapsed row's wash hugs the text: the centered shrink-wrap keeps
+    the label at its sizeHint width, never the output section's width."""
+    _convert_jalali(window, jdatetime.date.today() + datetime.timedelta(days=30))
+    window.output_widget.show()
+    window.layout().activate()
+    assert window.elapsed_text.width() < window.output_widget.width()
+
+
+def test_elapsed_row_opts_out_of_the_wash_when_there_is_nothing_to_copy(window):
+    """«تاریخ امروز است.» drops the cursor to the arrow; the hover wash must
+    drop with it, or the row promises a copy the click cannot deliver."""
+    _convert_jalali(window, jdatetime.date.today() + datetime.timedelta(days=30))
+    assert window.elapsed_text.property("copyable") is True
+
+    _convert_jalali(window, jdatetime.date.today())
+    assert window.elapsed_text.property("copyable") is False
+
+
 def test_enter_converts_through_the_button_when_submittable(window):
     """The routing must not swallow Enter for a valid year — it goes through the
     button and still converts."""
