@@ -16,7 +16,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PyQt6.QtCore import QCoreApplication  # noqa: E402 - after the platform env
+from PyQt6.QtCore import QCoreApplication, QEvent  # noqa: E402 - after the platform env
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 if str(SRC) not in sys.path:
@@ -117,3 +117,46 @@ def tray(qtbot, user_data, fake_startup_registry):
     # holding bound callbacks, and the boot timer it schedules can fire inside a
     # LATER test's event loop.
     QCoreApplication.instance().removeNativeEventFilter(icon.event_filter)
+
+
+@pytest.fixture(autouse=True)
+def dispose_tray_controllers(monkeypatch):
+    """Dispose every booted SystemTrayIcon between tests.
+
+    A booted controller is otherwise referenced forever: pytest-qt holds every
+    widget, and scheduled callbacks hold its bound methods, so each module's
+    boots pile up live controllers (with their pending timers) across tests -
+    the pile-up that access-violated long runs. Disposal sits in teardown and
+    the fixture itself flushes the deferred deletes: every controller dies
+    between tests, never mid-dispatch, and no delete stays pending for some
+    later pump. Tracking __init__ catches the controller fixtures' boots and
+    the inline constructions in test bodies alike.
+    """
+    from core.app_controller import SystemTrayIcon
+
+    born = []
+    real_init = SystemTrayIcon.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        born.append(self)
+
+    monkeypatch.setattr(SystemTrayIcon, "__init__", tracking_init)
+    yield
+    app = QCoreApplication.instance()
+    for icon in born:
+        try:
+            app.removeNativeEventFilter(icon.event_filter)
+            icon.deleteLater()
+            for name in ("calendar_widget", "converter_window", "distance_window",
+                         "event_manager_window", "holiday_viewer_window"):
+                window = getattr(icon, name, None)
+                if window is not None:
+                    window.deleteLater()
+        except RuntimeError:
+            pass  # this controller's C++ side is already gone
+    # Land every deferred delete inside THIS teardown: a delete still pending
+    # past teardown fires inside some later event pump, where a queued timer
+    # of the same dying tree can still dispatch into Python while Qt tears
+    # its sender out from under it (the shape that access-violated the suite).
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

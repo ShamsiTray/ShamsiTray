@@ -392,4 +392,21 @@ class ClickableLabel(QLabel):
         # before opening any new dialogs or widgets: the editor and the
         # distance notice are modal, and a modal must not appear while the
         # menu still holds its grab.
-        QTimer.singleShot(50, lambda: signal.emit(*args))
+        #
+        # A child timer, never a static singleShot: a deferral's safety is
+        # its sender's lifetime, and this sender dies with the cell - a
+        # static singleShot has no owner, outlives the widget and fires
+        # inside some later event loop. The slot is this cell's own bound
+        # method (receiver-tied: the connection can never outlive its
+        # receiver) with the payload parked on the cell.
+        self._deferred_emit = (signal, args)
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._emit_deferred_signal)
+        self._deferral_timer = timer
+        timer.start(50)
+
+    def _emit_deferred_signal(self):
+        signal, args = self._deferred_emit
+        self._deferred_emit = None
+        signal.emit(*args)

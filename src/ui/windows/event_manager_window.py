@@ -250,8 +250,7 @@ class EventManagerWindow(BaseFramelessWindow):
         self._scroll_settle_timer = QTimer(self)
         self._scroll_settle_timer.setSingleShot(True)
         self._scroll_settle_timer.setInterval(SCROLL_SETTLE_MS)
-        self._scroll_settle_timer.timeout.connect(
-            lambda: setattr(self, "_scrolling", False))
+        self._scroll_settle_timer.timeout.connect(self._on_scroll_settled)
         self.setWindowTitle("مدیریت رویدادها")
         self.setFixedSize(self.WIDTH, self.HEIGHT)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -513,6 +512,9 @@ class EventManagerWindow(BaseFramelessWindow):
             self._scrolling = True
             self._dismiss_row_tooltips()
         self._scroll_settle_timer.start()
+
+    def _on_scroll_settled(self):
+        self._scrolling = False
 
     def _dismiss_row_tooltips(self):
         """Drop the rows' hover tooltips when the list moves under them.
