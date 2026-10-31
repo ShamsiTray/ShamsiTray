@@ -40,7 +40,7 @@ import datetime
 
 import jdatetime
 from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QColor, QCursor
 from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QStackedWidget, QVBoxLayout, QWidget)
 
@@ -157,14 +157,24 @@ class CopyRow(QWidget):
 
     def __init__(self, days_label: QLabel, unit_label: QLabel, parent=None):
         super().__init__(parent)
+        # The name is the hover sheet's styling hook; the attribute is the
+        # styled-background opt-in a custom QWidget subclass owes before any
+        # stylesheet background paints (only an exact-QWidget literal draws
+        # one without it).
+        self.setObjectName("CopyRow")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.days_label, self.unit_label = days_label, unit_label
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        # A stylesheet paints on a QWidget subclass only once the widget opted
-        # into stylesheet painting; the hero's :focus ring needs that opt-in.
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
+        # The hover pill's inset around the 58px sentence: the band paints the
+        # row's whole rect, so the breathing room must come from the layout's
+        # margins - QSS padding cannot inset a widget's layout the way it
+        # insets a QLabel's text. The vertical pair is deliberately uneven
+        # (top +10 on the bottom): the ink rides ~5px above a centered rect's
+        # center, so equal margins would leave 10px more air under the
+        # baseline than over the caps.
+        row.setContentsMargins(10, 12, 10, 2)
         row.setSpacing(8)
         row.addWidget(days_label, alignment=Qt.AlignmentFlag.AlignBaseline)
         row.addWidget(unit_label, alignment=Qt.AlignmentFlag.AlignBaseline)
@@ -218,8 +228,15 @@ class DateDistanceWindow(BaseFramelessWindow):
     # to the result card, where no click can move the focus ring away itself.
     CLEAR_FOCUS_ON_BLANK_CLICK = True
     # The result block is static (nothing wraps), so the window is a fixed size.
+    # A slot of 64px for the hero cell is the floor: the 58px Vazirmatn line box
+    # (90px: ascent 59 + descent 31) must NOT be squeezed under the label's
+    # rect, or the digit tops flat-cut at that rect - a cut the hover band's
+    # top edge rides along (substitute-font metrics hid this until the band).
+    # 380 gave the hero 48px; 404 gives it 64 (ink clearance 7px, row hint 98
+    # per layout scan at both platforms' matching 90px metrics).
+    # addStretch keeps whatever remains centered.
     WINDOW_WIDTH = 440
-    INITIAL_HEIGHT = 380
+    INITIAL_HEIGHT = 404
 
     def __init__(self):
         super().__init__()
@@ -364,6 +381,11 @@ class DateDistanceWindow(BaseFramelessWindow):
         # palette's legible muted colour); GREY_COLOR is too faint on the card.
         card_bg = mix_colors(palette['BACKGROUND_COLOR'], palette['INPUT_BG_COLOR'], 0.5)
         muted = palette['WEEKDAY_NAMES_COLOR']
+        # The copy lines wear the converter's copy-row wash (its update_styles
+        # owns the recipe): a hover affordance on the lines that copy, and
+        # nothing on the message or the year hint, which copy nothing.
+        is_dark = QColor(palette['BACKGROUND_COLOR']).lightness() < 128
+        hover = "rgba(255, 255, 255, 0.05)" if is_dark else "rgba(0, 0, 0, 0.04)"
         self.result_card.setStyleSheet(
             f"QFrame#DistanceCard {{ background-color: {card_bg}; "
             f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 18px; }}")
@@ -374,19 +396,35 @@ class DateDistanceWindow(BaseFramelessWindow):
             f"font-size: 58px; font-weight: bold; {plain}")
         self.result_unit.setStyleSheet(
             f"color: {palette['TEXT_COLOR']}; {font} font-size: 22px; font-weight: bold; {plain}")
+        # One band over the whole sentence, not half-washes behind each label:
+        # the children keep their inert sheets and the pointer lights the row
+        # from either one (hover walks the widget chain, as the manager's and
+        # viewer's rows already rely on).
+        self.hero_row.setStyleSheet(
+            "QWidget#CopyRow { border-radius: 6px; background: transparent; }"
+            f"QWidget#CopyRow:hover {{ background: {hover}; }}"
+            f"QWidget#CopyRow:focus {{ {focus_ring} }}")
         self.result_message.setStyleSheet(
             f"color: {palette['TEXT_COLOR']}; {font} font-size: 20px; font-weight: bold; {plain}")
         self.result_divider.setStyleSheet(
             f"background-color: {palette['CALENDAR_BORDER_COLOR']}; border: none;")
+        # The secondary lines are standalone pills like the converter's elapsed
+        # span: their AlignHCenter shrink-wrap already keeps the wash to one
+        # line's shape, so the padding is just the band's own text inset.
         self.result_breakdown.setStyleSheet(
             f"CopyLabel {{ color: {palette['TEXT_COLOR']}; {font} font-size: 16px; "
-            f"font-weight: bold; {plain} }}"
+            f"font-weight: bold; {plain} border-radius: 6px; padding: 2px 6px; }}"
+            f"CopyLabel:hover {{ background: {hover}; }}"
             f"CopyLabel:focus {{ {focus_ring} }}")
         self.result_months.setStyleSheet(
-            f"CopyLabel {{ color: {palette['TEXT_COLOR']}; {font} font-size: 14px; {plain} }}"
+            f"CopyLabel {{ color: {palette['TEXT_COLOR']}; {font} font-size: 14px; "
+            f"{plain} border-radius: 6px; padding: 2px 6px; }}"
+            f"CopyLabel:hover {{ background: {hover}; }}"
             f"CopyLabel:focus {{ {focus_ring} }}")
         self.result_weeks.setStyleSheet(
-            f"CopyLabel {{ color: {muted}; {font} font-size: 13px; {plain} }}"
+            f"CopyLabel {{ color: {muted}; {font} font-size: 13px; "
+            f"{plain} border-radius: 6px; padding: 2px 6px; }}"
+            f"CopyLabel:hover {{ background: {hover}; }}"
             f"CopyLabel:focus {{ {focus_ring} }}")
         # The button's text is a Font Awesome glyph, so it carries that family:
         # the card's text font (Vazirmatn) lacks U+F0C5, and the glyph fallback
@@ -403,10 +441,6 @@ class DateDistanceWindow(BaseFramelessWindow):
             f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}"
             f"QPushButton:pressed {{ background-color: {palette['HOVER_BG']}; }}"
             f"QPushButton:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
-        # The hero row is a shared QWidget subclass: the ring is its only
-        # stylesheet rule, so its rest state paints nothing (it carries the
-        # stylesheet opt-in; see CopyRow).
-        self.hero_row.setStyleSheet(f"CopyRow:focus {{ {focus_ring} }}")
         self._equalize_field_widths()
 
     def _equalize_field_widths(self):

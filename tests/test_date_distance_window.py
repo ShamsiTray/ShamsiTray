@@ -13,7 +13,7 @@ import datetime
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QColor
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel
@@ -82,6 +82,20 @@ def _lines(window):
 
 def _switch_to_gregorian(window):
     window.calendar_switch.gregorian_button.click()
+
+
+def _changed_in_rect(window, rest, hovered, widget):
+    """Count pixels that differ inside ``widget``'s rect (plus the pill's own
+    padding slack) between two grabs of the result card."""
+    img_rest, img_hovered = rest.toImage(), hovered.toImage()
+    origin = widget.mapTo(window.result_card, QPoint(0, 0))
+    changed = 0
+    for y in range(widget.height() + 4):
+        for x in range(widget.width() + 12):
+            if (img_rest.pixelColor(origin.x() + x, origin.y() + y).rgba()
+                    != img_hovered.pixelColor(origin.x() + x, origin.y() + y).rgba()):
+                changed += 1
+    return changed
 
 
 @pytest.fixture
@@ -641,6 +655,51 @@ def test_focused_copy_lines_paint_their_ring(window, qtbot):
         widget.setFocus()
         qtbot.waitUntil(lambda w=widget: w.grab().toImage() != at_rest)
         widget.clearFocus()
+
+
+def test_copy_lines_wear_the_hover_wash(window):
+    """The converter's copy-row wash rides the four copy lines; explanations
+    (message, hint) and the hero's child labels (one band, not per-word
+    washes) stay inert."""
+    for line in (window.hero_row, window.result_breakdown, window.result_months,
+                 window.result_weeks):
+        assert ":hover" in line.styleSheet()
+        assert "border-radius: 6px" in line.styleSheet()
+    for line in (window.result_breakdown, window.result_months, window.result_weeks):
+        assert "padding: 2px 6px" in line.styleSheet()
+    for inert in (window.result_days, window.result_unit, window.result_message,
+                  window.year_hint_label):
+        assert ":hover" not in inert.styleSheet()
+
+
+def test_gregorian_copy_lines_wear_the_hover_wash_too(window):
+    """One sheet serves both calendar pages (theme rebuilds, not per-page)."""
+    _switch_to_gregorian(window)
+    for line in (window.hero_row, window.result_breakdown, window.result_months,
+                 window.result_weeks):
+        assert ":hover" in line.styleSheet()
+
+
+def test_the_hover_wash_paints_on_the_copy_lines(window):
+    """The band renders - stylesheet text alone cannot see a wash that paints
+    nothing, and the styled-background opt-in was exactly such a silent miss
+    (every text pin stayed green while the hero band drew nothing). The
+    overlay blocker suite pins its pixels the same way; the attribute flips
+    QSS hover at grab time, as the cursor-delivered chain would."""
+    window.show()
+    QApplication.processEvents()
+    _set_date(window.from_row, 1405, 1, 1)
+    _set_date(window.to_row, 1405, 4, 15)
+    QApplication.processEvents()
+    rest = window.result_card.grab()
+    for line in (window.result_breakdown, window.hero_row):
+        line.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, True)
+        try:
+            hovered = window.result_card.grab()
+        finally:
+            line.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
+        assert _changed_in_rect(window, rest, hovered, line) > 0, \
+            f"{line.__class__.__name__} drew no hover wash"
 
 
 def test_no_message_or_hint_is_a_copy_target(window, qtbot, flashes):
