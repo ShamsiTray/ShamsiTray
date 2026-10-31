@@ -6,11 +6,11 @@ import pytest
 
 from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CALENDAR_JALALI
 from ui.windows.converter_window import DateConverterWindow
-from utils.date_utils import (describe_date_distance, format_distance_breakdown,
-                              format_gregorian_long, format_gregorian_numeric,
-                              format_jalali_long, format_jalali_numeric,
-                              gregorian_weekday_name, persian_weekday_name,
-                              to_persian_digits)
+from utils.date_utils import (describe_date_distance, distance_status_word,
+                              format_distance_units, format_gregorian_long,
+                              format_gregorian_numeric, format_jalali_long,
+                              format_jalali_numeric, gregorian_weekday_name,
+                              persian_weekday_name, to_persian_digits)
 
 
 @pytest.fixture
@@ -140,8 +140,10 @@ def test_calendar_switch_resets_to_today(window):
 def test_elapsed_time_for_a_past_date(window):
     set_jalali_input(window, "۱۴۰۰", 0, "۱")      # 1400/01/01 is in the past
     window._convert_date()
-    assert "گذشته" in window.elapsed_text.text()
-    assert "مانده" not in window.elapsed_text.text()
+    # The direction word is its own display-only label, outside the wash.
+    assert window.elapsed_direction.text() == "گذشته"
+    assert window.elapsed_direction.isVisible()
+    assert "مانده" not in window.elapsed_direction.text()
 
 
 def _convert_jalali(window, target: jdatetime.date):
@@ -151,14 +153,15 @@ def _convert_jalali(window, target: jdatetime.date):
 
 
 def test_elapsed_line_is_the_shared_jalali_decomposition(window):
-    """The converter's line and the calendar's «فاصله تا امروز» notice must not be
-    able to disagree, so the line comes from the same helper rather than a second
+    """The converter's sentence and the calendar's «فاصله تا امروز» notice must not be
+    able to disagree, so every part comes from the same helper rather than a second
     decomposition."""
     target = jdatetime.date.today() + datetime.timedelta(days=800)
     _convert_jalali(window, target)
     expected = describe_date_distance(target, today=jdatetime.date.today())
-    assert window.elapsed_text.text() == \
-        f"فاصله زمانی: {format_distance_breakdown(expected)}"
+    assert window.elapsed_caption.text() == "فاصله زمانی:"
+    assert window.elapsed_text.text() == format_distance_units(expected)
+    assert window.elapsed_direction.text() == distance_status_word(expected)
 
 
 def test_elapsed_line_breaks_the_units_down_in_jalali_not_gregorian(window):
@@ -186,6 +189,19 @@ def test_elapsed_line_reads_units_with_and(window):
 
 def test_elapsed_line_for_today_is_unchanged(window):
     _convert_jalali(window, jdatetime.date.today())
+    assert window.elapsed_text.text() == "تاریخ امروز است."
+
+
+def test_elapsed_today_line_collapses_the_sentence(window):
+    """Without a span to copy there is no sentence to cap: the caption and the
+    direction word leave the line and today's single label re-centers alone."""
+    _convert_jalali(window, jdatetime.date.today() + datetime.timedelta(days=30))
+    assert window.elapsed_caption.isVisible()
+    assert window.elapsed_direction.isVisible()
+
+    _convert_jalali(window, jdatetime.date.today())
+    assert not window.elapsed_caption.isVisible()
+    assert not window.elapsed_direction.isVisible()
     assert window.elapsed_text.text() == "تاریخ امروز است."
 
 
@@ -469,9 +485,11 @@ def test_copy_rows_wear_the_hover_wash(window):
     """The five copy rows share the CopyRow sheet: a hover wash that says
     the row is clickable, rounded so the band reads as a row. The four date
     rows live inside the cards, so their wash spans the card width; the
-    elapsed line stands alone and shrink-wraps its text instead - a
-    window-wide bar would read as a second card. The weekday footnotes stay
-    display-only and get neither the name nor a hover rule."""
+    elapsed span stands alone and shrink-wraps its text instead - a
+    window-wide bar would read as a second card. The weekday footnotes and
+    the elapsed sentence's caption and direction word stay display-only and
+    get neither the name nor a hover rule: the wash covers exactly what the
+    click copies."""
     for row in (window.jalali_date_value_1, window.jalali_date_value_2,
                 window.gregorian_date_value_1, window.gregorian_date_value_2):
         assert row.objectName() == "CopyRow"
@@ -481,8 +499,9 @@ def test_copy_rows_wear_the_hover_wash(window):
     assert window.elapsed_text.objectName() == "CopyRow"
     assert ":hover" in window.elapsed_text.styleSheet()
     assert "border-radius" in window.elapsed_text.styleSheet()
-    assert "padding: 2px 14px" in window.elapsed_text.styleSheet()
-    for footnote in (window.jalali_weekday_label, window.gregorian_weekday_label):
+    assert "padding: 2px 6px" in window.elapsed_text.styleSheet()
+    for footnote in (window.jalali_weekday_label, window.gregorian_weekday_label,
+                     window.elapsed_caption, window.elapsed_direction):
         assert footnote.objectName() != "CopyRow"
         assert ":hover" not in footnote.styleSheet()
 

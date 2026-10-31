@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
 
 from config import APP_CONFIG
 from ui.widgets.calendar_switch import CALENDAR_JALALI, CalendarSwitch
-from utils.date_utils import (describe_date_distance, format_distance_breakdown,
+from utils.date_utils import (describe_date_distance, distance_status_word,
                               format_distance_units, format_gregorian_long,
                               format_gregorian_numeric, format_jalali_long,
                               format_jalali_numeric, from_persian_digits,
@@ -246,6 +246,13 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
         layout.addSpacing(10)
 
+        # The elapsed sentence splits into three labels so the copy affordance
+        # can cover exactly its payload: only the span label carries CopyRow
+        # (wash, click, cursor, payload), while the caption and the direction
+        # word are display-only. RTL layout, so the first added sits rightmost:
+        # caption, span, direction - the sentence on screen in reading order.
+        self.elapsed_caption = QLabel("فاصله زمانی:")
+        self.elapsed_direction = QLabel("...")
         self.elapsed_text = QLabel("...")
         self.elapsed_text.setObjectName("CopyRow")
         # A copy row like the date values; its payload and cursor are
@@ -257,11 +264,28 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.leap_year_status_opacity_effect = QGraphicsOpacityEffect(self)
         self.leap_year_status.setGraphicsEffect(self.leap_year_status_opacity_effect)
 
-        # Centered AND shrink-wrapped: the alignment flag stops the layout
-        # stretching the row to the full width, so the wash hugs the text
-        # (the pill the elapsed_style padding shapes) instead of becoming a
-        # window-wide bar. A text change re-measures and re-centers it.
-        layout.addWidget(self.elapsed_text, 0, Qt.AlignmentFlag.AlignHCenter)
+        elapsed_row = QHBoxLayout()
+        elapsed_row.setContentsMargins(0, 0, 0, 0)
+        # The spacing is the wash band's clearance to the neighbours, not a
+        # word gap: on hover the band paints the pill's whole widget rect, so
+        # no in-pill inset can keep its edge off the direction word's ink -
+        # only this gap stops short of both labels. The word gaps at rest
+        # ride the pill's own padding, so a couple of pixels here buy band
+        # breathing room without re-airing the sentence.
+        elapsed_row.setSpacing(2)
+        elapsed_row.addWidget(self.elapsed_caption)
+        elapsed_row.addWidget(self.elapsed_text)
+        elapsed_row.addWidget(self.elapsed_direction)
+
+        # Centered AND shrink-wrapped: the stretch pair squeezes the row to its
+        # own sizeHint (the input row's centering pattern), so the wash hugs
+        # the span (the band its own sheet's padding shapes) instead of
+        # becoming a window-wide bar. A text change re-measures and re-centers.
+        row_position = QHBoxLayout()
+        row_position.addStretch(1)
+        row_position.addLayout(elapsed_row)
+        row_position.addStretch(1)
+        layout.addLayout(row_position)
         layout.addWidget(self.leap_year_status)
 
         return widget
@@ -309,10 +333,15 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         is_dark = QColor(palette['BACKGROUND_COLOR']).lightness() < 128
         hover = "rgba(255, 255, 255, 0.05)" if is_dark else "rgba(0, 0, 0, 0.04)"
         # The four date rows live inside the cards, so their wash spans the
-        # card's inner width and reads as a row highlight. The elapsed line
-        # stands alone on the open fill: full width would read as a second
-        # card, so it shrink-wraps its text (added centered in the layout)
-        # and its own sheet's horizontal padding shapes the band.
+        # card's inner width and reads as a row highlight. The elapsed span
+        # stands alone on the open fill between its own caption and direction
+        # word: full width would read as a second card, so a stretch pair
+        # squeeze the sentence row to its sizeHint and the pill's sheet shapes
+        # the band. That inset shows at rest too - it is the band's word-space
+        # inset around the span text (6px; QSS padding mirrors under RTL, so
+        # the matched sides stay matched) - and it can never keep the band off
+        # the neighbours: the band paints the widget's whole rect, which is
+        # what the row's own spacing is for.
         copy_row_style = (
             f"QLabel#CopyRow {{ color: {palette['TEXT_COLOR']};"
             f" border-radius: 6px; padding: 2px 0; }}"
@@ -320,7 +349,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             "QLabel#CopyRow[copyable=\"false\"]:hover { background: transparent; }")
         elapsed_style = (
             f"QLabel#CopyRow {{ color: {palette['TEXT_COLOR']};"
-            f" border-radius: 6px; padding: 2px 14px; }}"
+            f" border-radius: 6px; padding: 2px 6px; }}"
             f"QLabel#CopyRow:hover {{ background: {hover}; }}"
             "QLabel#CopyRow[copyable=\"false\"]:hover { background: transparent; }")
         for row in (self.jalali_date_value_1, self.jalali_date_value_2,
@@ -343,7 +372,13 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         for weekday_label in (self.gregorian_weekday_label,
                               self.jalali_weekday_label):
             weekday_label.setStyleSheet(f"color: {palette['WEEKDAY_NAMES_COLOR']};")
-        self.elapsed_text.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
+        # The whole elapsed sentence keeps the font the single label carried;
+        # caption and direction stay at it so the split cannot shrink three
+        # parts of one sentence differently. (Their color rides the generic
+        # unnamed-label sheet above, like the old label's sheet did.)
+        for elapsed_label in (self.elapsed_caption, self.elapsed_text,
+                              self.elapsed_direction):
+            elapsed_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.leap_year_status.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
         self.status_message.setStyleSheet("color: red; font-weight: bold; font-size: 18px;")
 
@@ -571,14 +606,19 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         means the line matches the calendar's own «فاصله تا امروز» notice, since
         both go through the shared date-distance helper.
 
-        The line joins the copy rows: clicking it copies the span alone - the
-        direction-free units the distance window's breakdown row shows - in
-        Latin digits, and today's «تاریخ امروز است.» nothing, with the cursor
+        The sentence splits caption / span / direction so the span label is the
+        one copy row: its wash covers exactly the glyphs the click copies -
+        the direction-free units the distance window's breakdown row shows,
+        regenerated Latin-digit side - and the caption and direction word stay
+        display-only. Today's «تاریخ امروز است.» collapses the sentence back
+        into the span label alone and stamps an empty payload, with the cursor
         dropping to the arrow to say so.
         """
         distance = describe_date_distance(
             jdatetime.date.fromgregorian(date=target_date))
         if distance.is_today:
+            self.elapsed_caption.hide()
+            self.elapsed_direction.hide()
             self.elapsed_text.setText("تاریخ امروز است.")
             self.elapsed_text.setCursor(Qt.CursorShape.ArrowCursor)
             # _copy_to_clipboard falls back to label.text() on a missing key,
@@ -586,7 +626,10 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
             self._copy_payloads[id(self.elapsed_text)] = ""
             self._set_elapsed_copyable(False)
             return
-        self.elapsed_text.setText(f"فاصله زمانی: {format_distance_breakdown(distance)}")
+        self.elapsed_caption.show()
+        self.elapsed_direction.show()
+        self.elapsed_text.setText(format_distance_units(distance))
+        self.elapsed_direction.setText(distance_status_word(distance))
         self.elapsed_text.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_payloads[id(self.elapsed_text)] = from_persian_digits(
             format_distance_units(distance))
