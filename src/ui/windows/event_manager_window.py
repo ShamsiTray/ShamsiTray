@@ -65,7 +65,7 @@ from utils.ui_helpers import (ReservedRailScrollArea, SCROLL_BOTTOM_PAD_PX,
                               accent_button_stylesheet, center_combo_items,
                               combo_stylesheet, fit_combo_width,
                               ghost_button_stylesheet, line_edit_stylesheet,
-                              scrollbar_stylesheet)
+                              scrollbar_stylesheet, set_popup_pixel_scroll)
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -839,6 +839,7 @@ class EventManagerWindow(BaseFramelessWindow):
             # Width must be measured against the QSS font, not the default
             # widget font, or «همه ماه‌ها» / «همه انواع» end up elided.
             fit_combo_width(combo)
+            set_popup_pixel_scroll(combo)
         self.past_checkbox.update_visuals()
         # Import/export are ordinary actions, not destructive ones: the neutral
         # outline style keeps red reserved for delete/cancel (bad UX to imply

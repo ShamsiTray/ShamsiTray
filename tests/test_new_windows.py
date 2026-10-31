@@ -7,8 +7,9 @@ import pytest
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
 from PyQt6.QtGui import QCursor
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QLabel, QStyle,
-                             QStyleOptionSlider, QWidget)
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+                             QDialog, QLabel, QStyle, QStyleOptionSlider,
+                             QWidget)
 
 from config import APP_CONFIG
 import core.event_service as event_service_module
@@ -26,6 +27,8 @@ from ui.windows.event_manager_window import (AUTO_DELETE_MARKER,
 from utils.event_io import recurrence_of_key as _event_recurrence
 from ui.widgets.checkbox import CustomCheckbox
 from ui.widgets.event_input import EventInputWidget
+from ui.widgets.go_to_date import GoToDateWindow
+from ui.windows.date_distance_window import DateDistanceWindow
 from ui.windows.holiday_viewer_window import (HolidayMonthHeader, HolidayRowWidget,
                                               HolidayViewerWindow, split_lunar_date)
 from ui.windows.converter_window import DateConverterWindow
@@ -2449,3 +2452,27 @@ def test_holiday_viewer_opens_on_next_year_when_current_year_has_no_data(monkeyp
     row = window.list_container.findChildren(HolidayRowWidget)[0]
     assert row.property("next") is True and row.tag_label is not None
     window.close()
+
+
+def test_every_styled_combo_popup_scrolls_per_pixel(qtbot, manager):
+    """Per-item popup scrolling clamps its end position to whole rows, so
+    the screen-edge clamp band (fractional row counts) renders the leftover
+    as a blank band under the last row. Every styled combo surface pins
+    pixel scrolling instead, and a new styled-combo site that forgets it
+    should fail here, not silently re-arm the blank."""
+    surfaces = [
+        manager,
+        DateConverterWindow(),
+        DateDistanceWindow(),
+        EventInputWidget(),
+        GoToDateWindow(),
+        HolidayViewerWindow({}),
+    ]
+    for widget in surfaces:
+        qtbot.addWidget(widget)
+        combos = widget.findChildren(QComboBox)
+        assert combos, f"{type(widget).__name__} should carry styled combos"
+        for combo in combos:
+            mode = combo.view().verticalScrollMode()
+            assert mode == QAbstractItemView.ScrollMode.ScrollPerPixel, (
+                f"{type(widget).__name__} combo popup not pixel-scrolled")

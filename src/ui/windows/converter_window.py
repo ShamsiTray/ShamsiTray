@@ -27,7 +27,8 @@ from utils.date_utils import (describe_date_distance, distance_status_word,
                               gregorian_weekday_name, persian_weekday_name)
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
-                              accent_button_stylesheet, combo_stylesheet)
+                              accent_button_stylesheet, combo_stylesheet,
+                              set_popup_pixel_scroll)
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
@@ -315,6 +316,7 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.month_combo.setFixedSize(140, input_field_height)
         for combo in [self.day_combo, self.month_combo]:
             combo.setStyleSheet(combo_style)
+            set_popup_pixel_scroll(combo)
         self.year_input.setFixedSize(100, input_field_height)
         self._apply_year_style()
         self.convert_button.setFixedHeight(50)

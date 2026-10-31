@@ -11,8 +11,9 @@ from typing import Optional
 
 from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QCursor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
-from PyQt6.QtWidgets import (QApplication, QComboBox, QScrollArea, QStyle,
-                             QStyleOptionComboBox, QStylePainter)
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+                             QScrollArea, QStyle, QStyleOptionComboBox,
+                             QStylePainter)
 
 from config import APP_CONFIG
 from utils.date_utils import from_persian_digits
@@ -570,6 +571,21 @@ def center_combo_items(combo: QComboBox) -> None:
     """
     for i in range(combo.count()):
         combo.setItemData(i, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, Qt.ItemDataRole.TextAlignmentRole)
+
+
+def set_popup_pixel_scroll(combo: QComboBox) -> None:
+    """Scroll the combo popup in pixels so the last row sits flush.
+
+    Qt may cap the popup to a fractional row count when the placement
+    clamps it against the screen edge (the band where the popup no longer
+    fits below but has not flipped above yet) - at fractional-DPI ratios
+    that cap is almost never a whole number of rows. The default per-item
+    scroll lines its end position up with whole items, and the leftover
+    fraction renders as a blank band under the last item. Pixel scroll
+    clamps to the content instead, so the end position is exact at any
+    height. Call once per styled combo at setup.
+    """
+    combo.view().setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
 
 class DigitsFirstCombo(QComboBox):

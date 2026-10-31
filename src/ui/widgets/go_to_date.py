@@ -15,7 +15,7 @@ from utils.date_utils import (from_persian_digits, persian_month_name,
                               to_persian_digits, year_range_hint)
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet,
-                              danger_button_stylesheet)
+                              danger_button_stylesheet, set_popup_pixel_scroll)
 
 # The «NN - month» items mix digits with Persian text, which is bidi-ambiguous:
 # their visual order depends on the base direction of whatever paints them.
@@ -227,6 +227,7 @@ class GoToDateWindow(YearRangeValidationMixin, QWidget):
             scrollbar_width=8,
             zero_drop_down=False))
         self.month_combo.view().setStyleSheet(f"QListView {{ background-color: {palette['BACKGROUND_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}")
+        set_popup_pixel_scroll(self.month_combo)
 
         self._apply_year_style()
 
