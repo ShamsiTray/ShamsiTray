@@ -280,13 +280,13 @@ def describe_gregorian_distance(target: datetime.date,
     today = today if today is not None else datetime.date.today()
     return _describe_distance(target, today, _add_gregorian_years, _add_gregorian_months)
 
-def _distance_status_word(distance: DateDistance) -> str:
+def distance_status_word(distance: DateDistance) -> str:
     """The direction word; today is a caller branch, so it is never asked."""
     return "مانده" if distance.total_days > 0 else "گذشته"
 
 def format_distance_total(distance: DateDistance) -> str:
     """«۶۹ روز مانده» - the day count and its direction. Not defined for today."""
-    return f"{to_persian_digits(abs(distance.total_days))} روز {_distance_status_word(distance)}"
+    return f"{to_persian_digits(abs(distance.total_days))} روز {distance_status_word(distance)}"
 
 def format_distance_units(distance: DateDistance) -> str:
     """«۲ سال و ۲ ماه و ۱ روز» - the calendar breakdown with no direction word.
@@ -315,7 +315,7 @@ def format_distance_total_months(distance: DateDistance) -> str:
 
 def format_distance_breakdown(distance: DateDistance) -> str:
     """«۲ سال و ۲ ماه و ۱ روز مانده». Not defined for today."""
-    return f"{format_distance_units(distance)} {_distance_status_word(distance)}"
+    return f"{format_distance_units(distance)} {distance_status_word(distance)}"
 
 def format_distance_weeks(distance: DateDistance) -> str:
     """«۱۵ هفته و ۲ روز» - the day total as whole weeks plus the remainder.

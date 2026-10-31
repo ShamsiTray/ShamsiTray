@@ -11,6 +11,7 @@ from utils.date_utils import (
     days_in_gregorian_month,
     days_in_jalali_month,
     describe_date_distance,
+    distance_status_word,
     format_distance_breakdown,
     format_distance_total,
     format_distance_total_months,
@@ -425,6 +426,16 @@ def test_distance_formatters_agree_on_direction():
         word = "مانده" if offset > 0 else "گذشته"
         assert format_distance_total(distance).endswith(word)
         assert format_distance_breakdown(distance).endswith(word)
+
+
+def test_distance_status_word_names_each_direction():
+    """The converter's direction label gets its word from the distance itself,
+    so it renders the same verdict every formatter spells out."""
+    base = jdatetime.date(1405, 7, 1)
+    past = describe_date_distance(base - datetime.timedelta(days=1), today=base)
+    future = describe_date_distance(base + datetime.timedelta(days=1), today=base)
+    assert distance_status_word(past) == "گذشته"
+    assert distance_status_word(future) == "مانده"
 
 
 def test_distance_breakdown_skips_empty_units():
