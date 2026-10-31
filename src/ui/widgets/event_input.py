@@ -36,7 +36,7 @@ from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEAR
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, center_combo_items,
                               combo_stylesheet, danger_button_stylesheet,
-                              fit_combo_width)
+                              fit_combo_width, set_popup_pixel_scroll)
 from .checkbox import CustomCheckbox
 
 # Combo index <-> recurrence mode mapping (kept explicit for signal safety).
@@ -333,6 +333,7 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
             combo.setFixedHeight(self.FIELD_HEIGHT_PX)
             combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             center_combo_items(combo)
+            set_popup_pixel_scroll(combo)
         fit_combo_width(self.month_combo)
         if self.ltr_date_order:
             self.row_label.setFixedWidth(self.LTR_LABEL_WIDTH_PX)
@@ -513,6 +514,7 @@ class EventInputWidget(QWidget):
         self.recurrence_combo.setFixedHeight(34)
         self.recurrence_combo.view().setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         center_combo_items(self.recurrence_combo)
+        set_popup_pixel_scroll(self.recurrence_combo)
         # The QSS font lands after Qt's sizeHint, so enforce a measured width
         # or the closed combo elides «بدون تکرار» to "بدو...رار".
         fit_combo_width(self.recurrence_combo)

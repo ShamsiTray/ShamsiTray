@@ -4,7 +4,8 @@ the shared stylesheet builders."""
 import pytest
 from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPixmap
-from PyQt6.QtWidgets import QApplication, QComboBox, QWidget
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+                             QWidget)
 
 from config import APP_CONFIG
 from tests.qt_mousing import press, release
@@ -18,7 +19,7 @@ from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
                               ghost_button_stylesheet, line_edit_stylesheet,
                               mix_colors, nudge_popup_inside_work_area,
                               paint_rounded_card, rgba_string,
-                              scrollbar_stylesheet,
+                              scrollbar_stylesheet, set_popup_pixel_scroll,
                               window_title_button_stylesheets)
 
 
@@ -291,6 +292,13 @@ def test_center_combo_items_sets_alignment_role():
 def test_center_combo_items_empty_combo_is_noop():
     combo = QComboBox()
     center_combo_items(combo)  # must not raise
+
+
+def test_set_popup_pixel_scroll_pins_pixel_mode():
+    combo = QComboBox()
+    combo.addItems(["a", "b", "c"])
+    set_popup_pixel_scroll(combo)
+    assert combo.view().verticalScrollMode() == QAbstractItemView.ScrollMode.ScrollPerPixel
 
 
 def test_digits_first_combo_pins_popup_to_rtl():
