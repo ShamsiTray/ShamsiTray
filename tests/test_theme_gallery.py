@@ -1002,8 +1002,41 @@ def test_gallery_fits_four_card_columns(gallery):
         "the first card's cell runs flush to the gutter edge"
     )
     # ...and the line's remainder parks at the far end, away from the rail -
-    # the same 8px the pre-mirror grid kept in front of its scrollbar.
-    assert line_end.left() == RAIL_GUTTER_PX
+    # the 1px floor, because the window sits exactly on the four-card budget
+    # (see the divider flanks in the window module: that remainder is what
+    # levels the divider-side dead band with the rail's).
+    assert line_end.left() == grid.viewport().width() - CARD_CELL_WIDTH * 4
+
+
+def test_gallery_divider_flanks_level_the_dead_bands(gallery):
+    """The calendar column keeps its 16px flank on the divider and the
+    picker's side takes DIVIDER_GRID_GAP_PX; the window sits exactly on the
+    four-card floor, where the divider-side dead band (the flank, the
+    divider's 1px, the line's remainder, the art's cell inset) levels with
+    the rail side's (gutter + inset) - the parity the budget was tuned for."""
+    from PyQt6.QtCore import QPoint
+    from ui.windows.theme_gallery_window import (CARD_CELL_WIDTH, CARD_WIDTH,
+                                                 DIVIDER_GRID_GAP_PX,
+                                                 DIVIDER_PANEL_GAP_PX,
+                                                 RAIL_GUTTER_PX)
+
+    window, _calls = gallery
+    div = window._divider
+    calendar_col = window.left_column
+    grid_x = window.grid.mapTo(window, QPoint(0, 0)).x()
+    # the flanks, in the window's visual space: the columns layout mirrors
+    # them, and widget geometry is that truth
+    assert (div.x() - (calendar_col.x() + calendar_col.width())
+            ) == DIVIDER_PANEL_GAP_PX
+    assert grid_x == div.x() + div.width() + DIVIDER_GRID_GAP_PX
+    # the window meets the four-card budget exactly: 528 + the floor's 1px
+    assert window.grid.viewport().width() == CARD_CELL_WIDTH * 4 + 1
+    # both dead bands at the art rect, once the floor holds
+    art_inset = (CARD_CELL_WIDTH - CARD_WIDTH) // 2
+    remainder = window.grid.viewport().width() - CARD_CELL_WIDTH * 4
+    divider_band = div.width() + DIVIDER_GRID_GAP_PX + remainder + art_inset
+    rail_band = RAIL_GUTTER_PX + art_inset
+    assert divider_band == rail_band == 15
 
 
 def test_gallery_chrome_stays_in_the_session_theme_while_previewing(gallery):
