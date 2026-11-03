@@ -124,17 +124,29 @@ CARD_OUTLINE_OFFSET = 3.0
 CARD_CELL_WIDTH = CARD_WIDTH + CARD_COLUMN_GAP
 CARD_CELL_HEIGHT = CARD_HEIGHT + CARD_ROW_GAP
 
+# The divider between the picker and the calendar column wears two flanks.
+# The calendar keeps the 16px rhythm it has always had; the picker's side is
+# the tight one. The dead space before the cards is the four-card line's own
+# remainder (it parks at the line's far end, under the mirror), so the band
+# is balanced by the window budget below, not by leaning on the calendar:
+# the tight flank is the exact spend that meets it (6px flank + the divider's
+# 1px + the remainder + the art's 7px cell inset = the rail side's 8px
+# gutter + 7px inset dead band).
+DIVIDER_PANEL_GAP_PX = 16
+DIVIDER_GRID_GAP_PX = 6
+
 # Wide enough that the picker is, beside the calendar, exactly the card
-# budget: rail strip + gutter + four card cells + 8px of line remainder.
+# budget: rail strip + gutter + four card cells + the 1px floor remainder.
 # The remainder matters: Qt's mirrored wrap only squeezes a cell into a row
 # when it lands strictly inside the viewport, so four 132px cells need more
 # than 528px - and the leftover parks at the line's far end, away from the
-# rail, instead of between the cards and it (the pre-mirror grid kept the
-# same 8px between its last column and the bar).
+# rail. The window meets that budget exactly from the calendar side - margins
+# 18+18, panel 305, the calendar's 16px divider flank, the divider's 1px,
+# the picker's 6px flank and rail 10 + gutter 8 spend 528 - plus the 1px.
 # Tall enough for the left column: 14 top margin + 40 caption bar (the
 # segmented filter's height) + 10 spacing + 451 columns (calendar 395 + 10
 # gap + 46 apply button) + 16 bottom margin.
-WINDOW_WIDTH, WINDOW_HEIGHT = 928, 531
+WINDOW_WIDTH, WINDOW_HEIGHT = 911, 531
 
 _ROLE_KEY = Qt.ItemDataRole.UserRole
 _ROLE_PALETTE = Qt.ItemDataRole.UserRole + 1
@@ -629,7 +641,10 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         main_layout.addLayout(self.title_bar)
 
         columns = QHBoxLayout()
-        columns.setSpacing(16)
+        # Asymmetric divider flanks (DIVIDER_* above): the layout spacing
+        # governs both divider edges; the calendar column's 16px is topped
+        # up with a spacer below, once the column itself is in.
+        columns.setSpacing(DIVIDER_GRID_GAP_PX)
 
         # The picker rides the window's right side (added first under RTL);
         # the calendar preview takes the left - the reading side, where the
@@ -667,6 +682,10 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         divider.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._divider = divider
         columns.addWidget(divider)
+        # The calendar column keeps its 16px flank: the layout spacing gives
+        # DIVIDER_GRID_GAP_PX at both divider edges, so this non-stretching
+        # spacer tops the calendar's side up to DIVIDER_PANEL_GAP_PX.
+        columns.insertSpacing(2, DIVIDER_PANEL_GAP_PX - DIVIDER_GRID_GAP_PX)
 
         # The left column: the real calendar render with the apply button
         # under it - every row as wide as the calendar. The panel is pure
