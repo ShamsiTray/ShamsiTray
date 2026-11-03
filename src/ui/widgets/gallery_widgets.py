@@ -466,7 +466,7 @@ class SegmentedFilter(QWidget):
     HEIGHT = 40
     INSET = 4               # air between the track and the highlight
     TEXT_PADDING = 22       # either side of a text label
-    ICON_WIDTH = 54         # the star segment
+    ICON_WIDTH = 44         # the star segment: the 16px glyph + 14px air a side
     TRACK_RADIUS = 14.0
     FONT_PX = 14
     STAR_RADIUS = 8.0
