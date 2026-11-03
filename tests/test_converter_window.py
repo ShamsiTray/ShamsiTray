@@ -3,7 +3,11 @@ import datetime
 
 import jdatetime
 import pytest
+from PyQt6.QtCore import QPoint
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QLabel
 
+from config import APP_CONFIG
 from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CALENDAR_JALALI
 from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import (describe_date_distance, distance_status_word,
@@ -252,6 +256,34 @@ def test_result_cards_sit_side_by_side(window, qtbot):
     assert not greg.intersects(jal)
     assert greg.x() > jal.x()
     assert window.width() == DateConverterWindow.WINDOW_WIDTH
+
+
+def test_card_style_stays_scoped_to_the_card(window, qtbot):
+    """Qt applies a widget's stylesheet to the widget AND its children, so the
+    cards' fill/border/radius rule has to stay behind the #ResultCard selector.
+    Unscoped, the inherited border drew every result row its own outlined box
+    over the card's fill - invisible on the near-identical dark tones, but the
+    light theme showed the box around every line. The probe grabs the card with
+    results up and samples each child row's top edge: it must read as the card
+    fill, never as the border colour."""
+    APP_CONFIG.set_theme(APP_CONFIG.Theme.LIGHT)
+    window.update_styles()
+    _convert_jalali(window, jdatetime.date(1403, 1, 1))
+    qtbot.wait(10)
+    image = window.jalali_card.grab().toImage()
+    # A point inside the card, clear of its own border and rounded corners;
+    # this must be the theme's card fill or every probe below is meaningless.
+    fill = image.pixelColor(image.width() // 2, 4)
+    assert fill.name() == QColor(APP_CONFIG.get_current_palette()['INPUT_BG_COLOR']).name()
+    for row in window.jalali_card.findChildren(QLabel):
+        geo = row.geometry()
+        # The corners are rounded, so the border (if any) hugs the edge everywhere
+        # but near them; centred text ink can legitimately touch its row's top,
+        # so the probe walks the two horizontal ends, clear of the glyphs.
+        for x in (geo.left() + 8, geo.right() - 8):
+            point = QPoint(x, geo.top())
+            assert image.pixelColor(point).name() == fill.name(), \
+                f"a row carries its own outline: {row.objectName() or row.text()!r} at {point}"
 
 
 def test_weekday_rides_its_own_card_line(window):

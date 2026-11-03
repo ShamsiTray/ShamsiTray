@@ -362,11 +362,14 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.gregorian_date_value_2.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 14))
         # The weekday is the card's muted footnote line; the cards themselves
         # share the surface language of the form fields and the holiday
-        # viewer's summary chip.
+        # viewer's summary chip. The rule stays scoped to #ResultCard: bare
+        # declarations cascade to the card's children, and the inherited
+        # border drew every result row its own outlined box in the light
+        # theme (the distance card's QFrame#DistanceCard selector).
         for card in (self.gregorian_card, self.jalali_card):
-            card.setStyleSheet(f"background: {palette['INPUT_BG_COLOR']};"
+            card.setStyleSheet(f"QWidget#ResultCard {{ background: {palette['INPUT_BG_COLOR']};"
                                f" border: 1px solid {palette['CALENDAR_BORDER_COLOR']};"
-                               f" border-radius: 10px;")
+                               f" border-radius: 10px; }}")
         self.gregorian_weekday_label.setFont(QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY, 12))
         self.jalali_weekday_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
         for weekday_label in (self.gregorian_weekday_label,
