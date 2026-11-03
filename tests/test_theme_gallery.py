@@ -853,35 +853,39 @@ def test_gallery_calendar_preview_sits_on_the_left(gallery):
     assert grid.right() > window.width() * 0.75, "the picker runs to the right edge"
 
 
-def test_gallery_caption_bar_carries_the_title(gallery):
-    """The caption bar carries the window's title: with the filter moved into
-    the left column, no bar is left bare like the other tool windows, and no
-    in-body headline repeats the window's name either."""
+def test_gallery_caption_bar_has_no_title_and_carries_the_filter(gallery):
+    """The caption bar is the filter's stage, not a titled bar: no painted
+    title text (the native window title covers the taskbar/Alt-Tab instead),
+    and the segmented filter reads from the bar's other end - under RTL the
+    buttons pin to the right edge, the filter to the left."""
+    from ui.widgets.gallery_widgets import SegmentedFilter
+
     window, _calls = gallery
-    assert window.title_bar._title_label is not None
-    assert window.title_bar._title_label.text() == "گالری تم‌ها"
-    # The taskbar gets the same name for a minimized gallery.
+    assert window.title_bar._title_label is None
+    # The taskbar keeps the window's name for a minimized gallery.
     assert window.windowTitle() == "گالری تم‌ها"
+    control = window.filter_control
+    assert control.parent() is window
+    assert control.height() == SegmentedFilter.HEIGHT
+    assert control.y() == 14, "the bar's row is exactly the filter's stage"
+    assert control.x() < window.title_bar.minimize_button.x(), (
+        "the filter reads from the bar's reading end")
     # No header row and no footer in the body: caption bar and columns -
     # nothing else.
     assert window.layout().count() == 2
 
 
-def test_gallery_filter_lives_above_the_calendar(gallery):
-    """The segmented filter rides the left column's top, as wide as the
-    calendar under it - narrowing the grid sits with the preview it narrows
-    for, above its own column, not in the caption bar."""
+def test_gallery_filter_is_out_of_the_preview_column(gallery):
+    """The filter narrows the grid, not the preview: only the calendar and
+    «اعمال» stack in the left column, every row as wide as the calendar."""
     from ui.windows.theme_gallery_window import PANEL_WIDTH
 
     window, _calls = gallery
-    control = window.filter_control
-    assert control.parent() is window.left_column
-    assert control.width() == PANEL_WIDTH, "as wide as the calendar"
-    assert control.y() == 0, "the column's first row"
-    viewers = [control, window.calendar_panel]
-    for first, second in zip(viewers, viewers[1:]):
-        assert second.y() - (first.y() + first.height()) == 10, (
-            "one shared column gap between the column's rows")
+    rows = [window.left_column.layout().itemAt(i).widget()
+            for i in range(window.left_column.layout().count())]
+    assert rows == [window.calendar_panel, window.apply_button]
+    for row in rows:
+        assert row.width() == PANEL_WIDTH, "as wide as the calendar"
 
 
 def test_gallery_apply_button_sits_under_the_preview(gallery):
@@ -1193,17 +1197,17 @@ def test_apply_button_stays_on_the_session_baseline(gallery):
 
 
 def test_gallery_window_height_fits_the_left_column(gallery):
-    """The window is sized to its parts (40px caption bar, then the 501px
-    column of filter + calendar + apply button): nothing clips, and the
-    picker runs down to the same bottom edge as the left column."""
+    """The window is sized to its parts (40px caption bar, then the 451px
+    column of calendar + apply button): nothing clips, and the picker runs
+    down to the same bottom edge as the left column."""
     from ui.windows.theme_gallery_window import (LEFT_COLUMN_HEIGHT,
                                                  WINDOW_HEIGHT)
 
     window, _calls = gallery
-    assert LEFT_COLUMN_HEIGHT == 501
-    assert WINDOW_HEIGHT == 571 and window.height() == 571
+    assert LEFT_COLUMN_HEIGHT == 451
+    assert WINDOW_HEIGHT == 531 and window.height() == 531
     column = window.left_column.geometry()
-    assert column.height() == 501
+    assert column.height() == 451
     assert column.bottom() <= window.height() - 16, "fits the bottom margin"
     grid_bottom = window.grid.mapTo(window, window.grid.rect().bottomLeft()).y()
     assert abs(grid_bottom - column.bottom()) <= 1, "the picker reaches the bottom"
@@ -1212,22 +1216,27 @@ def test_gallery_window_height_fits_the_left_column(gallery):
 
 
 def test_picker_scrollbar_rides_the_right_edge(gallery):
-    """The grid is pinned LTR so the vertical scrollbar sits at the window's
-    right edge: under the window's RTL direction Qt would mirror it to the
-    cards' left, away from where every Windows list puts it. The scrollbar's
-    reported geometry is stale under the offscreen layout, so the pin is
-    asserted in pixels on a probe groove."""
-    from ui.windows.theme_gallery_window import CARD_TOP_PAD
+    """The picker grid mirrors RTL like the rest of the window, while its
+    rail stays at the window's right edge: Qt mirrors an RTL scrollbar to
+    the cards' left, so the grid carries a rail of its own (_PickerGrid).
+    Placement is asserted in pixels on a probe groove - widget geometry is
+    stale under the offscreen layout - and the stock bar must be out of
+    the picture: the rail is the one scrollbar visible here."""
+    from ui.windows.theme_gallery_window import CARD_TOP_PAD, RAIL_WIDTH
     from PyQt6.QtGui import QColor
 
     window, _calls = gallery
     grid = window.grid
-    assert grid.layoutDirection() == Qt.LayoutDirection.LeftToRight
-    assert not grid.isRightToLeft()
+    assert grid.isRightToLeft()
+    stock = grid.verticalScrollBar()
+    assert not stock.isVisibleTo(grid)
+    rail = grid.rail
+    assert rail.parent() is grid and rail.width() == RAIL_WIDTH
+    assert rail.x() == grid.width() - RAIL_WIDTH
 
     original = grid.styleSheet()
-    # A later same-selector rule wins the cascade, so this recolors the groove
-    # while the styled geometry (width 10, top/bottom margins) stays.
+    # A later same-selector rule wins the cascade, so this recolors the rail's
+    # groove while the styled geometry (width, top/bottom margins) stays.
     grid.setStyleSheet(original + "\nQScrollBar:vertical { background: #ff0000; }")
     try:
         image = grid.grab().toImage()
@@ -1245,6 +1254,24 @@ def test_picker_scrollbar_rides_the_right_edge(gallery):
         "the groove must paint at the window's right edge")
     assert all(red_at(x) == 0 for x in range(0, 4)), (
         "no groove may hug the left edge")
+
+
+def test_picker_rail_hides_when_nothing_scrolls(favorites_gallery):
+    """The rail shows only when the view actually scrolls: favorites that
+    fit in one row render no rail - and the strip it needs stays reserved,
+    so the cards never reflow around the rail's return."""
+    from ui.widgets.gallery_widgets import FILTER_ALL, FILTER_FAVORITES
+
+    window, _calls = favorites_gallery
+    reserved = window.grid.viewport().width()
+    window.filter_control.set_filter(FILTER_FAVORITES)
+    assert window.grid.count() == 1
+    assert window.grid.verticalScrollBar().maximum() == 0
+    assert not window.grid.rail.isVisibleTo(window.grid)
+    assert window.grid.viewport().width() == reserved, (
+        "reserved, not released with the rail")
+    window.filter_control.set_filter(FILTER_ALL)
+    assert window.grid.rail.isVisibleTo(window.grid)
 
 
 def test_reshown_gallery_keeps_a_pending_pick_it_can_list(gallery):
@@ -1674,14 +1701,13 @@ def test_filter_hover_never_touches_the_highlight(gallery):
 def test_gallery_scrollbar_thumb_opens_level_with_the_first_card(gallery):
     """The cards start CARD_TOP_PAD under the viewport's top, so the rail's
     top inset must match: at scroll-top the thumb opens level with the first
-    card instead of poking above the options."""
+    card instead of poking above the cards."""
     from PyQt6.QtWidgets import QStyle, QStyleOptionSlider
     from ui.windows.theme_gallery_window import CARD_TOP_PAD, card_art_rect
 
     window, _calls = gallery
-    bar = window.grid.verticalScrollBar()
-    assert f"margin: {CARD_TOP_PAD}px 0px 4px 0px" in bar.styleSheet() or \
-        f"margin: {CARD_TOP_PAD}px 0px 4px 0px" in window.grid.styleSheet()
+    bar = window.grid.rail
+    assert f"margin: {CARD_TOP_PAD}px 0px 4px 0px" in window.grid.styleSheet()
     bar.setValue(0)
     opt = QStyleOptionSlider()  # initStyleOption is protected: fill it by hand
     opt.initFrom(bar)

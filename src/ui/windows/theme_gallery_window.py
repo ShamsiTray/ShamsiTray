@@ -12,11 +12,14 @@ in whichever theme is previewed. The commit button («اعمال») sits directl
 under the preview, as wide as the calendar and dressed like the rest of the
 chrome in the session's baseline theme - it stays put while previews come and
 go, and re-dresses only when «اعمال» re-baselines the session onto the applied
-theme. The filter bar rides the column above the calendar, as wide as it. The
-picker runs the full height of the window beside them. There is no cancel
-button: the caption bar's ✕ (or Esc) already closes the window and discards an
-un-applied preview. (The preview carries no theme-name caption: the
-highlighted card in the picker names the theme being previewed.)
+theme. The theme filter (همه / روشن / تاریک / ★) rides the caption bar
+itself, at its reading end - the bar carries no painted title text, so every
+pixel of the body belongs to the preview and the picker. The picker runs the
+full height of the window to the other side, its rail at the window's right
+edge. There is no cancel button: the caption bar's ✕ (or Esc) already closes
+the window and discards an un-applied preview. (The preview carries no
+theme-name caption: the highlighted card in the picker names the theme being
+previewed.)
 
 Previews stay inside this window: clicking a card re-renders the panel in
 the clicked theme and nothing else - the
@@ -40,9 +43,12 @@ The right panel is a compact grid of mini-calendar cards: one card per theme,
 the calendar abstracted to its silhouette in that palette's colors - the
 abstract header, the weekday dashes, five equal weeks of one-size day dots
 over tinted state squares, and the theme's own name under a divider inside
-the card. It scrolls deliberately: one card row per wheel notch, and a
-re-shown window sits exactly where the user left it (see ``_PickerGrid``) -
-never re-centered onto the previewed card.
+the card. The grid mirrors RTL with the window (cards read right-to-left,
+first theme top-right), but its rail is kept at the window's right edge: Qt
+mirrors an RTL scrollbar to the cards' left, so the grid owns its bar
+instead (see ``_PickerGrid``). It scrolls deliberately: one card row per
+wheel notch, and a re-shown window sits exactly where the user left it - never
+re-centered onto the previewed card.
 
 The window's own chrome - painted background, caption bar, picker, and the
 apply button - stays dressed in the session's baseline theme (see
@@ -62,8 +68,8 @@ from typing import Callable, Iterable, Optional
 from PyQt6.QtCore import QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import (QColor, QPainter, QPen, QPixmap)
 from PyQt6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLabel,
-                             QListWidget, QListWidgetItem,
-                             QPushButton, QSizePolicy, QStyledItemDelegate,
+                             QListWidget, QListWidgetItem, QPushButton,
+                             QScrollBar, QSizePolicy, QStyledItemDelegate,
                              QStyle, QVBoxLayout, QWidget)
 
 from config import APP_CONFIG
@@ -91,9 +97,11 @@ PANEL_HEIGHT = APP_CONFIG.CALENDAR_HEIGHT
 ACTION_BUTTON_HEIGHT = 46
 ACTION_BUTTON_RADIUS = 15
 LEFT_COLUMN_GAP = 10
-# The filter bar rides the column's top, as wide as the calendar under it.
-LEFT_COLUMN_HEIGHT = (SegmentedFilter.HEIGHT + LEFT_COLUMN_GAP
-                      + PANEL_HEIGHT + LEFT_COLUMN_GAP + ACTION_BUTTON_HEIGHT)
+LEFT_COLUMN_HEIGHT = (PANEL_HEIGHT + LEFT_COLUMN_GAP + ACTION_BUTTON_HEIGHT)
+
+# The picker's right-edge rail: the width the scrollbar stylesheet dresses
+# (see _PickerGrid for why the grid needs a rail of its own).
+RAIL_WIDTH = 10
 
 # The picker grid's rhythm (the "1b" reference spacing, stated at the 118px
 # card): 14px between card columns, 18px between card rows, and about 14px of
@@ -111,9 +119,9 @@ CARD_CELL_HEIGHT = CARD_HEIGHT + CARD_ROW_GAP
 
 # Wide enough that the picker fits four card columns (cell + gaps, scrollbar
 # in place) beside the calendar, and tall enough for the left column: 14 top
-# margin + 30 caption bar + 10 spacing + 501 columns (filter 40 + 10 gap +
-# calendar 395 + 10 gap + 46 apply button) + 16 bottom margin.
-WINDOW_WIDTH, WINDOW_HEIGHT = 920, 571
+# margin + 40 caption bar (the segmented filter's height) + 10 spacing + 451
+# columns (calendar 395 + 10 gap + 46 apply button) + 16 bottom margin.
+WINDOW_WIDTH, WINDOW_HEIGHT = 920, 531
 
 _ROLE_KEY = Qt.ItemDataRole.UserRole
 _ROLE_PALETTE = Qt.ItemDataRole.UserRole + 1
@@ -281,6 +289,43 @@ class _PickerGrid(QListWidget):
         self.empty_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.empty_label.hide()
+        # The window mirrors RTL and this view mirrors with it - the cards
+        # read right-to-left, first theme at the top-right. Qt mirrors an
+        # RTL scrollbar with it though, which would hug the cards' left, so
+        # the rail is a child bar of the view's own: the stock one is
+        # force-hidden (its scrolling machinery stays live - wheel and
+        # keyboard go through it), our rail rides the window's right edge
+        # like every other list in the app, and the 10px strip the rail
+        # needs is reserved via setViewportMargins - once, and persistently,
+        # so the cards can never slide beneath the rail or reflow under it
+        # however the range moves. Every internal scrollbar state change is
+        # mirrored onto the rail; rail input writes back through the same
+        # sync, so each surface's events keep their one owner.
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setViewportMargins(0, 0, RAIL_WIDTH, 0)
+        self.rail = QScrollBar(Qt.Orientation.Vertical, self)
+        self.rail.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.rail.setSingleStep(CARD_CELL_HEIGHT)
+        self.verticalScrollBar().rangeChanged.connect(self._sync_rail)
+        self.verticalScrollBar().valueChanged.connect(self.rail.setValue)
+        self.rail.valueChanged.connect(self.verticalScrollBar().setValue)
+        self._sync_rail(0, 0)
+
+    def _sync_rail(self, _lo: int, _hi: int):
+        """Mirror the stock bar's range, page step and need onto the rail.
+
+        The rail shows exactly when the view actually scrolls (the stock
+        As-Needed decision, which a hidden stock bar still makes) and its
+        thumb tracks the stock bar's page step, so a resize re-fits it."""
+        stock = self.verticalScrollBar()
+        self.rail.setRange(stock.minimum(), stock.maximum())
+        self.rail.setPageStep(stock.pageStep())
+        self.rail.setVisible(stock.maximum() > 0)
+        self._place_rail()
+
+    def _place_rail(self):
+        self.rail.setGeometry(self.width() - RAIL_WIDTH, 0,
+                              RAIL_WIDTH, self.height())
 
     def set_empty_message(self, message: Optional[str]):
         """Show ``message`` over the grid, or hide the label with ``None``."""
@@ -298,6 +343,7 @@ class _PickerGrid(QListWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._place_empty_label()
+        self._place_rail()
 
     def _badge_key_at(self, pos: QPointF) -> Optional[str]:
         """The theme key whose favorite badge sits under ``pos``, if any."""
@@ -552,10 +598,16 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         main_layout.setContentsMargins(18, 14, 18, 16)
         main_layout.setSpacing(10)
 
-        # The caption bar carries the title and the window buttons; the filter
-        # rides above the preview column instead (see the left column).
-        self.title_bar = WindowTitleBar(self.close, self.showMinimized,
-                                        title="گالری تم‌ها")
+        # The caption bar is the filter's stage: no painted title text - the
+        # native window title («گالری تم‌ها») covers Alt-Tab instead - so
+        # every pixel of the body belongs to the preview and the picker.
+        # Under RTL the buttons pin to the right edge, the filter reads from
+        # the left.
+        self.filter_control = SegmentedFilter()
+        self.filter_control.filterChanged.connect(lambda _mode: self._refresh())
+        self.title_bar = WindowTitleBar(self.close, self.showMinimized)
+        self.title_bar.addWidget(self.filter_control, 0,
+                                 Qt.AlignmentFlag.AlignVCenter)
         main_layout.addLayout(self.title_bar)
 
         columns = QHBoxLayout()
@@ -581,10 +633,8 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         # view adds no spacing of its own.
         self.grid.setMouseTracking(True)
         self.grid.setSpacing(0)
-        # RTL would mirror the vertical scrollbar to the column's left edge,
-        # away from the cards it scrolls; the LTR pin keeps it at the window's
-        # right edge, where every Windows list puts it.
-        self.grid.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        # The grid mirrors RTL with the window (cards read right-to-left);
+        # its rail is kept at the window's right edge by _PickerGrid itself.
         self.grid.currentItemChanged.connect(self._on_current_changed)
         self.grid.itemDoubleClicked.connect(lambda _item: self._commit())
         self.grid.favoriteToggleRequested.connect(self._toggle_favorite)
@@ -600,18 +650,14 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         self._divider = divider
         columns.addWidget(divider)
 
-        # The left column: the filter bar, then the real calendar render with
-        # the apply button under it - every row as wide as the calendar. The
-        # panel is pure preview and owns no controls; the button dresses in
-        # the session's baseline palette - the same stable theme as the chrome
-        # around it - so it never moves with the browsing: previews change
-        # nothing here, and it re-dresses only when «اعمال» re-baselines the
-        # session onto the applied theme (or the window re-opens onto a new
-        # one). Closing (the caption bar's ✕, Esc) is the way out without
-        # applying.
-        self.filter_control = SegmentedFilter()
-        self.filter_control.setFixedWidth(PANEL_WIDTH)
-        self.filter_control.filterChanged.connect(lambda _mode: self._refresh())
+        # The left column: the real calendar render with the apply button
+        # under it - every row as wide as the calendar. The panel is pure
+        # preview and owns no controls; the button dresses in the session's
+        # baseline palette - the same stable theme as the chrome around it -
+        # so it never moves with the browsing: previews change nothing here,
+        # and it re-dresses only when «اعمال» re-baselines the session onto
+        # the applied theme (or the window re-opens onto a new one).
+        # Closing (the caption bar's ✕, Esc) is the way out without applying.
         self.calendar_panel = RealCalendarPanel(holidays, events)
         self.apply_button = QPushButton("اعمال")
         self.apply_button.setFixedSize(PANEL_WIDTH, ACTION_BUTTON_HEIGHT)
@@ -622,7 +668,6 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         left = QVBoxLayout(self.left_column)
         left.setContentsMargins(0, 0, 0, 0)
         left.setSpacing(LEFT_COLUMN_GAP)
-        left.addWidget(self.filter_control)
         left.addWidget(self.calendar_panel)
         left.addWidget(self.apply_button)
         columns.addWidget(self.left_column, 0, Qt.AlignmentFlag.AlignTop)
@@ -850,8 +895,8 @@ class ThemeGalleryWindow(BaseFramelessWindow):
             self.filter_control.update_styles()
             self.grid.setStyleSheet(
                 "QListWidget { background: transparent; border: none; outline: none; }"
-                + scrollbar_stylesheet(chrome, width=10, bottom_margin=4,
-                                         top_margin=CARD_TOP_PAD))
+                + scrollbar_stylesheet(chrome, width=RAIL_WIDTH, bottom_margin=4,
+                                       top_margin=CARD_TOP_PAD))
         self.grid.empty_label.setStyleSheet(
             f"QLabel {{ background: transparent; color: {rgba_string(chrome['TEXT_COLOR'], 0.65)};"
             f" font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; }}")
