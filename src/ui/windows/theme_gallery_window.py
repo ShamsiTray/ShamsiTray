@@ -13,8 +13,11 @@ under the preview, as wide as the calendar and dressed like the rest of the
 chrome in the session's baseline theme - it stays put while previews come and
 go, and re-dresses only when «اعمال» re-baselines the session onto the applied
 theme. The theme filter (همه / روشن / تاریک / ★) rides the caption bar
-itself, at its reading end - the bar carries no painted title text, so every
-pixel of the body belongs to the preview and the picker. The picker runs the
+itself, at its reading end, as wide as the preview column it sits above -
+the segments share the bar's leftover width equally, so the options adapt
+to the extra stage instead of pocketing air at the mirror end. The bar
+carries no painted title text, so every pixel of the body belongs to the
+preview and the picker. The picker runs the
 full height of the window to the other side, its rail at the window's right
 edge. There is no cancel button: the caption bar's ✕ (or Esc) already closes
 the window and discards an un-applied preview. (The preview carries no
@@ -86,9 +89,9 @@ from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
 
-# The left column stacks the filter bar, the real popup at its own size
-# (305x395) and the apply button; the right panel takes whatever width is
-# left for four mini-calendar card columns.
+# The left column stacks the real popup at its own size (305x395) and the
+# apply button; the right panel takes whatever width is left for four
+# mini-calendar card columns.
 PANEL_WIDTH = APP_CONFIG.CALENDAR_WIDTH
 PANEL_HEIGHT = APP_CONFIG.CALENDAR_HEIGHT
 
@@ -99,9 +102,13 @@ ACTION_BUTTON_RADIUS = 15
 LEFT_COLUMN_GAP = 10
 LEFT_COLUMN_HEIGHT = (PANEL_HEIGHT + LEFT_COLUMN_GAP + ACTION_BUTTON_HEIGHT)
 
-# The picker's right-edge rail: the width the scrollbar stylesheet dresses
-# (see _PickerGrid for why the grid needs a rail of its own).
+# The picker's right-edge rail: the strip the rail itself dresses (see
+# _PickerGrid for why the grid needs a rail of its own) plus an 8px gutter
+# between it and the last card column - the pre-mirror grid's own air in
+# front of the bar. The margin reserves both, so the mirrored cards can
+# never close on the rail.
 RAIL_WIDTH = 10
+RAIL_GUTTER_PX = 8
 
 # The picker grid's rhythm (the "1b" reference spacing, stated at the 118px
 # card): 14px between card columns, 18px between card rows, and about 14px of
@@ -117,11 +124,17 @@ CARD_OUTLINE_OFFSET = 3.0
 CARD_CELL_WIDTH = CARD_WIDTH + CARD_COLUMN_GAP
 CARD_CELL_HEIGHT = CARD_HEIGHT + CARD_ROW_GAP
 
-# Wide enough that the picker fits four card columns (cell + gaps, scrollbar
-# in place) beside the calendar, and tall enough for the left column: 14 top
-# margin + 40 caption bar (the segmented filter's height) + 10 spacing + 451
-# columns (calendar 395 + 10 gap + 46 apply button) + 16 bottom margin.
-WINDOW_WIDTH, WINDOW_HEIGHT = 920, 531
+# Wide enough that the picker is, beside the calendar, exactly the card
+# budget: rail strip + gutter + four card cells + 8px of line remainder.
+# The remainder matters: Qt's mirrored wrap only squeezes a cell into a row
+# when it lands strictly inside the viewport, so four 132px cells need more
+# than 528px - and the leftover parks at the line's far end, away from the
+# rail, instead of between the cards and it (the pre-mirror grid kept the
+# same 8px between its last column and the bar).
+# Tall enough for the left column: 14 top margin + 40 caption bar (the
+# segmented filter's height) + 10 spacing + 451 columns (calendar 395 + 10
+# gap + 46 apply button) + 16 bottom margin.
+WINDOW_WIDTH, WINDOW_HEIGHT = 928, 531
 
 _ROLE_KEY = Qt.ItemDataRole.UserRole
 _ROLE_PALETTE = Qt.ItemDataRole.UserRole + 1
@@ -295,14 +308,16 @@ class _PickerGrid(QListWidget):
         # the rail is a child bar of the view's own: the stock one is
         # force-hidden (its scrolling machinery stays live - wheel and
         # keyboard go through it), our rail rides the window's right edge
-        # like every other list in the app, and the 10px strip the rail
-        # needs is reserved via setViewportMargins - once, and persistently,
-        # so the cards can never slide beneath the rail or reflow under it
-        # however the range moves. Every internal scrollbar state change is
-        # mirrored onto the rail; rail input writes back through the same
-        # sync, so each surface's events keep their one owner.
+        # like every other list in the app, and the 18px strip it shares
+        # with the gutter (rail + pre-mirror air, RAIL_WIDTH +
+        # RAIL_GUTTER_PX) is reserved via setViewportMargins - once, and
+        # persistently, so the cards can never slide beneath the rail or
+        # reflow under it however the range moves. Every internal scrollbar
+        # state change is mirrored onto the rail; rail input writes back
+        # through the same sync, so each surface's events keep their one
+        # owner.
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setViewportMargins(0, 0, RAIL_WIDTH, 0)
+        self.setViewportMargins(0, 0, RAIL_WIDTH + RAIL_GUTTER_PX, 0)
         self.rail = QScrollBar(Qt.Orientation.Vertical, self)
         self.rail.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.rail.setSingleStep(CARD_CELL_HEIGHT)
@@ -602,8 +617,11 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         # native window title («گالری تم‌ها») covers Alt-Tab instead - so
         # every pixel of the body belongs to the preview and the picker.
         # Under RTL the buttons pin to the right edge, the filter reads from
-        # the left.
+        # the left - as wide as the preview column below it, its segments
+        # sharing the leftover width equally (a natural-width bar would sit
+        # narrower than the calendar it sits above).
         self.filter_control = SegmentedFilter()
+        self.filter_control.setFixedWidth(PANEL_WIDTH)
         self.filter_control.filterChanged.connect(lambda _mode: self._refresh())
         self.title_bar = WindowTitleBar(self.close, self.showMinimized)
         self.title_bar.addWidget(self.filter_control, 0,

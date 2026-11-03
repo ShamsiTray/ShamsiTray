@@ -459,7 +459,11 @@ class SegmentedFilter(QWidget):
     on the segment under the cursor, and an accent ring while the bar holds
     keyboard focus (left/right arrows step the selection, mirrored under RTL).
     Segment order follows the layout direction, like the buttons it replaces:
-    the first stop («همه») sits at the reading start."""
+    the first stop («همه») sits at the reading start. The bar's width is the
+    host's stage: whatever it gets above the segments' summed minimum is
+    shared equally over the segments (``resizeEvent`` re-runs the share), so
+    a forced stage widens every stop - the options adapt to the extra space
+    instead of pocketing air at the mirror end."""
 
     filterChanged = pyqtSignal(str)
 
@@ -507,6 +511,16 @@ class SegmentedFilter(QWidget):
                                   + 2 * self.TEXT_PADDING)
                             if label else float(self.ICON_WIDTH))
         return widths
+
+    def _reflow_widths(self, width: int) -> None:
+        """Share whatever width the host reserved above the content minimum
+        equally over the segments: a wider bar widens every segment a little
+        instead of pocketing the slack at the mirror end - a forced-width
+        caption bar would otherwise read as extra air beside the star."""
+        base = self._measure_segments()
+        content = sum(base.values()) + 2 * self.INSET
+        share = max(0.0, (width - content) / len(FILTER_ORDER))
+        self._widths = {mode: w + share for mode, w in base.items()}
 
     def sizeHint(self) -> QSize:
         return QSize(self.width(), self.HEIGHT)
@@ -611,8 +625,13 @@ class SegmentedFilter(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._reflow_widths(self.width())
         if self._animation.state() != QVariantAnimation.State.Running:
             self._highlight = self._segment_rect(self._mode)
+        else:
+            # A slide in flight aims at the old widths: retarget it so it
+            # lands on its segment under the new geometry.
+            self._animation.setEndValue(self._segment_rect(self._mode))
 
     def showEvent(self, event):
         super().showEvent(event)
