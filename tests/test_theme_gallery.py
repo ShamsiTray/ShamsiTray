@@ -857,7 +857,9 @@ def test_gallery_caption_bar_has_no_title_and_carries_the_filter(gallery):
     """The caption bar is the filter's stage, not a titled bar: no painted
     title text (the native window title covers the taskbar/Alt-Tab instead),
     and the segmented filter reads from the bar's other end - under RTL the
-    buttons pin to the right edge, the filter to the left."""
+    buttons pin to the right edge, the filter to the left - as wide as the
+    preview column it sits above, flush with its edge."""
+    from ui.windows.theme_gallery_window import PANEL_WIDTH
     from ui.widgets.gallery_widgets import SegmentedFilter
 
     window, _calls = gallery
@@ -867,9 +869,12 @@ def test_gallery_caption_bar_has_no_title_and_carries_the_filter(gallery):
     control = window.filter_control
     assert control.parent() is window
     assert control.height() == SegmentedFilter.HEIGHT
+    assert control.width() == PANEL_WIDTH, "as wide as the preview column"
     assert control.y() == 14, "the bar's row is exactly the filter's stage"
     assert control.x() < window.title_bar.minimize_button.x(), (
         "the filter reads from the bar's reading end")
+    assert control.x() == window.left_column.x(), (
+        "flush above the column it sits on")
     # No header row and no footer in the body: caption bar and columns -
     # nothing else.
     assert window.layout().count() == 2
@@ -976,20 +981,29 @@ def test_gallery_filter_narrows_the_grid(gallery):
 
 def test_gallery_fits_four_card_columns(gallery):
     """The window is sized for the compact mini-calendar cards: four full
-    card columns fit beside the calendar preview with the scrollbar in
-    place - the first row holds four cards abreast."""
-    from ui.windows.theme_gallery_window import CARD_CELL_WIDTH
+    card columns beside the calendar preview. The mirrored wrap only takes
+    a cell into a row when it lands strictly inside the viewport, so the
+    line carries its remainder at the far end - and the rail's strip and
+    gutter stay reserved behind the cards."""
+    from ui.windows.theme_gallery_window import (CARD_CELL_WIDTH,
+                                                 RAIL_GUTTER_PX, RAIL_WIDTH)
 
     window, _calls = gallery
-    assert window.grid.gridSize().width() == CARD_CELL_WIDTH
-    assert window.grid.viewport().width() >= 4 * CARD_CELL_WIDTH, (
-        "four card columns must fit in the picker's viewport"
-    )
-    first = window.grid.visualItemRect(window.grid.item(0))
-    fourth = window.grid.visualItemRect(window.grid.item(3))
-    fifth = window.grid.visualItemRect(window.grid.item(4))
-    assert fourth.y() == first.y(), "four cards abreast in the first row"
+    grid = window.grid
+    assert grid.gridSize().width() == CARD_CELL_WIDTH
+    first = grid.visualItemRect(grid.item(0))
+    line_end = grid.visualItemRect(grid.item(3))
+    fifth = grid.visualItemRect(grid.item(4))
+    assert line_end.y() == first.y(), "four cards abreast in the first row"
     assert fifth.y() > first.y(), "the fifth card wraps to the next row"
+    # The row fills the card region exactly, flush at the reading start...
+    card_span = grid.width() - (RAIL_WIDTH + RAIL_GUTTER_PX)
+    assert (first.left() + first.width()) == card_span, (
+        "the first card's cell runs flush to the gutter edge"
+    )
+    # ...and the line's remainder parks at the far end, away from the rail -
+    # the same 8px the pre-mirror grid kept in front of its scrollbar.
+    assert line_end.left() == RAIL_GUTTER_PX
 
 
 def test_gallery_chrome_stays_in_the_session_theme_while_previewing(gallery):
@@ -1421,19 +1435,29 @@ def test_controller_has_no_theme_cycle(tray):
 
 def test_filter_is_one_connected_segmented_control(gallery):
     """The filter is a single widget (one connected bar), not a row of
-    separate buttons: no child buttons, one accent highlight."""
+    separate buttons: no child buttons, one accent highlight - and the
+    forced caption stage is spent by the segments themselves, not pocketed."""
     from PyQt6.QtWidgets import QPushButton
-    from ui.widgets.gallery_widgets import (FILTER_ORDER, SegmentedFilter)
+    from ui.widgets.gallery_widgets import (FILTER_FAVORITES, FILTER_ORDER,
+                                            SegmentedFilter)
 
     window, _calls = gallery
     control = window.filter_control
     assert isinstance(control, SegmentedFilter)
     assert control.findChildren(QPushButton) == []
-    # The segments tile the track with no gaps between them.
+    # The segments tile the track with no gaps between them, and exactly
+    # fill it: both ends land on the track's INSET air, nothing left over -
+    # the mirror end must not park a pocket of slack beside the star.
     rects = sorted((control._segment_rect(m) for m in FILTER_ORDER),
                    key=lambda r: r.left())
     for left, right in zip(rects, rects[1:]):
         assert abs(left.right() - right.left()) < 0.01
+    assert abs(rects[0].left() - SegmentedFilter.INSET) < 0.01
+    assert abs(rects[-1].right() - (control.width() - SegmentedFilter.INSET)) < 0.01
+    # The shares are even: the star's pill grew past its bare glyph width
+    # with the rest of the bar instead of the extra parking beside it.
+    star = control._segment_rect(FILTER_FAVORITES)
+    assert star.width() > SegmentedFilter.ICON_WIDTH
 
 
 def test_filter_segments_read_right_to_left(gallery):
