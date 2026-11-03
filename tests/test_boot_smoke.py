@@ -28,7 +28,7 @@ def _menu_labels(menu):
         widget = action.defaultWidget()
         if widget is None:
             continue
-        if hasattr(widget, "label"):               # MenuActionWidget / ThemeToggle
+        if hasattr(widget, "label"):               # MenuActionWidget
             labels.append(widget.label.text())
         elif hasattr(widget, "text_label"):        # IconCheckboxActionWidget
             labels.append(widget.text_label.text())

@@ -65,8 +65,9 @@ def test_persian_digit_map_roundtrip():
 
 def test_theme_switch_and_fallback():
     try:
-        APP_CONFIG.set_theme(APP_CONFIG.Theme.LIGHT)
-        assert APP_CONFIG.get_current_palette() is APP_CONFIG.LIGHT_PALETTE
+        APP_CONFIG.set_theme("catppuccin_latte")
+        assert APP_CONFIG.get_current_palette() is (
+            APP_CONFIG.EXTRA_THEMES["catppuccin_latte"])
         APP_CONFIG.set_theme("totally-unknown-theme")
         # Unknown themes fall back to dark.
         assert APP_CONFIG.get_current_palette() is APP_CONFIG.DARK_PALETTE
@@ -79,7 +80,8 @@ def test_palettes_carry_required_keys():
     required = {"TEXT_COLOR", "BACKGROUND_COLOR", "INPUT_BG_COLOR", "ACCENT_COLOR",
                 "HOLIDAY_COLOR", "GREY_COLOR", "HOVER_BG", "MENU_BACKGROUND_COLOR"}
     assert required <= set(APP_CONFIG.DARK_PALETTE.keys())
-    assert required <= set(APP_CONFIG.LIGHT_PALETTE.keys())
+    for palette in APP_CONFIG.EXTRA_THEMES.values():
+        assert required <= set(palette.keys())
 
 
 def test_calendar_constants_match_the_layout():
@@ -100,7 +102,6 @@ def test_month_names_are_nonempty_and_unique():
 
 def test_fas_icon_glyphs_are_distinct():
     glyphs = [APP_CONFIG.FAS.FA_SQUARE_REGULAR, APP_CONFIG.FAS.FA_SQUARE_CHECK_SOLID,
-              APP_CONFIG.FAS.FA_SUN_SOLID, APP_CONFIG.FAS.FA_MOON_SOLID,
               APP_CONFIG.FAS.FA_XMARK, APP_CONFIG.FAS.FA_MINUS,
               APP_CONFIG.FAS.FA_TRASH, APP_CONFIG.FAS.FA_ARROWS_ROTATE,
               APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION, APP_CONFIG.FAS.FA_CIRCLE_INFO,
@@ -131,8 +132,21 @@ def test_new_instance_is_independent():
     assert fresh.PROJECT_ROOT == APP_CONFIG.PROJECT_ROOT
 
 
-def test_theme_map_covers_both_themes():
-    assert set(Config._theme_map.keys()) == {"dark", "light"}
+def test_theme_map_covers_the_gallery_catalogue():
+    """The stock dark theme and every palette-pack slug map to a palette: the
+    gallery's selectable set is exactly the map plus system, and the retired
+    stock light theme is gone from it (the system mode's designated light
+    theme takes over, see SYSTEM_LIGHT_THEME)."""
+    keys = set(Config._theme_map.keys())
+    assert "dark" in keys
+    assert "light" not in keys
+    assert keys == {"dark"} | set(APP_CONFIG.EXTRA_THEMES.keys())
+    # THEME_CHOICES validates every persisted value: system + every theme key.
+    assert set(APP_CONFIG.THEME_CHOICES) == keys | {APP_CONFIG.Theme.SYSTEM}
+    # The system mode's light verdict resolves onto a real light theme.
+    assert APP_CONFIG.SYSTEM_LIGHT_THEME in keys
+    assert not APP_CONFIG.palette_is_dark(
+        Config._theme_map[APP_CONFIG.SYSTEM_LIGHT_THEME])
 
 
 def test_font_awesome_free_covers_every_used_glyph(qtbot):
@@ -152,11 +166,11 @@ def test_font_awesome_free_covers_every_used_glyph(qtbot):
     assert APP_CONFIG.FONT_AWESOME_FAMILY in families
     font = QFont(APP_CONFIG.FONT_AWESOME_FAMILY)
     metrics = QFontMetrics(font)
-    for name in ("FA_SQUARE_REGULAR", "FA_SQUARE_CHECK_SOLID", "FA_SUN_SOLID",
-                 "FA_MOON_SOLID", "FA_XMARK", "FA_MINUS", "FA_TRASH",
+    for name in ("FA_SQUARE_REGULAR", "FA_SQUARE_CHECK_SOLID",
+                 "FA_XMARK", "FA_MINUS", "FA_TRASH",
                  "FA_PEN", "FA_ARROWS_ROTATE", "FA_DOWNLOAD", "FA_UPLOAD",
                  "FA_CIRCLE_EXCLAMATION", "FA_CIRCLE_INFO", "FA_WIFI",
-                 "FA_SAVE", "FA_COPY", "FA_CLOCK"):
+                 "FA_SAVE", "FA_COPY", "FA_CLOCK", "FA_PALETTE"):
         glyph = ord(getattr(APP_CONFIG.FAS, name))
         assert metrics.inFontUcs4(glyph), f"{name} (U+{glyph:04X}) missing from {APP_CONFIG.FONT_AWESOME_FAMILY}"
 
@@ -209,12 +223,17 @@ def _flatten(fg_rgba: str, bg_hex: str) -> str:
 # has to clear this as a BACKGROUND, not merely be a visible blue.
 WCAG_AA_NORMAL_TEXT = 4.5
 
+# The light representative after the stock light theme's retirement: the
+# system mode's designated light theme.
+_LIGHT_KEY = "catppuccin_latte"
+_LIGHT_PALETTE = APP_CONFIG._theme_map[_LIGHT_KEY]
+
 
 def test_light_accent_backs_white_text_at_wcag_aa():
-    """The light theme was retuned for this: its old accent could not carry
-    white label text at AA. Pinned so a future "brighten the accent" change
-    cannot quietly regress it."""
-    palette = APP_CONFIG.LIGHT_PALETTE
+    """Pinned so a future "brighten the accent" change cannot quietly regress
+    the light side: the system mode's designated light theme must carry white
+    label text at AA on its accent."""
+    palette = _LIGHT_PALETTE
     ratio = _contrast_ratio("#ffffff", palette["ACCENT_COLOR"])
     assert ratio >= WCAG_AA_NORMAL_TEXT, (
         f"light accent {palette['ACCENT_COLOR']} gives only {ratio:.2f}:1 "
@@ -231,7 +250,7 @@ def test_dark_accent_backs_white_text_at_wcag_aa():
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_body_text_meets_wcag_aa(theme):
-    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else _LIGHT_PALETTE
     for surface in ("BACKGROUND_COLOR", "CALENDAR_BACKGROUND_COLOR",
                     "MENU_BACKGROUND_COLOR", "INPUT_BG_COLOR"):
         ratio = _contrast_ratio(palette["TEXT_COLOR"], palette[surface])
@@ -245,7 +264,7 @@ def test_selected_day_number_survives_its_own_tint(theme):
     itself translucent over the calendar surface. The tint has to be flattened
     onto that surface first - comparing the raw tint against the text would
     measure a color that is never actually painted."""
-    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else _LIGHT_PALETTE
     surface = palette["CALENDAR_BACKGROUND_COLOR"]
     for key in ("CALENDAR_SELECTED_BG_COLOR", "CALENDAR_SELECTED_HOVER_BG_COLOR"):
         flattened = _flatten(palette[key], surface)
@@ -260,7 +279,7 @@ def test_menu_row_hover_is_actually_visible(theme):
     """MENU_HOVER_COLOR is painted at its own alpha over the menu surface. A
     hover the eye cannot resolve is the same as no hover at all, so assert the
     composited change is perceptible rather than merely non-zero."""
-    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else _LIGHT_PALETTE
     base = palette["MENU_BACKGROUND_COLOR"]
     _r, _g, _b, alpha = palette["MENU_HOVER_COLOR"]
     flattened = _flatten(f"rgba({_r}, {_g}, {_b}, {alpha})", base)

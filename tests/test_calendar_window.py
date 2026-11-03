@@ -110,7 +110,7 @@ def test_today_and_selected_get_border(calendar):
     assert style.font_size == 17  # today pops one size up
 
 
-@pytest.mark.parametrize("theme", [Config.Theme.DARK, Config.Theme.LIGHT])
+@pytest.mark.parametrize("theme", [Config.Theme.DARK, "catppuccin_latte"])
 def test_out_of_month_holiday_is_tinted_not_full_red(calendar, theme):
     """Out-of-month days carry the holiday tint via rgba(), never the full red.
 
@@ -372,12 +372,13 @@ def test_the_dimmed_modes_follow_the_theme(calendar):
     widget.update_styles()
     dark_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
 
-    APP_CONFIG.set_theme(Config.Theme.LIGHT)
+    APP_CONFIG.set_theme("catppuccin_latte")
     widget.update_styles()
     light_grey = widget.recurrence_combo.model().item(1).data(Qt.ItemDataRole.ForegroundRole)
 
     assert QColor(dark_grey) == QColor(Config.DARK_PALETTE["GREY_COLOR"])
-    assert QColor(light_grey) == QColor(Config.LIGHT_PALETTE["GREY_COLOR"])
+    light_palette = APP_CONFIG._theme_map["catppuccin_latte"]
+    assert QColor(light_grey) == QColor(light_palette["GREY_COLOR"])
     assert QColor(light_grey) != QColor(dark_grey)
 
 

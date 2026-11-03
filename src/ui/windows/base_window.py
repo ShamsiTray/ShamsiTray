@@ -229,6 +229,14 @@ class BaseFramelessWindow(HoverDriverMixin, FramelessDragMixin, QWidget):
             QApplication.instance().removeEventFilter(self)
             self._focus_clearer_armed = False
 
+    def _painted_palette(self) -> dict:
+        """The palette the window's own painted chrome (rounded background,
+        border) dresses in. Windows that keep a stable stage while a preview
+        repaints everything else override this - see the split gallery, whose
+        surround stays in the theme the session started on so the previewed
+        calendar panel is judged against a constant backdrop."""
+        return APP_CONFIG.current_palette
+
     def paintEvent(self, event):
         if self.rect().isEmpty():
             return
@@ -237,9 +245,10 @@ class BaseFramelessWindow(HoverDriverMixin, FramelessDragMixin, QWidget):
         path = QPainterPath()
         rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         radius = APP_CONFIG.CALENDAR_BORDER_RADIUS_PX
+        palette = self._painted_palette()
         path.addRoundedRect(rect, radius, radius)
-        painter.fillPath(path, QColor(APP_CONFIG.current_palette['BACKGROUND_COLOR']))
-        painter.setPen(QColor(APP_CONFIG.current_palette['CALENDAR_BORDER_COLOR']))
+        painter.fillPath(path, QColor(palette['BACKGROUND_COLOR']))
+        painter.setPen(QColor(palette['CALENDAR_BORDER_COLOR']))
         painter.drawPath(path)
         painter.setClipPath(path)
         super().paintEvent(event)

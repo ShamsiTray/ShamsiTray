@@ -57,7 +57,9 @@ def fake_winreg(monkeypatch):
 
 
 def test_value_set_to_1_reads_light():
-    assert wt.WindowsThemeBackend().theme() == APP_CONFIG.Theme.LIGHT
+    """A light Windows resolves onto the designated light theme - the stock
+    light palette's successor after its retirement from the catalogue."""
+    assert wt.WindowsThemeBackend().theme() == APP_CONFIG.SYSTEM_LIGHT_THEME
 
 
 def test_value_other_than_1_reads_dark():
@@ -82,7 +84,7 @@ def test_off_windows_reads_dark_without_touching_winreg(monkeypatch):
 def test_fake_backend_reads_its_settable_verdict():
     """The stand-in the theme tests reach for: a settable verdict that counts
     its reads, and an unset one degrading to the rule's own DARK default."""
-    backend = FakeThemeBackend(APP_CONFIG.Theme.LIGHT)
-    assert backend.theme() == APP_CONFIG.Theme.LIGHT
+    backend = FakeThemeBackend(APP_CONFIG.SYSTEM_LIGHT_THEME)
+    assert backend.theme() == APP_CONFIG.SYSTEM_LIGHT_THEME
     assert backend.reads == 1
     assert FakeThemeBackend().theme() == APP_CONFIG.Theme.DARK

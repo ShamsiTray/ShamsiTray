@@ -3,13 +3,31 @@ Application Configuration
 -------------------------
 
 This module centralizes all static configuration for the ShamsiTray application,
-including application info, paths, settings keys, theme palettes, and UI constants.
+including application info, paths, settings keys, theme registry, and UI constants.
 
 It's designed to be imported by any module that needs access to these settings.
 """
 from pathlib import Path
 import os
 import sys
+
+from themes import THEMES
+
+# Display-name fixups for the slugs that title-casing gets wrong.
+_THEME_NAME_OVERRIDES = {
+    "oled": "OLED",
+    "github": "GitHub",
+    "vscode": "VS Code",
+}
+
+
+def _theme_display_name(slug: str) -> str:
+    """"dracula" -> "Dracula", "nord_light" -> "Nord Light", with the few
+    casing fixups the brand names need."""
+    words = [_THEME_NAME_OVERRIDES.get(w, w.capitalize())
+             for w in slug.split("_")]
+    return " ".join(words)
+
 
 class Config:
     """Central configuration for the ShamsiTray app."""
@@ -51,6 +69,10 @@ class Config:
     # --- Settings Keys (for QSettings / JsonSettings) ---
     AUTO_START_SETTING_KEY = "General/OpenAtLogin"
     CURRENT_THEME_CHOICE_SETTING_KEY = "Appearance/ThemeChoice"
+    # The gallery's favorite themes: a JSON list of theme keys, written the
+    # moment a star is toggled (a favorite is a bookmark, not part of the
+    # apply/cancel session).
+    FAVORITE_THEMES_SETTING_KEY = "Appearance/FavoriteThemes"
     TUTORIAL_SHOWN_SETTING_KEY = "Tutorial/HasShown"
     # The legacy "UserData/Events" registry key is only read during the one-time
     # migration; it lives in utils.settings_migration now.
@@ -74,65 +96,98 @@ class Config:
     # MIT-licensed repo. Qt reports the bundled OTF's typographic family.
     FONT_AWESOME_FAMILY = "Font Awesome 7 Free"
 
-    # --- Theme Management ---
+    # --- Theme registry ---------------------------------------------------------
+    # Every palette lives in ``themes.py`` (the stock dark theme included);
+    # this class only reads the registry and names the resolution rules.
     class Theme:
         SYSTEM = "system"
         DARK = "dark"
-        LIGHT = "light"
 
-    # The three-valued appearance preference stored under
-    # Appearance/ThemeChoice: "system" follows Windows light/dark live,
-    # "light"/"dark" pin the theme. The key's ABSENCE reads as "system" too -
-    # the behaviour a fresh install has always had - and a stored "light"/"dark"
-    # stays pinned, so a preference written before the three-way choice keeps
-    # working.
-    THEME_CHOICES = (Theme.SYSTEM, Theme.LIGHT, Theme.DARK)
+    # The light theme the 'system' (follow Windows) mode resolves to when
+    # Windows is light. The original stock light palette was retired from the
+    # selectable set - the packs carry better-designed light themes - so the
+    # system mode needs a designated light gear, and a legacy "light" saved
+    # preference maps onto the same theme (see SystemTrayIcon._theme_choice).
+    SYSTEM_LIGHT_THEME = "catppuccin_latte"
 
-    DARK_PALETTE = {
-        "TEXT_COLOR": "#e0e0e0", "BACKGROUND_COLOR": "#2c2c2c",
-        "INPUT_BG_COLOR": "#3a3a3a", "ACCENT_COLOR": "#398439",
-        "HOVER_BG": "rgba(255, 255, 255, 0.08)", "SCROLLBAR_HANDLE_COLOR": "#505050",
-        "SCROLLBAR_GROOVE_COLOR": "#303030", "HOLIDAY_COLOR": "#FF4C4C",
-        "GREY_COLOR": "#808080", "WEEKDAY_NAMES_COLOR": "#b8b8b8",
-        "CALENDAR_BACKGROUND_COLOR": "#2c2c2c", "CALENDAR_BORDER_COLOR": "#3B3B3B",
-        "CALENDAR_TODAY_BG_COLOR": "rgba(128, 128, 128, 0.3)",
-        "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(128, 128, 128, 0.5)",
-        "CALENDAR_SELECTED_BG_COLOR": "rgba(224, 224, 224, 0.2)",
-        "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(224, 224, 224, 0.3)",
-        "MENU_BACKGROUND_COLOR": "#2c2c2c", "MENU_BORDER_COLOR": "#606060",
-        "MENU_HOVER_COLOR": (60, 60, 60, 180), "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
-    }
+    # The appearance preference stored under Appearance/ThemeChoice: "system"
+    # follows Windows light/dark live, anything else pins that theme key. The
+    # key's ABSENCE reads as "system" too - the behaviour a fresh install has
+    # always had. (Re-declared below once the pack themes are known; this early
+    # form covers intra-class readers.)
+    THEME_CHOICES = (Theme.SYSTEM, Theme.DARK)
 
-    # The light accent sits deliberately deeper than a "bright blue" would be:
-    # #34bbff needs white-on-accent text in the buttons, the dropdown's selected
-    # row and the tray icon's event tint, and against those it fell short of the
-    # 4.5:1 WCAG AA floor for body text. #1a6fa8 clears it with room to spare
-    # while staying in the same hue family, so the theme keeps its identity.
-    LIGHT_PALETTE = {
-        "TEXT_COLOR": "#4b5563", "BACKGROUND_COLOR": "#f9fafb",
-        "INPUT_BG_COLOR": "#ffffff", "ACCENT_COLOR": "#1a6fa8",
-        "HOVER_BG": "#e5e7eb", "SCROLLBAR_HANDLE_COLOR": "#d1d5db",
-        "SCROLLBAR_GROOVE_COLOR": "#f3f4f6", "HOLIDAY_COLOR": "#b91c1c",
-        "GREY_COLOR": "#9ca3af", "WEEKDAY_NAMES_COLOR": "#616872",
-        "CALENDAR_BACKGROUND_COLOR": "#ffffff", "CALENDAR_BORDER_COLOR": "#e5e7eb",
-        "CALENDAR_TODAY_BG_COLOR": "rgba(156, 163, 175, 0.2)",
-        "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(156, 163, 175, 0.35)",
-        # Tinted from the accent so the selected day shares the hue of the
-        # today pill instead of reading as an unrelated state; the alpha keeps
-        # the day number legible over the accent.
-        "CALENDAR_SELECTED_BG_COLOR": "rgba(26, 111, 168, 0.14)",
-        "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(26, 111, 168, 0.24)",
-        "MENU_BACKGROUND_COLOR": "#ffffff", "MENU_BORDER_COLOR": "#e5e7eb",
-        # 60 alpha keeps the hover row visible against white without competing
-        # with the menu's own border.
-        "MENU_HOVER_COLOR": (60, 60, 60, 60), "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-    }
+    # The stock dark theme ("Default" in the gallery), kept addressable by
+    # name for every reader that predates the registry.
+    DARK_PALETTE = THEMES[Theme.DARK]
 
-    _theme_map = {Theme.DARK: DARK_PALETTE, Theme.LIGHT: LIGHT_PALETTE}
+    _theme_map = dict(THEMES)
     current_palette = DARK_PALETTE  # Default to dark
 
     TRAY_ICON_DARK_COLOR = "#FFFFFF"
     TRAY_ICON_LIGHT_COLOR = "#000000"
+
+    # --- Theme gallery registry -------------------------------------------
+    # Every gallery theme from ``themes.py`` joins the stock dark theme in the
+    # selectable set. Every slug is persisted under Appearance/ThemeChoice
+    # like "dark" always was, so an old settings.json keeps working and a
+    # gallery pick survives restarts.
+    EXTRA_THEMES = dict(THEMES)
+    EXTRA_THEMES.pop(Theme.DARK)
+
+    # Every valid value of the Appearance/ThemeChoice preference. The gallery
+    # writes into this namespace; _theme_choice validates against it on load.
+    THEME_CHOICES = (Theme.SYSTEM, Theme.DARK) + tuple(EXTRA_THEMES)
+
+    @staticmethod
+    def _relative_luminance(hex_color: str) -> float:
+        """WCAG relative luminance of an opaque #rrggbb color (pure Python, so
+        this module stays Qt-free)."""
+        c = hex_color.lstrip("#")
+
+        def channel(value: float) -> float:
+            value /= 255.0
+            return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+        return (0.2126 * channel(int(c[0:2], 16))
+                + 0.7152 * channel(int(c[2:4], 16))
+                + 0.0722 * channel(int(c[4:6], 16)))
+
+    @classmethod
+    def palette_is_dark(cls, palette: dict | None = None) -> bool:
+        """True when the palette's background is a dark surface.
+
+        Reads the given palette or the active one. The tray glyph polarity and
+        the gallery's dark/light grouping both key off this, so a gallery theme
+        like Graphite (dark ground) gets the white tray digit without anyone
+        hardcoding per-theme flags.
+        """
+        if palette is None:
+            palette = cls.current_palette
+        return cls._relative_luminance(palette["BACKGROUND_COLOR"]) < 0.5
+
+    @classmethod
+    def theme_catalog(cls) -> list:
+        """The selectable themes in gallery order: (key, display name, palette).
+
+        The stock dark theme leads - named "Default", the one the app ships
+        wearing - then the gallery themes grouped dark-then-light, alphabetical
+        inside each group.
+        """
+        entries = [(cls.Theme.DARK, "Default", cls.DARK_PALETTE)]
+        darks, lights = [], []
+        for slug, palette in cls.EXTRA_THEMES.items():
+            (darks if cls.palette_is_dark(palette) else lights).append((slug, palette))
+        for group in (darks, lights):
+            entries.extend((slug, _theme_display_name(slug), palette)
+                           for slug, palette in sorted(group))
+        return entries
+
+    @classmethod
+    def theme_display_name(cls, theme_key: str) -> str:
+        """Human-facing name for a theme key; unknown keys name themselves."""
+        if theme_key == cls.Theme.DARK:
+            return "Default"
+        return _theme_display_name(theme_key)
 
     @classmethod
     def set_theme(cls, theme_name: str):
@@ -190,14 +245,12 @@ class Config:
     class FAS:
         FA_SQUARE_REGULAR = '\uf096'
         FA_SQUARE_CHECK_SOLID = '\uf14a'
-        FA_SUN_SOLID = '\uf185'  # f185 replaces the Pro-only e28f codepoint
-        FA_MOON_SOLID = '\uf186'
-        FA_DESKTOP = '\uf390'  # the "follow system" stop of the theme cycle
         FA_XMARK = '\uf00d'
         FA_MINUS = '\uf068'
         FA_TRASH = '\uf1f8'
         FA_PEN = '\uf304'
         FA_ARROWS_ROTATE = '\uf021'  # f2f1 is the one-arrow arrow-rotate-right
+        FA_PALETTE = '\uf53f'  # the theme picker row's glyph
         FA_DOWNLOAD = '\uf019'
         FA_UPLOAD = '\uf093'
         FA_CIRCLE_EXCLAMATION = '\uf06a'

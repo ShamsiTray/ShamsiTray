@@ -36,7 +36,8 @@ from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEAR
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, center_combo_items,
                               combo_stylesheet, danger_button_stylesheet,
-                              fit_combo_width, set_popup_pixel_scroll)
+                              fit_combo_width, palette_on_accent_text,
+                              set_popup_pixel_scroll)
 from .checkbox import CustomCheckbox
 
 # Combo index <-> recurrence mode mapping (kept explicit for signal safety).
@@ -502,7 +503,7 @@ class EventInputWidget(QWidget):
 
         self.title_label.setStyleSheet(f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 16px; font-weight: bold; border: none;")
         self.text_edit.setStyleSheet(
-            f"QTextEdit {{color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
+            f"QTextEdit {{color: {palette['TEXT_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 8px; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: {palette_on_accent_text(palette)}; }}"
             f"QTextEdit:focus {{border-color: {palette['ACCENT_COLOR']};}}")
         self.text_edit.viewport().setStyleSheet(f"background-color: {palette['INPUT_BG_COLOR']}; border-radius: 8px")
 

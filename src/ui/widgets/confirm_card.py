@@ -41,7 +41,8 @@ from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton,
 
 from config import APP_CONFIG
 from utils.ui_helpers import (accent_button_stylesheet, danger_button_stylesheet,
-                              ghost_button_stylesheet, paint_rounded_card)
+                              ghost_button_stylesheet, on_accent_text_color,
+                              paint_rounded_card)
 
 # Button kinds -> stylesheet builders; ``choose`` labels pick from these.
 BUTTON_KINDS = {
@@ -309,7 +310,8 @@ class ConfirmCard:
         palette = APP_CONFIG.get_current_palette()
         badge_color = palette['HOLIDAY_COLOR'] if self._danger else palette['ACCENT_COLOR']
         self.icon_badge.setStyleSheet(
-            f"background-color: {badge_color}; color: white; border-radius: 24px;"
+            f"background-color: {badge_color}; "
+            f"color: {on_accent_text_color(badge_color)}; border-radius: 24px;"
             f"font-family: '{APP_CONFIG.FONT_AWESOME_FAMILY}'; font-size: 20px;")
         self.title_label.setStyleSheet(
             f"color: {palette['TEXT_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "

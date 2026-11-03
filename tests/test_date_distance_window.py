@@ -776,7 +776,8 @@ def test_window_is_a_fixed_size_independent_of_the_result(window):
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_hero_colour_clears_large_text_contrast_in_both_themes(theme):
-    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else APP_CONFIG.LIGHT_PALETTE
+    palette = (APP_CONFIG.DARK_PALETTE if theme == "dark"
+               else APP_CONFIG._theme_map[APP_CONFIG.SYSTEM_LIGHT_THEME])
     card = mix_colors(palette["BACKGROUND_COLOR"], palette["INPUT_BG_COLOR"], 0.5)
     hero = legible_on(palette["ACCENT_COLOR"], card)
     assert contrast_ratio(QColor(hero), QColor(card)) >= HERO_MIN_CONTRAST

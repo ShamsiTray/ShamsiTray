@@ -10,7 +10,7 @@ import math
 from typing import Optional
 
 from PyQt6.QtCore import QRect, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPainterPath
+from PyQt6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPainterPath
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QWidget
 
 from config import APP_CONFIG
@@ -144,56 +144,6 @@ class MenuActionWidget(HoverWidget):
         palette = APP_CONFIG.get_current_palette()
         text_color = palette['TEXT_COLOR'] if self.isEnabled() else palette['GREY_COLOR']
         self.label.setStyleSheet(f"color: {text_color}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; font-weight: bold; background: transparent; border: none;")
-
-class ThemeToggleActionWidget(MenuActionWidget):
-    """Widget for the theme row in the context menu.
-
-    One row, three states: the click cycles the preference
-    system → light → dark → system (the controller owns the cycle; this
-    widget only reads the current preference back and labels it, so
-    «هماهنگ با سیستم» is visible and reachable again after any pin).
-    """
-    _DISPLAY = (
-        ("system", "FA_DESKTOP", "تم برنامه: هماهنگ با سیستم"),
-        ("light", "FA_SUN_SOLID", "تم برنامه: روشن"),
-        ("dark", "FA_MOON_SOLID", "تم برنامه: تاریک"),
-    )
-
-    def __init__(self, theme_choice_getter, parent: Optional[QWidget] = None):
-        super().__init__("", parent)
-        self.theme_choice_getter = theme_choice_getter
-        layout = self.layout()
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        self.icon_label = QLabel()
-        self.icon_label.setFont(QFont(APP_CONFIG.FONT_AWESOME_FAMILY, 14))
-        self.icon_label.setFixedWidth(22)
-        self.label = QLabel("")
-        layout.addStretch()
-        layout.addWidget(self.icon_label)
-        layout.addSpacing(-7)
-        layout.addWidget(self.label)
-        layout.addStretch()
-        self.update_display()
-
-    def update_display(self):
-        choice = self.theme_choice_getter()
-        for value, glyph_name, text in self._DISPLAY:
-            if choice == value:
-                icon = getattr(APP_CONFIG.FAS, glyph_name)
-                break
-        else:
-            # An unknown preference reads as "system", but the row still
-            # labels whatever it cannot resolve defensively.
-            icon, text = APP_CONFIG.FAS.FA_DESKTOP, self._DISPLAY[0][2]
-        self.icon_label.setText(icon)
-        self.label.setText(text)
-        color = APP_CONFIG.current_palette['TEXT_COLOR']
-        self.icon_label.setStyleSheet(f"color: {color}; background: transparent;")
-        self._update_style()
 
 class TrayMenu(QMenu):
     """QMenu that paints its own divider lines on the device-pixel grid.

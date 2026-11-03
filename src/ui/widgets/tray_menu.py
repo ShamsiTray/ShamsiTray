@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import QApplication, QWidgetAction
 
 from config import APP_CONFIG
 from ui.widgets.checkbox import IconCheckboxActionWidget
-from ui.widgets.menu_widgets import MenuActionWidget, ThemeToggleActionWidget, TrayMenu
+from ui.widgets.menu_widgets import MenuActionWidget, TrayMenu
 from utils.ui_helpers import plain_menu_stylesheet
 
 
@@ -52,15 +52,15 @@ def add_menu_action(tray, menu, text, slot):
     menu.addAction(action)
 
 
-def add_theme_toggle_action(tray, menu):
-    """The theme row: one click advances system → light → dark → system,
-    and the row reads back the current preference, so «هماهنگ با سیستم» is
-    reachable again after any pin."""
-    action = QWidgetAction(tray)
-    widget = ThemeToggleActionWidget(lambda: tray._theme_choice(), parent=menu)
-    widget.triggered.connect(tray._cycle_theme_choice)
-    action.setDefaultWidget(widget)
-    menu.addAction(action)
+def add_theme_gallery_action(tray, menu):
+    """The gallery row: opens the theme browser.
+
+    The full theme catalogue is browsable with the live calendar preview
+    beside it - the one place a theme is picked now that the old
+    system/light/dark cycle row is retired.
+    """
+    add_menu_action(tray, menu, "تم‌ها",
+                    lambda: close_menu_then(tray, tray._open_theme_gallery))
 
 
 def add_startup_action(tray, menu):
@@ -109,7 +109,7 @@ def build_tray_menu(tray):
     add_menu_action(tray, menu, "فاصله دو تاریخ",
                     lambda: close_menu_then(tray, tray._open_date_distance))
     menu.add_divider()
-    add_theme_toggle_action(tray, menu)
+    add_theme_gallery_action(tray, menu)
     menu.add_divider()
     add_startup_action(tray, menu)
     menu.add_divider()
