@@ -46,12 +46,12 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 - Includes a “Today” button to instantly jump back to the current date in the calendar popup.
 - Clicking a date in the calendar popup reveals its Gregorian equivalent, and the display format can be toggled between numeric (e.g., 12/24/2025) and long-form (e.g., Dec 24, 2025).
 - Option to launch at Windows startup.
-- Dark and Light Themes (the light mode is not perfect since the app was mainly built for dark mode use).
+- Theme Gallery: preview the actual calendar in 70+ dark and light themes, and apply the one you like (plus favourite-themes bookmarks).
 
 ## 💡 Usage Tips
 
 - Single-click the tray icon to open the calendar popup.
-- Right-click the tray icon for quick actions: Date Converter, Date Distance, Change Theme, Launch at Windows startup and Exit.
+- Right-click the tray icon for quick actions: Date Converter, Date Distance, Theme Gallery, Launch at Windows startup and Exit.
 - Hover the mouse on the tray icon for the details tooltip.
 - Hover the mouse on the days with holiday/event in the calendar popup to see the details.
 - Right-clicking on a Date in the calendar popup allows you to add/edit and remove events.

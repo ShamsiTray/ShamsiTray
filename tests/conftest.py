@@ -38,7 +38,7 @@ def restore_active_palette():
 
     ``current_palette`` is exactly the state ``set_theme`` writes, so restoring
     the reference is precise - and keeps identity comparisons against
-    ``DARK_PALETTE`` / ``LIGHT_PALETTE`` honest.
+    ``DARK_PALETTE`` and the gallery's registry palettes honest.
     """
     before = Config.current_palette
     yield

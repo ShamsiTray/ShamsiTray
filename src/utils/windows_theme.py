@@ -28,11 +28,14 @@ class WindowsThemeBackend:
     VALUE_NAME = "AppsUseLightTheme"
 
     def theme(self) -> str:
-        """The resolved theme verdict: ``APP_CONFIG.Theme.LIGHT`` or ``.DARK``.
+        """The resolved theme key: ``APP_CONFIG.SYSTEM_LIGHT_THEME`` when
+        Windows is light, ``APP_CONFIG.Theme.DARK`` when it is dark.
 
-        Returns DARK wherever there is nothing reliable to read - off Windows
-        or when the registry query fails - rather than raising: the tray has
-        always kept running in dark when detection was impossible.
+        The stock light palette was retired from the selectable set, so a
+        light verdict resolves to the designated light theme the gallery also
+        offers. Returns DARK wherever there is nothing reliable to read - off
+        Windows or when the registry query fails - rather than raising: the
+        tray has always kept running in dark when detection was impossible.
         """
         if not sys.platform == 'win32':
             return APP_CONFIG.Theme.DARK
@@ -40,7 +43,8 @@ class WindowsThemeBackend:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.KEY_PATH)
             value, _ = winreg.QueryValueEx(key, self.VALUE_NAME)
             winreg.CloseKey(key)
-            return APP_CONFIG.Theme.LIGHT if value == 1 else APP_CONFIG.Theme.DARK
+            return (APP_CONFIG.SYSTEM_LIGHT_THEME if value == 1
+                    else APP_CONFIG.Theme.DARK)
         except Exception as e:
             logger.warning(f"Could not detect Windows theme, defaulting to dark: {e}")
             return APP_CONFIG.Theme.DARK

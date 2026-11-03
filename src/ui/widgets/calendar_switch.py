@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QPushButton
 
 from config import APP_CONFIG
+from utils.ui_helpers import palette_on_accent_text
 
 CALENDAR_JALALI = "jalali"
 CALENDAR_GREGORIAN = "gregorian"
@@ -63,4 +64,5 @@ class CalendarSwitch(QFrame):
             f"border: none; border-radius: 8px; background: transparent; "
             f"color: {palette['WEEKDAY_NAMES_COLOR']}; }}"
             f"QPushButton:hover:!checked {{ color: {palette['TEXT_COLOR']}; }}"
-            f"QPushButton:checked {{ background-color: {palette['ACCENT_COLOR']}; color: #ffffff; }}")
+            f"QPushButton:checked {{ background-color: {palette['ACCENT_COLOR']}; "
+            f"color: {palette_on_accent_text(palette)}; }}")

@@ -28,6 +28,7 @@ from ui.windows.converter_window import DateConverterWindow
 from ui.windows.date_distance_window import DateDistanceWindow
 from ui.windows.event_manager_window import EventManagerWindow
 from ui.windows.holiday_viewer_window import HolidayViewerWindow
+from ui.windows.theme_gallery_window import ThemeGalleryWindow
 from ui.widgets.tray_menu import build_tray_menu
 from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.download_dialog import DownloadUpdateDialog
@@ -164,6 +165,17 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.event_manager_window: Optional[EventManagerWindow] = None
         self.holiday_viewer_window: Optional[HolidayViewerWindow] = None
         self.tutorial_window: Optional["TutorialWindow"] = None
+        self.theme_gallery_window: Optional[ThemeGalleryWindow] = None
+        # The theme the gallery session is anchored on: previews revert to it
+        # on any gallery close that is not an apply. «اعمال» re-anchors it onto
+        # the applied theme, so nothing un-applied can ever be lost. None until
+        # a fresh session starts (a visible gallery keeps its anchor).
+        self._gallery_original_theme: Optional[str] = None
+        # The gallery's in-flight preview - the pick the user is currently
+        # eyeing. The gallery previews inside its own calendar panel (nothing
+        # else repaints), so this is only the session's memory of it; it rides
+        # along to the window's next show and is never persisted.
+        self._gallery_pending_theme: Optional[str] = None
 
         self._clean_expired_events()
 
@@ -230,15 +242,19 @@ class SystemTrayIcon(QSystemTrayIcon):
         return self.theme_backend.theme()
 
     def _theme_choice(self) -> str:
-        """The stored appearance preference: "system", "light" or "dark".
+        """The stored appearance preference: "system" or a pinned theme key.
 
         A missing key reads as "system" (follow Windows) - the behaviour a
         fresh install has always had - and an unknown value falls back to
-        "system" instead of breaking theme resolution. Read live like the
-        other preference gates: the tray menu writes the key behind this
-        method's back.
+        "system" instead of breaking theme resolution. A legacy "light" save
+        (the retired stock light theme) maps onto the designated light theme,
+        so the preference's intent survives the theme's retirement. Read live
+        like the other preference gates: the gallery writes the key behind
+        this method's back.
         """
         saved = self.settings.value(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
+        if saved == "light":
+            saved = APP_CONFIG.SYSTEM_LIGHT_THEME
         return saved if saved in APP_CONFIG.THEME_CHOICES else APP_CONFIG.Theme.SYSTEM
 
     def _load_settings(self):
@@ -269,7 +285,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self.calendar_widget:
             self.calendar_widget.update_styles()
         for window in (self.converter_window, self.distance_window,
-                       self.event_manager_window,
+                       self.event_manager_window, self.theme_gallery_window,
                        self.holiday_viewer_window, self.tutorial_window):
             if window and window.isVisible():
                 window.update_styles()
@@ -925,7 +941,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         is_user_event = bool(day_events)
         is_holiday = bool(new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day)))
 
-        color = APP_CONFIG.TRAY_ICON_DARK_COLOR if self.current_theme == APP_CONFIG.Theme.DARK else APP_CONFIG.TRAY_ICON_LIGHT_COLOR
+        color = (APP_CONFIG.TRAY_ICON_DARK_COLOR if APP_CONFIG.palette_is_dark()
+                 else APP_CONFIG.TRAY_ICON_LIGHT_COLOR)
         if is_user_event:
             color = APP_CONFIG.current_palette['ACCENT_COLOR']
         elif is_holiday:
@@ -1080,22 +1097,6 @@ class SystemTrayIcon(QSystemTrayIcon):
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self.calendar_widget.hide()
 
-    def _cycle_theme_choice(self):
-        """Cycle the appearance preference: system → light → dark → system.
-
-        Every stop of the cycle is persisted explicitly - including "system",
-        which re-detects Windows and keeps following it via
-        ``_handle_system_theme_change``: that persistence is what lets the
-        cycle return to following Windows.
-        """
-        order = APP_CONFIG.THEME_CHOICES
-        next_choice = order[(order.index(self._theme_choice()) + 1) % len(order)]
-        self.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, next_choice)
-        self.current_theme = (self._get_windows_theme()
-                              if next_choice == APP_CONFIG.Theme.SYSTEM else next_choice)
-        logger.info(f"Theme preference set to {next_choice}.")
-        self._apply_theme()
-
     def _set_startup_registry(self, enable: bool) -> bool:
         """Write/remove the autostart Run key; True only when the registry now
         matches ``enable`` (the UI setting is only updated after this succeeds)."""
@@ -1215,6 +1216,106 @@ class SystemTrayIcon(QSystemTrayIcon):
         window.raise_()
         window.activateWindow()
         return window
+
+    def _open_theme_gallery(self):
+        # A fresh session (no visible gallery) remembers the theme to revert
+        # to and drops any stale in-flight preview.
+        current = self.theme_gallery_window
+        if current is None or not current.isVisible():
+            self._gallery_original_theme = self.current_theme
+            self._gallery_pending_theme = None
+        self._show_or_raise("theme_gallery_window", self._build_gallery_window)
+
+    def _build_gallery_window(self):
+        """The gallery window: the real calendar preview beside the theme
+        picker. It reports three intents (preview / commit / cancel) and reads
+        the same live stores the calendar reads, so the preview panel shows
+        exactly what the tray's popup would show in the previewed theme -
+        while the application itself keeps the theme it already has."""
+        return ThemeGalleryWindow(
+            on_preview=self._gallery_preview_theme,
+            on_commit=self._gallery_commit_theme,
+            on_cancel=self._gallery_restore_theme,
+            current_key_provider=lambda: (self._gallery_pending_theme
+                                          or self.current_theme),
+            session_original_provider=lambda: (self._gallery_original_theme
+                                               or self.current_theme),
+            holidays=lambda: self.holidays_cache,
+            events=lambda: self.user_events,
+            favorites_provider=self._favorite_themes,
+            on_favorites_changed=self._gallery_save_favorites,
+        )
+
+    def _favorite_themes(self) -> list:
+        """The stored favorite theme keys, validated: anything that is not a
+        known gallery theme (a hand-edited file, a theme removed in an update)
+        is dropped, and duplicates collapse."""
+        stored = self.settings.value(APP_CONFIG.FAVORITE_THEMES_SETTING_KEY, None)
+        if not isinstance(stored, (list, tuple)):
+            return []
+        known = {key for key, _name, _palette in APP_CONFIG.theme_catalog()}
+        favorites = []
+        for key in stored:
+            if isinstance(key, str) and key in known and key not in favorites:
+                favorites.append(key)
+        return favorites
+
+    def _gallery_save_favorites(self, favorites):
+        """Persist the gallery's favorites the moment a star is toggled. They
+        are bookmarks, so unlike the theme pick they never wait for «اعمال»
+        and a close never discards them."""
+        known = {key for key, _name, _palette in APP_CONFIG.theme_catalog()}
+        cleaned = [key for key in dict.fromkeys(favorites) if key in known]
+        self.settings.setValue(APP_CONFIG.FAVORITE_THEMES_SETTING_KEY, cleaned)
+
+    def _gallery_preview_theme(self, theme_key: str):
+        """Record the gallery's in-flight pick; apply nothing.
+
+        The gallery previews inside its own calendar panel - the app keeps
+        the theme it has, and «اعمال» is what changes it - so there is nothing
+        to apply here; the recorded pick simply rides along to the window's
+        next show. The stored preference is only ever written on commit, and
+        a close or cancel puts the session's baseline back
+        (see _gallery_restore_theme).
+        """
+        if theme_key not in APP_CONFIG._theme_map:
+            logger.warning(f"Gallery asked to preview unknown theme '{theme_key}'.")
+            return
+        self._gallery_pending_theme = theme_key
+
+    def _gallery_commit_theme(self, theme_key: str):
+        """Persist a gallery pick under Appearance/ThemeChoice - the same key
+        the light/dark pin has always used - then apply it.
+
+        The pick also becomes the session's new baseline: the gallery's
+        «اعمال» deliberately leaves the window open for further browsing, so
+        a later close must revert to THIS theme, not to whatever
+        the session opened on - a committed theme can never be un-applied by
+        a cancel.
+        """
+        if theme_key not in APP_CONFIG._theme_map:
+            logger.warning(f"Gallery asked to commit unknown theme '{theme_key}'.")
+            return
+        self.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, theme_key)
+        self.current_theme = theme_key
+        self._gallery_original_theme = theme_key
+        self._gallery_pending_theme = None
+        logger.info(f"Theme preference set to {theme_key} (gallery).")
+        self._apply_theme()
+
+    def _gallery_restore_theme(self, theme_key: str):
+        """The gallery's cancel path: put back the palette the session is
+        anchored on. Previews never wrote the preference, so this stays
+        memory-only - the stored choice is exactly what it always was."""
+        self._gallery_pending_theme = None
+        if theme_key not in APP_CONFIG._theme_map:
+            logger.warning(f"Gallery revert target '{theme_key}' is unknown; "
+                           f"re-resolving the stored preference instead.")
+            choice = self._theme_choice()
+            theme_key = (self._get_windows_theme()
+                         if choice == APP_CONFIG.Theme.SYSTEM else choice)
+        self.current_theme = theme_key
+        self._apply_theme()
 
     def _open_date_converter(self):
         self._show_or_raise("converter_window", DateConverterWindow)

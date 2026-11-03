@@ -41,7 +41,7 @@ def _spy(obj, name):
 
 
 def test_boot_reads_stored_theme(tray):
-    assert tray.current_theme in (APP_CONFIG.Theme.DARK, APP_CONFIG.Theme.LIGHT)
+    assert tray.current_theme in (APP_CONFIG.Theme.DARK, APP_CONFIG.SYSTEM_LIGHT_THEME)
 
 
 def test_boot_detects_dark_theme_off_windows(tray, monkeypatch):
@@ -57,9 +57,23 @@ def test_saved_theme_preference_wins(user_data, monkeypatch, qtbot, fake_startup
     from utils.json_settings import JsonSettings
 
     settings = JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH)
-    settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.LIGHT)
+    settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY,
+                      APP_CONFIG.SYSTEM_LIGHT_THEME)
     tray = SystemTrayIcon(settings=settings, startup_registry=fake_startup_registry)
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert tray.current_theme == APP_CONFIG.SYSTEM_LIGHT_THEME
+    APP_CONFIG.set_theme(APP_CONFIG.Theme.DARK)  # restore global palette
+
+
+def test_legacy_light_preference_resolves_onto_the_light_theme(
+        user_data, monkeypatch, qtbot, fake_startup_registry):
+    """A "light" saved before the stock light theme retired keeps its intent:
+    boot lands on the designated light theme, not the dark fallback."""
+    from utils.json_settings import JsonSettings
+
+    settings = JsonSettings(APP_CONFIG.SETTINGS_FILE_PATH)
+    settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, "light")
+    tray = SystemTrayIcon(settings=settings, startup_registry=fake_startup_registry)
+    assert tray.current_theme == APP_CONFIG.SYSTEM_LIGHT_THEME
     APP_CONFIG.set_theme(APP_CONFIG.Theme.DARK)  # restore global palette
 
 
@@ -957,59 +971,10 @@ def test_minute_timer_exists(tray):
 # --- theme & startup settings -----------------------------------------------------------
 
 
-def test_theme_cycle_advances_and_persists(tray, monkeypatch):
-    """The theme row advances the persisted three-valued choice; two presses
-    land on the opposite pin, a third returns to following the system.
-
-    Detection is stubbed to light rather than read from the host: the stop
-    before the last one is dark, so landing on light proves that "system"
-    re-detected instead of staying on the pin it came from.
-    """
-    monkeypatch.setattr(tray.theme_backend, "theme",
-                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
-    monkeypatch.setattr(tray, "_apply_theme", lambda: None)
-    key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
-
-    tray._cycle_theme_choice()   # system -> light
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
-    assert tray.settings.value(key) == APP_CONFIG.Theme.LIGHT
-    tray._cycle_theme_choice()   # light -> dark
-    assert tray.current_theme == APP_CONFIG.Theme.DARK
-    assert tray.settings.value(key) == APP_CONFIG.Theme.DARK
-    tray._cycle_theme_choice()   # dark -> system, re-detected as light
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
-    assert tray.settings.value(key) == APP_CONFIG.Theme.SYSTEM
-
-
-def test_theme_cycle_persists_every_stop_and_returns_to_system(tray, monkeypatch):
-    """The row cycles system → light → dark → system, saving each stop
-    explicitly - «هماهنگ با سیستم» is reachable again after any pin."""
-    monkeypatch.setattr(tray.theme_backend, "theme",
-                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
-    applied = []
-    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
-    key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
-
-    tray._cycle_theme_choice()
-    assert tray.settings.value(key) == APP_CONFIG.Theme.LIGHT
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
-    assert tray._theme_choice() == APP_CONFIG.Theme.LIGHT
-    tray._cycle_theme_choice()
-    assert tray.settings.value(key) == APP_CONFIG.Theme.DARK
-    assert tray.current_theme == APP_CONFIG.Theme.DARK
-    tray._cycle_theme_choice()
-    # Back on "system": the choice is persisted explicitly and the theme is
-    # re-detected (LIGHT here), not stuck on the last pin.
-    assert tray.settings.value(key) == APP_CONFIG.Theme.SYSTEM
-    assert tray._theme_choice() == APP_CONFIG.Theme.SYSTEM
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
-    assert len(applied) == 3
-
-
 def test_theme_follows_system_when_no_preference_saved(tray, monkeypatch):
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
     monkeypatch.setattr(tray.theme_backend, "theme",
-                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+                        lambda: APP_CONFIG.SYSTEM_LIGHT_THEME, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
     tray.current_theme = APP_CONFIG.Theme.DARK
@@ -1018,14 +983,14 @@ def test_theme_follows_system_when_no_preference_saved(tray, monkeypatch):
 
     tray._handle_system_theme_change()
 
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert tray.current_theme == APP_CONFIG.SYSTEM_LIGHT_THEME
     assert applied == [1]
 
 
 def test_theme_follow_ignores_saved_user_choice(tray, monkeypatch):
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
     monkeypatch.setattr(tray.theme_backend, "theme",
-                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+                        lambda: APP_CONFIG.SYSTEM_LIGHT_THEME, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
     tray.current_theme = APP_CONFIG.Theme.DARK
@@ -1063,10 +1028,10 @@ def test_setting_change_debounces_only_the_theme_broadcast(tray, monkeypatch):
 
 def test_explicit_system_choice_still_follows_windows(tray, monkeypatch):
     """An explicit «هماهنگ با سیستم» value keeps following Windows - only a
-    pinned light/dark choice stops the broadcast from applying."""
+    pinned theme choice stops the broadcast from applying."""
     monkeypatch.setattr(controller_module.sys, "platform", "win32")
     monkeypatch.setattr(tray.theme_backend, "theme",
-                        lambda: APP_CONFIG.Theme.LIGHT, raising=True)
+                        lambda: APP_CONFIG.SYSTEM_LIGHT_THEME, raising=True)
     applied = []
     monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
     tray.current_theme = APP_CONFIG.Theme.DARK
@@ -1074,12 +1039,12 @@ def test_explicit_system_choice_still_follows_windows(tray, monkeypatch):
 
     tray._handle_system_theme_change()
 
-    assert tray.current_theme == APP_CONFIG.Theme.LIGHT
+    assert tray.current_theme == APP_CONFIG.SYSTEM_LIGHT_THEME
     assert applied == [1]
 
 
 def test_saved_theme_preference_wins_over_cycle_detection(tray):
-    """A user pinned by the old two-way toggle keeps the pin on boot."""
+    """A user pinned by the gallery keeps the pin on boot."""
     tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.DARK)
     assert tray._theme_choice() == APP_CONFIG.Theme.DARK
 

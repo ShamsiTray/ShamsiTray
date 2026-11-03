@@ -266,7 +266,7 @@ def test_card_style_stays_scoped_to_the_card(window, qtbot):
     light theme showed the box around every line. The probe grabs the card with
     results up and samples each child row's top edge: it must read as the card
     fill, never as the border colour."""
-    APP_CONFIG.set_theme(APP_CONFIG.Theme.LIGHT)
+    APP_CONFIG.set_theme(APP_CONFIG.SYSTEM_LIGHT_THEME)
     window.update_styles()
     _convert_jalali(window, jdatetime.date(1403, 1, 1))
     qtbot.wait(10)

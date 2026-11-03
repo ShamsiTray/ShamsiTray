@@ -649,16 +649,36 @@ def fit_combo_width(combo: QComboBox, *, font_size: int = 14, bold: bool = False
         combo.view().setMinimumWidth(min_width)
 
 
-def accent_button_stylesheet(palette: dict, *, padding: str = "8px 18px", font_size: Optional[int] = None) -> str:
+def accent_button_stylesheet(palette: dict, *, padding: str = "8px 18px",
+                             font_size: Optional[int] = None,
+                             radius: int = 8) -> str:
     """Shared primary (accent) button style: lightens on hover, darkens on press,
-    dimmed when disabled."""
+    dimmed when disabled.
+
+    The label color is decided by ``on_accent_text_color`` - gallery themes
+    with light accents (Graphite, yellows, mints) get near-black labels, and a
+    light accent then darkens on hover instead of lightening, so the states
+    keep moving away from the resting fill in the legible direction.
+    ``radius`` lets a caller trace a larger corner curve (the gallery's action
+    dock buttons) without forking this whole recipe.
+    """
     base = QColor(palette['ACCENT_COLOR'])
+    text_color = on_accent_text_color(palette['ACCENT_COLOR'])
+    light_accent = _luminance(base) >= 0.5
+    hover_color = base.darker(108) if light_accent else base.lighter(110)
+    pressed_color = base.darker(120)
+    # One disabled recipe for both accent polarities: wash the fill toward the
+    # background (darker(150) would turn a light accent olive) and fade the
+    # label, keeping the shape readable as "this button exists but is off".
+    disabled_bg = QColor(mix_colors(palette['ACCENT_COLOR'],
+                                    palette['BACKGROUND_COLOR'], 0.45))
+    disabled_text = rgba_string(text_color, 0.43)
     font_rule = f" font-size: {font_size}px;" if font_size else ""
     return (
-        f"QPushButton {{ background-color: {base.name()}; color: white; border: none; border-radius: 8px; padding: {padding};{font_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-        f"QPushButton:hover {{ background-color: {base.lighter(110).name()}; }}"
-        f"QPushButton:pressed {{ background-color: {base.darker(120).name()}; }}"
-        f"QPushButton:disabled {{ background-color: {base.darker(150).name()}; color: rgba(255, 255, 255, 110); }}")
+        f"QPushButton {{ background-color: {base.name()}; color: {text_color}; border: none; border-radius: {radius}px; padding: {padding};{font_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
+        f"QPushButton:hover {{ background-color: {hover_color.name()}; }}"
+        f"QPushButton:pressed {{ background-color: {pressed_color.name()}; }}"
+        f"QPushButton:disabled {{ background-color: {disabled_bg.name()}; color: {disabled_text}; }}")
 
 
 def ghost_button_stylesheet(palette: dict, *, padding: str = "8px 18px") -> str:
@@ -691,7 +711,7 @@ SCROLL_BOTTOM_PAD_PX = 10
 
 
 def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: int,
-                     bottom_margin: int = 0) -> str:
+                     bottom_margin: int = 0, top_margin: int = 0) -> str:
     """Core rounded-scrollbar rules shared by every scrollbar in the app.
 
     ``selector`` is ``QScrollBar`` for plain scroll areas and
@@ -700,13 +720,15 @@ def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: in
     pill, the handle is a rounded bar that lights up in the accent color on
     hover and press, and the corner arrow buttons are removed entirely.
     ``bottom_margin`` insets the track's bottom edge so the thumb stops where
-    the content pad ends; the top stays untouched, so at scroll-top the thumb
-    still opens aligned with the first card. Scrolled lists pass their pad
+    the content pad ends. ``top_margin`` does the same for the top edge, for
+    lists whose first row starts below the viewport's top (the theme gallery's
+    cards sit under a pad); it defaults to 0, where the thumb opens flush with
+    a list whose first row is flush too. Scrolled lists pass their pad
     (``SCROLL_BOTTOM_PAD_PX``) so the two insets cannot drift apart.
     """
     radius = width // 2
     return (
-        f"{selector}:vertical {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: {width}px; margin: 0px 0px {bottom_margin}px 0px; border-radius: {radius}px; }}"
+        f"{selector}:vertical {{ border: none; background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; width: {width}px; margin: {top_margin}px 0px {bottom_margin}px 0px; border-radius: {radius}px; }}"
         f"{selector}::handle:vertical {{ background-color: {palette['SCROLLBAR_HANDLE_COLOR']}; border-radius: {radius}px; min-height: {min_handle}px; }}"
         f"{selector}::handle:vertical:hover {{ background-color: {palette['ACCENT_COLOR']}; }}"
         f"{selector}::handle:vertical:pressed {{ background-color: {palette['ACCENT_COLOR']}; }}"
@@ -715,16 +737,18 @@ def _scrollbar_rules(palette: dict, *, width: int, selector: str, min_handle: in
 
 
 def scrollbar_stylesheet(palette: dict, *, width: int = 10,
-                         bottom_margin: int = 0) -> str:
+                         bottom_margin: int = 0, top_margin: int = 0) -> str:
     """Shared vertical QScrollBar style for the scroll areas of the tool windows.
 
     Same round pill look the combo-box popups already used (grooved round
     track, rounded handle) plus the accent-color hover reaction that every
     scrollbar in the app now shares. ``bottom_margin`` stops the thumb at the
-    caller's content bottom pad instead of letting it run to the track's end.
+    caller's content bottom pad instead of letting it run to the track's end;
+    ``top_margin`` starts it at the caller's content top pad.
     """
     return _scrollbar_rules(palette, width=width, selector="QScrollBar",
-                            min_handle=24, bottom_margin=bottom_margin)
+                            min_handle=24, bottom_margin=bottom_margin,
+                            top_margin=top_margin)
 
 
 def global_scrollbar_stylesheet(palette: dict) -> str:
@@ -791,9 +815,14 @@ def nav_button_stylesheet(palette: dict, bg_color: str, *, is_today_button: bool
     text_color = palette['TEXT_COLOR']
     if is_today_button:
         base_color = QColor(bg_color)
-        hover_color = base_color.lighter(120).name()
+        # The today pill is an accent fill: the label polarity follows the
+        # accent (see on_accent_text_color), and a light accent hovers darker.
+        label_color = on_accent_text_color(bg_color)
+        light_accent = _luminance(base_color) >= 0.5
+        hover_color = (base_color.darker(108) if light_accent
+                       else base_color.lighter(120)).name()
         pressed_color = base_color.darker(120).name()
-        return (f"QPushButton {{ background-color: {base_color.name()}; color: white; border: none; border-radius: 8px; }}"
+        return (f"QPushButton {{ background-color: {base_color.name()}; color: {label_color}; border: none; border-radius: 8px; }}"
                 f"QPushButton:hover {{ background-color: {hover_color}; }}"
                 f"QPushButton:pressed {{ background-color: {pressed_color}; }}")
     hover_color = QColor(bg_color).darker(120).name() if bg_color != "transparent" else palette['HOVER_BG']
@@ -814,8 +843,9 @@ def line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bo
     # style sheet - the glyphs keep the platform's grey - so the placeholder
     # color has to ride on the QLineEdit rule itself as `placeholder-text-color`.
     placeholder_rule = f" QLineEdit {{ placeholder-text-color: {placeholder_color}; }}" if placeholder_color else ""
+    accent_text = palette_on_accent_text(palette)
     return (
-        f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding};{align_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white; }}"
+        f"QLineEdit {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding};{align_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px; selection-background-color: {palette['ACCENT_COLOR']}; selection-color: {accent_text}; }}"
         f"QLineEdit:hover {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
         f"QLineEdit:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
         f"QLineEdit:disabled {{ background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; color: {palette['GREY_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; }}"
@@ -888,6 +918,57 @@ def legible_on(color_hex: str, background_hex: str, min_ratio: float = 3.0) -> s
     return color.name()
 
 
+# The near-black candidate the gallery palettes were rendered with (see
+# themes.py): an accent that cannot carry white text carries this instead.
+# Pure black reads harsh next to the palettes' soft text colors.
+ON_ACCENT_DARK_CANDIDATE = "#16161a"
+
+# The contrast floor an on-accent label must clear (WCAG large-text AA; the
+# labels are bold UI text). White keeps the accent while it clears this, so
+# mid-tone accents never flip to near-black on a hair-thin ratio comparison.
+_ON_ACCENT_MIN_RATIO = 3.0
+
+_ON_ACCENT_CACHE: dict = {}
+
+
+def on_accent_text_color(accent_hex: str) -> str:
+    """White or near-black - whichever reads on ``accent_hex``.
+
+    White is the label accents have always carried in this app, so it stays
+    while it still clears the large-text floor: mid-tone accents (Nord's
+    steel blue, Solarized Dark's blue, Tokyo Night Day's blue) keep their
+    brand-canonical white label instead of flipping to a muddy near-black the
+    moment a bare ratio comparison calls black "better" by a hair - the flip
+    that made those themes' buttons look wrong. Only when white genuinely
+    fails - the light accents the gallery packs carry (Graphite's near-white,
+    High Contrast Dark's yellow, Dracula's pastels, Poimandres' mint) - does
+    the near-black candidate step in, and if neither clears the floor the
+    better of the two limps home. Every surface that paints text ON the
+    accent - accent buttons, the today pill, combo/line-edit selections, the
+    calendar switch's checked half, the holiday viewer's next-holiday tag,
+    the gallery's action dock - decides through here, so one contrast rule
+    covers all of them.
+    """
+    cached = _ON_ACCENT_CACHE.get(accent_hex)
+    if cached is None:
+        accent = QColor(accent_hex)
+        white = contrast_ratio(accent, QColor("#ffffff"))
+        dark = contrast_ratio(accent, QColor(ON_ACCENT_DARK_CANDIDATE))
+        if white >= _ON_ACCENT_MIN_RATIO:
+            cached = "#ffffff"
+        elif dark >= _ON_ACCENT_MIN_RATIO:
+            cached = ON_ACCENT_DARK_CANDIDATE
+        else:
+            cached = "#ffffff" if white >= dark else ON_ACCENT_DARK_CANDIDATE
+        _ON_ACCENT_CACHE[accent_hex] = cached
+    return cached
+
+
+def palette_on_accent_text(palette: dict) -> str:
+    """The readable text color for the palette's accent fill."""
+    return on_accent_text_color(palette['ACCENT_COLOR'])
+
+
 def mix_colors(first_hex: str, second_hex: str, weight: float = 0.5) -> str:
     """``first`` blended toward ``second`` by ``weight`` (0 = first, 1 = second)."""
     a, b = QColor(first_hex), QColor(second_hex)
@@ -947,8 +1028,9 @@ def combo_stylesheet(
         palette, width=scrollbar_width,
         selector="QAbstractItemView::verticalScrollBar", min_handle=20)
     text_align_rule = " text-align: center;" if center_text else ""
+    accent_text = palette_on_accent_text(palette)
     return (
-        f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px;{text_align_rule} selection-background-color: {palette['ACCENT_COLOR']}; selection-color: white;}}"
+        f"QComboBox {{ background-color: {palette['INPUT_BG_COLOR']}; color: {palette['TEXT_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 8px; padding: {padding}; font-family: '{APP_CONFIG.FONT_FAMILY}'; font-size: 14px;{text_align_rule} selection-background-color: {palette['ACCENT_COLOR']}; selection-color: {accent_text};}}"
         f"QComboBox:hover, QComboBox:focus, QComboBox::on {{ border: 1px solid {palette['ACCENT_COLOR']}; }}"
         f"QComboBox:disabled {{ background-color: {palette['SCROLLBAR_GROOVE_COLOR']}; color: {palette['GREY_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; }}"
         f"QComboBox::drop-down {{ {dropdown_border_rule} }}"
