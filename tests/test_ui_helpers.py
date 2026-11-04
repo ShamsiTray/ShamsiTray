@@ -66,7 +66,7 @@ def _pin_screen(monkeypatch, virtual, available):
     assertable (and the taskbar strip is 40px wherever CI runs).
 
     ``virtualGeometry`` is the whole desktop, taskbar strip included;
-    ``availableVirtualGeometry`` is the work area the dialog clamp respects.
+    ``availableVirtualGeometry`` is the work area both clamp rules respect.
     """
     from PyQt6.QtWidgets import QApplication
 
@@ -185,10 +185,10 @@ def test_drag_move_keeps_a_dialog_above_the_taskbar(qtbot, monkeypatch):
     assert surface.y() == 759 - surface.height()  # the work area's bottom, not 799
 
 
-def test_drag_move_leaves_the_tool_window_clamp_on_the_desktop(qtbot, monkeypatch):
-    """The tool windows may hang below the bottom edge on purpose - only their
-    top 50px must stay reachable - so the taskbar strip is theirs to use and
-    their clamp keeps the whole desktop."""
+def test_drag_move_stops_a_tool_window_above_the_taskbar(qtbot, monkeypatch):
+    """The tool windows may hang over the taskbar - their body may cover the
+    strip - but the top 50px must stay reachable ABOVE the work area's bottom
+    edge: a top resting behind the taskbar is unrecoverable."""
     from PyQt6.QtCore import QEvent, QRect
 
     class ToolWindow(DragSurface):
@@ -209,7 +209,7 @@ def test_drag_move_leaves_the_tool_window_clamp_on_the_desktop(qtbot, monkeypatc
         Qt.KeyboardModifier.NoModifier)
     surface.handle_drag_move(event)
 
-    assert surface.y() == 799 - 50  # the desktop's bottom edge, not the work area's
+    assert surface.y() == 759 - 50, "above the work area's bottom, not the desktop's"
 
 
 def test_drag_release_ends_drag(qtbot):
