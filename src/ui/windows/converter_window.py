@@ -9,7 +9,7 @@ dynamic day/month population, and calculates elapsed time from the present.
 import datetime
 
 import jdatetime
-from PyQt6.QtCore import Qt, QRegularExpression
+from PyQt6.QtCore import QPoint, Qt, QRegularExpression
 from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
 from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
                             QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -411,24 +411,29 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         self.month_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.year_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     def _make_copy_row(self, label: QLabel):
-        """Route a result label's left click through _copy_to_clipboard."""
+        """Route a result label's left click - or Enter or Space from the
+        keyboard - through _copy_to_clipboard."""
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setWordWrap(False)
+        label.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         label.mousePressEvent = (lambda event, label=label: self._copy_to_clipboard(label) if event.button() == Qt.MouseButton.LeftButton else None)
+        label.keyPressEvent = (lambda event, label=label: self._copy_to_clipboard(label, label.mapToGlobal(label.rect().center())) if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space) else QLabel.keyPressEvent(label, event))
 
-    def _copy_to_clipboard(self, label: QLabel):
+    def _copy_to_clipboard(self, label: QLabel, at: QPoint | None = None):
         """Copy the row's clipboard payload and show a brief confirmation.
 
         The payload is the Latin-digit form from the shared formatters, not the
         Persian-digit text on screen; an unmapped label falls back to its own
-        text so nothing silently copies nothing.
+        text so nothing silently copies nothing. ``at`` anchors the flash: the
+        mouse paths leave it at the cursor, and a keyboard activation passes
+        the row itself, whose position is the only live truth it has.
         """
         text = self._copy_payloads.get(id(label), label.text())
         if text and text != "...":
             clipboard = QApplication.clipboard()
             clipboard.setText(text)
-            global_pos = QCursor.pos()
-            CustomTooltip.instance().flash_copied(global_pos)
+            anchor = at if at is not None else QCursor.pos()
+            CustomTooltip.instance().flash_copied(anchor)
 
     def _apply_windows_styles(self):
         apply_windows_styles(self)
