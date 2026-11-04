@@ -32,7 +32,7 @@ from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import to_persian_digits
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, make_event_key)
-from utils.ui_helpers import SCROLL_BOTTOM_PAD_PX
+from utils.ui_helpers import SCROLL_BOTTOM_PAD_PX, error_line_edit_stylesheet
 
 
 @pytest.fixture(autouse=True)
@@ -1301,6 +1301,9 @@ def test_event_save_blocked_for_out_of_range_year(manager, qtbot):
     widget._on_save()
     assert widget.isVisible()                    # editor stays open
     assert widget.date_row._year_error is True   # red error border is on
+    assert widget.year_input.styleSheet() == error_line_edit_stylesheet(
+        APP_CONFIG.get_current_palette(),
+        **widget.date_row._year_style_kwargs(True))
     assert manager.controller.user_events == {}
 
 
@@ -1622,7 +1625,34 @@ def test_import_of_already_reflected_file_skips_and_never_asks(manager, monkeypa
     assert manager._import_events_from_dialog() is True
     assert set(manager.controller.user_events) == {"1405-08-01", "0000-09-01", "1406-02-14"}
     assert len(boxes) == 1
-    assert "تکراری نادیده گرفته شد" in boxes[0]
+    assert "۲ مورد تکراری نادیده گرفته شد" in boxes[0]
+
+
+def test_import_of_only_identical_entries_is_a_zero_work_plan(manager, monkeypatch, tmp_path):
+    """A file holding nothing new is a 0-work plan end to end: no collision
+    confirmation is asked, the store keeps every original entry, and the
+    single summary names the skipped-duplicate count."""
+    manager.controller.user_events = {"1405-08-01": _entry("already here"),
+                                      "0000-09-01": _entry("yearly store", "yearly")}
+    import_file = _write_import_file(
+        tmp_path,
+        {"1405-08-01": _entry("already here"),
+         "0000-09-01": _entry("yearly store", "yearly")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+
+    def boom(*a, **k):
+        raise AssertionError("identical entries must not reach the confirmation")
+
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(boom))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a[2])))
+    assert manager._import_events_from_dialog() is True
+    assert manager.controller.user_events == {"1405-08-01": _entry("already here"),
+                                              "0000-09-01": _entry("yearly store", "yearly")}
+    assert len(boxes) == 1
+    assert "۲ مورد تکراری نادیده گرفته شد" in boxes[0]
 
 
 def test_import_save_failure_leaves_disk_and_memory_untouched(manager, monkeypatch, tmp_path):
