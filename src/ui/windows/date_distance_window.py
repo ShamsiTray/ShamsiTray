@@ -38,7 +38,7 @@ cannot answer without it, so it says why instead of going quiet.
 import datetime
 
 import jdatetime
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QStackedWidget, QVBoxLayout, QWidget)
@@ -68,6 +68,9 @@ COPY_ALL_CORNER_INSET_PX = 10
 # 32px square hit area (icon stays small), 8px radius.
 COPY_ALL_BUTTON_PX = 32
 COPY_ALL_BUTTON_RADIUS_PX = 8
+# The copy lines' focus ring shares the button's language: an accent border
+# that exists only on the :focus state, at the button's radius.
+FOCUS_RING_RADIUS_PX = 8
 # The distance pages span each library's true edges, not the app's support
 # span (1200..1600 stays the event editor's constraint): jdatetime expresses
 # Jalali 1..9377 - no Jalali year 0, and 9377 is the last year whose Gregorian
@@ -105,9 +108,11 @@ class DistanceGregorianRow(DistanceRowMetrics, GregorianDateSelectorRow):
     YEAR_MAX = GREGORIAN_YEAR_MAX
 
 
-def copy_with_flash(text: str) -> None:
-    """Put ``text`` on the clipboard and flash «کپی شد» at the cursor (the
-    converter's rows confirm a copy the same way).
+def copy_with_flash(text: str, at: QPoint | None = None) -> None:
+    """Put ``text`` on the clipboard and flash «کپی شد» at ``at``: the
+    converter's copy rows confirm a click the same way, so a mouse caller
+    leaves ``at`` at the cursor, while a keyboard activation passes the
+    widget it was launched from.
 
     The clipboard gets Latin digits, not the Persian digits on screen: that is
     the app-wide copy convention (the calendar's «کپی تاریخ» and the converter
@@ -116,16 +121,19 @@ def copy_with_flash(text: str) -> None:
     if not text:
         return
     QApplication.clipboard().setText(from_persian_digits(text))
-    CustomTooltip.instance().flash_tooltip(COPIED_MESSAGE, QCursor.pos())
+    anchor = at if at is not None else QCursor.pos()
+    CustomTooltip.instance().flash_tooltip(COPIED_MESSAGE, anchor)
 
 
 class CopyLabel(QLabel):
-    """A result line that copies its own text when clicked."""
+    """A result line that copies its own text: clicked, or tabbed to and
+    launched with Enter or Space."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -133,16 +141,27 @@ class CopyLabel(QLabel):
         else:
             super().mousePressEvent(event)
 
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            copy_with_flash(self.text(), self.mapToGlobal(self.rect().center()))
+        else:
+            super().keyPressEvent(event)
+
 
 class CopyRow(QWidget):
     """The hero line: the number and its unit are two labels (two sizes), but
-    one click target that copies them as the sentence they form. Clicks on the
-    child labels bubble up here because a plain QLabel ignores them."""
+    one copy target - clicked, or tabbed to and launched with Enter or Space -
+    that copies them as the sentence they form. Clicks on the child labels
+    bubble up here because a plain QLabel ignores them."""
 
     def __init__(self, days_label: QLabel, unit_label: QLabel, parent=None):
         super().__init__(parent)
         self.days_label, self.unit_label = days_label, unit_label
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # A stylesheet paints on a QWidget subclass only once the widget opted
+        # into stylesheet painting; the hero's :focus ring needs that opt-in.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
@@ -158,6 +177,12 @@ class CopyRow(QWidget):
             copy_with_flash(self.copy_text())
         else:
             super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            copy_with_flash(self.copy_text(), self.mapToGlobal(self.rect().center()))
+        else:
+            super().keyPressEvent(event)
 
 
 class ResultCard(QFrame):
@@ -329,6 +354,10 @@ class DateDistanceWindow(BaseFramelessWindow):
         self._equalize_field_widths()
         font = f"font-family: '{APP_CONFIG.FONT_FAMILY}';"
         plain = "background: transparent; border: none;"
+        # The copy lines' :focus ring rides their own per-state clause, the
+        # same rule pattern the «کپی همه» button paints its ring with.
+        focus_ring = (f"border: 1px solid {palette['ACCENT_COLOR']}; "
+                      f"border-radius: {FOCUS_RING_RADIUS_PX}px;")
         # One raised surface in both themes, halfway between the window and
         # the input fill. Secondary text uses the weekday-name tone (the
         # palette's legible muted colour); GREY_COLOR is too faint on the card.
@@ -349,11 +378,15 @@ class DateDistanceWindow(BaseFramelessWindow):
         self.result_divider.setStyleSheet(
             f"background-color: {palette['CALENDAR_BORDER_COLOR']}; border: none;")
         self.result_breakdown.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; {font} font-size: 16px; font-weight: bold; {plain}")
+            f"CopyLabel {{ color: {palette['TEXT_COLOR']}; {font} font-size: 16px; "
+            f"font-weight: bold; {plain} }}"
+            f"CopyLabel:focus {{ {focus_ring} }}")
         self.result_months.setStyleSheet(
-            f"color: {palette['TEXT_COLOR']}; {font} font-size: 14px; {plain}")
+            f"CopyLabel {{ color: {palette['TEXT_COLOR']}; {font} font-size: 14px; {plain} }}"
+            f"CopyLabel:focus {{ {focus_ring} }}")
         self.result_weeks.setStyleSheet(
-            f"color: {muted}; {font} font-size: 13px; {plain}")
+            f"CopyLabel {{ color: {muted}; {font} font-size: 13px; {plain} }}"
+            f"CopyLabel:focus {{ {focus_ring} }}")
         # The button's text is a Font Awesome glyph, so it carries that family:
         # the card's text font (Vazirmatn) lacks U+F0C5, and the glyph fallback
         # search for it walks legacy raster fonts (Fixedsys and friends), each
@@ -369,6 +402,10 @@ class DateDistanceWindow(BaseFramelessWindow):
             f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}"
             f"QPushButton:pressed {{ background-color: {palette['HOVER_BG']}; }}"
             f"QPushButton:focus {{ border: 1px solid {palette['ACCENT_COLOR']}; }}")
+        # The hero row is a shared QWidget subclass: the ring is its only
+        # stylesheet rule, so its rest state paints nothing (it carries the
+        # stylesheet opt-in; see CopyRow).
+        self.hero_row.setStyleSheet(f"CopyRow:focus {{ {focus_ring} }}")
         self._equalize_field_widths()
 
     def _equalize_field_widths(self):

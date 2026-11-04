@@ -7,7 +7,7 @@ measurement is direction-agnostic (no «مانده/گذشته», the row order n
 changes the numbers), every sentence comes from the shared neutral date-distance
 helpers rather than a window-local rewrite, each secondary line shows only when
 it says more than the lines above it, the calendar switch measures in either
-calendar, and every result line copies itself on click.
+calendar, and every result line copies itself on click or from the keyboard.
 """
 import datetime
 
@@ -15,6 +15,7 @@ import jdatetime
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel
 
 from config import APP_CONFIG
@@ -586,6 +587,60 @@ def test_lines_are_clickable_looking(window):
     for widget in (window.hero_row, window.result_breakdown, window.result_months,
                    window.result_weeks):
         assert widget.cursor().shape() == Qt.CursorShape.PointingHandCursor
+
+
+def test_result_lines_copy_from_the_keyboard(window, qtbot, flashes):
+    """The copy lines answer the keyboard like the pointer: each line takes
+    tab focus (TabFocus, like the «کپی همه» button) and Enter or Space copies
+    that line; keys that mean nothing here stay on the superclass path."""
+    _set_date(window.from_row, 1382, 6, 2)
+    _set_date(window.to_row, 1388, 2, 22)
+    window.show()
+    cases = ((window.hero_row, "2088 روز"),
+             (window.result_breakdown, "5 سال و 8 ماه و 20 روز"),
+             (window.result_months, "68 ماه و 20 روز"),
+             (window.result_weeks, "298 هفته و 2 روز"))
+    for widget, expected in cases:
+        assert widget.focusPolicy() == Qt.FocusPolicy.TabFocus
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Space):
+            widget.setFocus()
+            _clipboard().clear()
+            QTest.keyClick(widget, key)
+            assert _clipboard().text() == expected
+    assert flashes == [COPIED_MESSAGE] * 8
+    _clipboard().setText("stays")
+    QTest.keyClick(window.result_breakdown, Qt.Key.Key_A)
+    assert _clipboard().text() == "stays" and flashes == [COPIED_MESSAGE] * 8
+
+
+def test_a_keyboard_copy_flashes_on_its_own_widget(window, qtbot, monkeypatch):
+    """A keyboard activation has no cursor truth to ride: its flash anchors
+    to the widget the copy was launched from."""
+    _set_date(window.from_row, 1405, 1, 1)
+    _set_date(window.to_row, 1405, 4, 15)
+    window.show()
+    seen = []
+    monkeypatch.setattr(CustomTooltip.instance(), "flash_tooltip",
+                        lambda text, at, *a, **k: seen.append(at))
+    window.result_breakdown.setFocus()
+    QTest.keyClick(window.result_breakdown, Qt.Key.Key_Space)
+    assert seen == [window.result_breakdown.mapToGlobal(
+        window.result_breakdown.rect().center())]
+
+
+def test_focused_copy_lines_paint_their_ring(window, qtbot):
+    """The ring rides a :focus clause the base style must not swallow: a
+    focused line renders differently from the same line at rest."""
+    _set_date(window.from_row, 1405, 1, 1)
+    _set_date(window.to_row, 1405, 4, 15)
+    window.show()
+    for widget in (window.hero_row, window.result_breakdown):
+        widget.clearFocus()
+        QTest.qWait(50)
+        at_rest = widget.grab().toImage()
+        widget.setFocus()
+        qtbot.waitUntil(lambda w=widget: w.grab().toImage() != at_rest)
+        widget.clearFocus()
 
 
 def test_no_message_or_hint_is_a_copy_target(window, qtbot, flashes):
