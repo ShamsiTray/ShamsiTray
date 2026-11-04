@@ -1132,6 +1132,51 @@ def test_explicit_system_choice_still_follows_windows(tray, monkeypatch):
     assert applied == [1]
 
 
+def test_theme_change_repaints_the_glyph_even_when_the_choice_is_pinned(tray, monkeypatch):
+    """A light/dark broadcast repaints the tray icon before the follow gates:
+    the glyph's ground is the taskbar strip (the shell mode), which moves on
+    the same broadcast even when a pinned theme choice stops the app theme
+    from following it."""
+    from tests.fake_theme import FakeThemeBackend
+
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+    backend = FakeThemeBackend(value=APP_CONFIG.Theme.DARK)
+    backend.taskbar_light = True
+    monkeypatch.setattr(tray, "theme_backend", backend)
+    tray.current_theme = APP_CONFIG.Theme.DARK
+    tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY,
+                           APP_CONFIG.Theme.DARK)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    backend.reset()  # forget the boot's own reads; count only this handler's
+
+    tray._handle_system_theme_change()
+
+    assert backend.taskbar_reads == 1  # the repaint judged the flipped strip
+    assert applied == []
+
+
+def test_theme_change_repaints_the_glyph_when_the_verdict_is_unchanged(tray, monkeypatch):
+    """The follow gate only argues about the app verdict; a taskbar-mode
+    (shell-mode) switch that leaves it unchanged must still repaint the tray
+    glyph instead of being skipped by that early-out."""
+    monkeypatch.setattr(controller_module.sys, "platform", "win32")
+    monkeypatch.setattr(tray.theme_backend, "theme",
+                        lambda: APP_CONFIG.Theme.DARK, raising=True)
+    tray.current_theme = APP_CONFIG.Theme.DARK
+    tray.settings._data.pop(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, None)
+    paints = []
+    monkeypatch.setattr(tray, "update_tray_icon",
+                        lambda *, force=True: paints.append(force), raising=True)
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+
+    tray._handle_system_theme_change()
+
+    assert paints == [True]
+    assert applied == []
+
+
 def test_saved_theme_preference_wins_over_cycle_detection(tray):
     """A user pinned by the gallery keeps the pin on boot."""
     tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY, APP_CONFIG.Theme.DARK)
