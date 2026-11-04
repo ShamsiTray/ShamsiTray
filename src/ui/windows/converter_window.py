@@ -99,11 +99,11 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
     def _update_convert_state(self, *_args):
         """Grey the تبدیل button in and out with the input's submittability.
 
-        Driven by textChanged and the conversion-mode combo (plus one initial
-        call), it covers every case the out-of-range flip cannot see: the empty
-        state never changes the mixin's error state, so without this the button
-        would stay enabled after clearing the field. The shared accent style dims
-        disabled buttons.
+        Driven by textChanged, the calendar flip and one initial call: the
+        empty state never changes the mixin's error state, so without this the
+        button would stay enabled after clearing the field, and a refill that
+        writes identical text cannot ride textChanged. The shared accent style
+        dims disabled buttons.
         """
         self.convert_button.setEnabled(self._year_is_submittable())
 
@@ -399,9 +399,10 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         # click would. _convert_date keeps its own guard for other callers.
         self.year_input.returnPressed.connect(self.convert_button.click)
         # The bounds are mode-dependent (_year_bounds defers to the switch), so
-        # the button follows them automatically. Only the year text needs a
-        # signal today: a calendar flip refills the field with today's date,
-        # which is inside both ranges, so it never needs a separate re-derivation.
+        # the button follows them automatically. The year-text signal covers
+        # typing; the flip itself re-judges at the end of _on_calendar_changed,
+        # because a refill can write the text the field already held - and Qt
+        # stays silent when setText changes nothing.
         self.year_input.textChanged.connect(self._update_convert_state)
         # Derive it once up front too, so the window never opens with a stale
         # button state.
@@ -455,6 +456,10 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
         # The bounds changed with the mode; re-evaluate the year border now.
         self._update_year_error_state()
+        # The refill may be silent: when the flipped-to today's year is the
+        # text the field already held, no textChanged arrives, so the button
+        # cannot re-derive itself off the signal.
+        self._update_convert_state()
 
     def _update_day_dropdown(self, *args):
         """
