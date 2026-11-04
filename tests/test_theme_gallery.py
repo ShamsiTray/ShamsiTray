@@ -64,10 +64,10 @@ REQUIRED_PALETTE_KEYS = {
 
 
 def test_pack_registry_loads_every_theme():
-    """The single themes module registers 68 gallery palettes; with the stock
-    dark theme the catalogue offers 69 selectable themes."""
-    assert len(APP_CONFIG.EXTRA_THEMES) == 68
-    assert len(APP_CONFIG.theme_catalog()) == 69
+    """The single themes module registers 72 gallery palettes; with the stock
+    dark theme the catalogue offers 73 selectable themes."""
+    assert len(APP_CONFIG.EXTRA_THEMES) == 72
+    assert len(APP_CONFIG.theme_catalog()) == 73
     assert "dracula" in APP_CONFIG._theme_map
     assert "nord_light" in APP_CONFIG._theme_map
     assert "kanagawa_wave" in APP_CONFIG._theme_map
@@ -118,6 +118,20 @@ def test_display_names_are_unique_and_pretty():
     assert APP_CONFIG.theme_display_name("github_dark") == "GitHub Dark"
 
 
+def test_theme_names_resolve_every_entry_verbatim():
+    """THEME_NAMES carries the slugs word-splitting names wrong; every entry
+    must hit a real theme and resolve to the exact exported name."""
+    import themes
+
+    for slug, expected in themes.THEME_NAMES.items():
+        assert slug in APP_CONFIG._theme_map, slug
+        assert APP_CONFIG.theme_display_name(slug) == expected
+    assert themes.THEME_NAMES["rose_pine_moon"] == "Rosé Pine Moon"
+    assert themes.THEME_NAMES["synthwave_84"] == "Synthwave '84"
+    assert themes.THEME_NAMES["winter_is_coming"] == "Winter is Coming"
+    assert themes.THEME_NAMES["fig_and_leaf"] == "Fig & Leaf"
+
+
 def test_stock_dark_theme_is_named_default():
     """The theme the app ships wearing reads as «Default», not «Dark» - it is
     the baseline every gallery pick is a departure from."""
@@ -150,11 +164,22 @@ def test_theme_catalog_groups_extras_dark_then_light():
     assert all(p is False for p in polarities[first_light:])
 
 
+def test_gallery_order_is_the_file_order_not_alphabetical():
+    """The picker browses in the themes module's popularity order: the
+    recognizable themes line the top rows, the custom sets sit at the tail -
+    the catalog never alphabetizes the file order away."""
+    keys = [k for k, _n, _p in APP_CONFIG.theme_catalog()]
+    assert keys[:5] == ["dark", "dracula", "catppuccin_mocha", "twitch",
+                        "nord"]
+    assert keys[46] == "catppuccin_latte"  # after stock + the 45 dark extras
+    assert keys[-1] == "pastel_dreamland_adventure"
+
+
 def test_palette_is_dark_polarity():
     assert APP_CONFIG.palette_is_dark(APP_CONFIG.DARK_PALETTE) is True
     # Gallery edge cases: near-black and near-white grounds.
     assert APP_CONFIG.palette_is_dark(APP_CONFIG.EXTRA_THEMES["oled_black"]) is True
-    assert APP_CONFIG.palette_is_dark(APP_CONFIG.EXTRA_THEMES["oxocarbon_light"]) is False
+    assert APP_CONFIG.palette_is_dark(APP_CONFIG.EXTRA_THEMES["high_contrast_light"]) is False
 
 
 # --- on-accent text polarity -----------------------------------------------------
@@ -215,9 +240,9 @@ def test_filtered_catalog_narrows_by_polarity():
     from ui.widgets.gallery_widgets import FILTER_DARK, FILTER_LIGHT, filtered_catalog
 
     all_entries = filtered_catalog()
-    assert len(all_entries) == 69
+    assert len(all_entries) == 73
     assert len(filtered_catalog(mode=FILTER_LIGHT)) == 27
-    assert len(filtered_catalog(mode=FILTER_DARK)) == 42
+    assert len(filtered_catalog(mode=FILTER_DARK)) == 46
     assert "catppuccin_latte" not in [key for key, _n, _p in filtered_catalog(mode=FILTER_DARK)]
 
 
@@ -258,7 +283,7 @@ def test_rendering_never_shadows_the_config_palette(qtbot):
     assert "current_palette" not in vars(APP_CONFIG), (
         "the renderer must not leave an instance-level palette shadow"
     )
-    APP_CONFIG.set_theme("tokyo_night")
+    APP_CONFIG.set_theme("tokyo_night_storm")
     assert APP_CONFIG.current_palette is Config.current_palette, (
         "instance reads must follow the class attribute set_theme writes"
     )
@@ -758,7 +783,7 @@ def _row_of(window, key):
 
 def test_gallery_lists_every_theme(gallery):
     window, _calls = gallery
-    assert window.grid.count() == 69
+    assert window.grid.count() == 73
 
 
 def test_gallery_selection_previews_inside_the_panel(gallery):
@@ -975,7 +1000,7 @@ def test_gallery_filter_narrows_the_grid(gallery):
     window, _calls = gallery
     window.filter_control.set_filter(FILTER_DARK)
     keys = [window.grid.item(r).data(Qt.ItemDataRole.UserRole) for r in range(window.grid.count())]
-    assert len(keys) == 42
+    assert len(keys) == 46
     assert "catppuccin_latte" not in keys
 
 
@@ -1064,16 +1089,16 @@ def test_gallery_apply_commits_the_preview_and_stays_open(gallery):
     session re-baselines onto the applied theme - so a later close reverts
     nothing instead of un-applying it."""
     window, calls = gallery
-    window.grid.setCurrentRow(_row_of(window, "tokyo_night"))
+    window.grid.setCurrentRow(_row_of(window, "tokyo_night_storm"))
     window.apply_button.click()
-    assert calls["commit"] == ["tokyo_night"]
+    assert calls["commit"] == ["tokyo_night_storm"]
     assert not calls["cancel"]
     assert window.isVisible(), "apply must not close the gallery"
     # The session's baseline moved onto the applied pick: the stage, the
     # revert target and the dashed outline's card.
-    assert window._original_key == "tokyo_night"
-    assert window._delegate.original_key == "tokyo_night"
-    assert window._chrome_palette is APP_CONFIG.EXTRA_THEMES["tokyo_night"]
+    assert window._original_key == "tokyo_night_storm"
+    assert window._delegate.original_key == "tokyo_night_storm"
+    assert window._chrome_palette is APP_CONFIG.EXTRA_THEMES["tokyo_night_storm"]
     # Browsing on: another preview, then a close - the committed theme holds.
     window._preview("nord")
     window.close()
@@ -1147,7 +1172,7 @@ def test_programmatic_selection_does_not_scroll_the_picker(gallery):
     grid = window.grid
     bar = grid.verticalScrollBar()
     bar.setValue(700)
-    row = _row_of(window, "tokyo_night")
+    row = _row_of(window, "navy_red")  # deep in the dark tail (file order): offscreen at 700px, where the recognizable themes already are
     assert grid.visualItemRect(grid.item(row)).y() >= grid.viewport().height()
     with grid.hold_viewport():
         grid.setCurrentRow(row)
@@ -1230,8 +1255,8 @@ def test_apply_button_stays_on_the_session_baseline(gallery):
 
     window, _calls = gallery
     dark = APP_CONFIG.DARK_PALETTE
-    tokyo = APP_CONFIG.EXTRA_THEMES["tokyo_night"]
-    window._preview("tokyo_night")
+    tokyo = APP_CONFIG.EXTRA_THEMES["tokyo_night_storm"]
+    window._preview("tokyo_night_storm")
     apply_sheet = window.apply_button.styleSheet()
     assert dark["ACCENT_COLOR"] in apply_sheet
     assert on_accent_text_color(dark["ACCENT_COLOR"]) in apply_sheet
@@ -1362,11 +1387,11 @@ def test_controller_previews_without_persisting(tray):
 def test_controller_commits_the_gallery_pick(tray):
     key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
     tray.settings.setValue(key, "dark")
-    tray._gallery_commit_theme("tokyo_night")
-    assert tray.settings.value(key) == "tokyo_night"
-    assert tray.current_theme == "tokyo_night"
+    tray._gallery_commit_theme("tokyo_night_storm")
+    assert tray.settings.value(key) == "tokyo_night_storm"
+    assert tray.current_theme == "tokyo_night_storm"
     # The pick validates through the same gate the old pins use.
-    assert tray._theme_choice() == "tokyo_night"
+    assert tray._theme_choice() == "tokyo_night_storm"
 
 
 def test_controller_rejects_unknown_gallery_keys(tray):
@@ -1381,7 +1406,7 @@ def test_controller_rejects_unknown_gallery_keys(tray):
 def test_controller_restore_puts_back_the_opened_theme(tray):
     key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
     tray.settings.setValue(key, "dark")
-    tray._gallery_preview_theme("rose_pine")
+    tray._gallery_preview_theme("melange")
     tray._gallery_restore_theme("dark")
     assert tray.current_theme == APP_CONFIG.Theme.DARK
     assert tray.settings.value(key) == "dark", "restore is memory-only"
@@ -1395,15 +1420,15 @@ def test_controller_commit_rebaselines_the_session(tray):
     key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
     tray.settings.setValue(key, "dark")
     tray._gallery_original_theme = "dark"
-    tray._gallery_pending_theme = "rose_pine"
-    tray._gallery_commit_theme("tokyo_night")
-    assert tray.settings.value(key) == "tokyo_night"
-    assert tray._gallery_original_theme == "tokyo_night"
+    tray._gallery_pending_theme = "melange"
+    tray._gallery_commit_theme("tokyo_night_storm")
+    assert tray.settings.value(key) == "tokyo_night_storm"
+    assert tray._gallery_original_theme == "tokyo_night_storm"
     assert tray._gallery_pending_theme is None
     # A cancel after that lands on the committed theme, not the opener.
     tray._gallery_restore_theme(tray._gallery_original_theme)
-    assert tray.current_theme == "tokyo_night"
-    assert tray.settings.value(key) == "tokyo_night", "the pick stays persisted"
+    assert tray.current_theme == "tokyo_night_storm"
+    assert tray.settings.value(key) == "tokyo_night_storm", "the pick stays persisted"
 
 
 def test_controller_builds_the_single_gallery_window(tray):
@@ -1529,7 +1554,7 @@ def test_filter_click_selects_the_segment_under_the_cursor(gallery):
     QTest.mouseClick(control, Qt.MouseButton.LeftButton,
                      pos=QPoint(int(rect.center().x()), int(rect.center().y())))
     assert control.current_filter() == FILTER_LIGHT
-    assert 0 < window.grid.count() < 69
+    assert 0 < window.grid.count() < 73
 
 
 def test_filter_arrow_keys_step_with_the_reading_direction(gallery):

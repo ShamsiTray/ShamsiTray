@@ -11,19 +11,21 @@ from pathlib import Path
 import os
 import sys
 
-from themes import THEMES
+from themes import THEME_NAMES, THEMES
 
-# Display-name fixups for the slugs that title-casing gets wrong.
+# Display-name fixups for the single words that title-casing gets wrong.
 _THEME_NAME_OVERRIDES = {
     "oled": "OLED",
     "github": "GitHub",
-    "vscode": "VS Code",
 }
 
 
 def _theme_display_name(slug: str) -> str:
-    """"dracula" -> "Dracula", "nord_light" -> "Nord Light", with the few
-    casing fixups the brand names need."""
+    """"dracula" -> "Dracula", "nord_light" -> "Nord Light": the exported
+    whole-name map first (THEME_NAMES in themes.py carries the brand
+    spellings word-splitting cannot produce), then per-word casing fixups."""
+    if slug in THEME_NAMES:
+        return THEME_NAMES[slug]
     words = [_THEME_NAME_OVERRIDES.get(w, w.capitalize())
              for w in slug.split("_")]
     return " ".join(words)
@@ -170,16 +172,17 @@ class Config:
         """The selectable themes in gallery order: (key, display name, palette).
 
         The stock dark theme leads - named "Default", the one the app ships
-        wearing - then the gallery themes grouped dark-then-light, alphabetical
-        inside each group.
-        """
+        wearing - then the gallery themes grouped dark-then-light in the
+        themes module's file order, so the recognizable themes the picker
+        opens on and the app's own custom sets at the tail are placed in
+        source, not by name."""
         entries = [(cls.Theme.DARK, "Default", cls.DARK_PALETTE)]
         darks, lights = [], []
         for slug, palette in cls.EXTRA_THEMES.items():
             (darks if cls.palette_is_dark(palette) else lights).append((slug, palette))
         for group in (darks, lights):
             entries.extend((slug, _theme_display_name(slug), palette)
-                           for slug, palette in sorted(group))
+                           for slug, palette in group)
         return entries
 
     @classmethod

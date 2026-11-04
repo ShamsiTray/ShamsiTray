@@ -7,38 +7,31 @@ ships wearing (``DARK_PALETTE``, "Default" in the gallery) and every gallery
 theme, kept in the exact shape ``config.Config`` reads - plain data, no Qt, no
 app imports, so ``config`` can load it at import time without a cycle.
 
-Provenance, in file order:
-- ``extra`` - the classic schemes (Dracula, Nord, Catppuccin, Gruvbox, Tokyo
-  Night, Rose Pine, and their light sides).
-- ``popular`` - the popular VS Code themes (base colors from the published
-  theme files via the tm-themes package).
-- ``more`` - the Alucard / Kanagawa / Everforest families and the mixed
-  custom sets; this pack's Everforest Dark is the one that survived the
-  historical popular/more duplicate (the old pack loader let the later pack
-  win).
-- ``requested`` - the requested brand accents and Persian sets. Their accents
-  are the themes' REAL accent colors (not deepened), so many of them (yellow,
-  Dracula pink/green/cyan/orange, Synthwave pink, Poimandres mint, Material 3
-  dark, ...) are too light for white text - the label polarity for text ON an
-  accent is decided by ``utils.ui_helpers.on_accent_text_color``.
+The gallery palettes sit in two flat sections - ``# ===== DARK =====`` and
+``# ===== LIGHT =====`` - each in popularity order: recognizable themes first
+(Dracula, Catppuccin, Nord, Gruvbox, ...), the app's own custom sets last.
+Order and section are presentational; no block ever changes its slug, so a
+saved Appearance/ThemeChoice key outlives any reshuffle.
 
 Contrast figures in the per-palette comments are WCAG ratios. Accents that
-were too light for the white text the app originally put on ACCENT_COLOR were
-deepened (same hue, lower lightness) until they reached 4.5:1; the original
-is noted per palette. The calendar's selected-day fill is the theme's own
-TEXT color at a whisper (0.20 on dark themes, 0.14 on light; hover +0.10) -
-the same neutral relationship the stock Default theme keeps between today and
-selected, so the two never read as unrelated colors and the selected day is
-never an accent block.
+could not carry readable text ON them were re-derived: a deepened probe of the
+official accent (the original noted per palette), or - for the coolors and
+user-specified sets - the accent kept as-is with its supported on-accent text
+polarity recorded. The polarity for text ON an accent is decided by
+``utils.ui_helpers.on_accent_text_color``.
+
+The calendar's selected-day fill is the theme's own TEXT color at a whisper
+(0.20 on dark themes, 0.14 on light; hover +0.10) - the same neutral
+relationship the stock Default theme keeps between today and selected, so the
+two never read as unrelated colors and the selected day is never an accent
+block.
 
 ``THEMES`` at the bottom is the registry ``config`` reads: slug (the settings
 key, e.g. "dracula", "nord_light") = the attribute name minus ``_PALETTE``,
-lower-cased.
-"""
+lower-cased."""
 
 
 # ===== the default theme (the one the app ships wearing) =====
-
 DARK_PALETTE = {
     "TEXT_COLOR": "#e0e0e0", "BACKGROUND_COLOR": "#2c2c2c",
     "INPUT_BG_COLOR": "#3a3a3a", "ACCENT_COLOR": "#398439",
@@ -54,7 +47,7 @@ DARK_PALETTE = {
     "MENU_HOVER_COLOR": (60, 60, 60, 180), "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
 }
 
-# ===== extra palettes (the classic schemes (Dracula, Nord, Catppuccin, ...)) =====
+
 # ===== DARK =====
 DRACULA_PALETTE = {  # Accent is pastel purple: needs dark text on accent (white is only 2.4:1).
     "TEXT_COLOR": "#f8f8f2",
@@ -77,6 +70,54 @@ DRACULA_PALETTE = {  # Accent is pastel purple: needs dark text on accent (white
     "MENU_BORDER_COLOR": "#44475a",
     "MENU_HOVER_COLOR": (68, 71, 90, 200),
     "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
+}
+
+
+CATPPUCCIN_MOCHA_PALETTE = {  # text on accent: dark (8.9:1)
+    "TEXT_COLOR": "#cdd6f4",
+    "BACKGROUND_COLOR": "#1e1e2e",
+    "INPUT_BG_COLOR": "#313244",
+    "ACCENT_COLOR": "#cba6f7",
+    "HOVER_BG": "rgba(205, 214, 244, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#45475a",
+    "SCROLLBAR_GROOVE_COLOR": "#171723",
+    "HOLIDAY_COLOR": "#f38ba8",
+    "GREY_COLOR": "#6c7086",
+    "WEEKDAY_NAMES_COLOR": "#a6adc8",
+    "CALENDAR_BACKGROUND_COLOR": "#1e1e2e",
+    "CALENDAR_BORDER_COLOR": "#45475a",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(108, 112, 134, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(108, 112, 134, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(205, 214, 244, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(205, 214, 244, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1e1e2e",
+    "MENU_BORDER_COLOR": "#45475a",
+    "MENU_HOVER_COLOR": (69, 71, 90, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(205, 214, 244, 0.15)",
+}
+
+
+TWITCH_PALETTE = {  # dark; Twitch (brand purple + dark theme surfaces); text on accent: white (4.6:1)
+    "TEXT_COLOR": "#efeff1",
+    "BACKGROUND_COLOR": "#18181b",
+    "INPUT_BG_COLOR": "#26262c",
+    "ACCENT_COLOR": "#9146ff",
+    "HOVER_BG": "rgba(239, 239, 241, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#3a3a3d",
+    "SCROLLBAR_GROOVE_COLOR": "#0e0e10",
+    "HOLIDAY_COLOR": "#ff5a5a",
+    "GREY_COLOR": "#848494",
+    "WEEKDAY_NAMES_COLOR": "#adadb8",
+    "CALENDAR_BACKGROUND_COLOR": "#18181b",
+    "CALENDAR_BORDER_COLOR": "#323239",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(132, 132, 148, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(132, 132, 148, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(239, 239, 241, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(239, 239, 241, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1f1f23",
+    "MENU_BORDER_COLOR": "#323239",
+    "MENU_HOVER_COLOR": (58, 58, 61, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(239, 239, 241, 0.15)",
 }
 
 
@@ -104,35 +145,11 @@ NORD_PALETTE = {  # white on accent 4.0:1
 }
 
 
-CATPPUCCIN_MOCHA_PALETTE = {  # white on accent 5.4:1
-    "TEXT_COLOR": "#cdd6f4",
-    "BACKGROUND_COLOR": "#1e1e2e",
-    "INPUT_BG_COLOR": "#313244",
-    "ACCENT_COLOR": "#8839ef",
-    "HOVER_BG": "rgba(205, 214, 244, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#45475a",
-    "SCROLLBAR_GROOVE_COLOR": "#171723",
-    "HOLIDAY_COLOR": "#f38ba8",
-    "GREY_COLOR": "#6c7086",
-    "WEEKDAY_NAMES_COLOR": "#a6adc8",
-    "CALENDAR_BACKGROUND_COLOR": "#1e1e2e",
-    "CALENDAR_BORDER_COLOR": "#45475a",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(108, 112, 134, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(108, 112, 134, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(205, 214, 244, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(205, 214, 244, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#1e1e2e",
-    "MENU_BORDER_COLOR": "#45475a",
-    "MENU_HOVER_COLOR": (69, 71, 90, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(205, 214, 244, 0.15)",
-}
-
-
-GRUVBOX_DARK_PALETTE = {  # white on accent 4.5:1
+GRUVBOX_DARK_PALETTE = {  # text on accent: white (3.9:1)
     "TEXT_COLOR": "#ebdbb2",
     "BACKGROUND_COLOR": "#282828",
     "INPUT_BG_COLOR": "#3c3836",
-    "ACCENT_COLOR": "#c2570c",
+    "ACCENT_COLOR": "#d65d0e",
     "HOVER_BG": "rgba(235, 219, 178, 0.08)",
     "SCROLLBAR_HANDLE_COLOR": "#504945",
     "SCROLLBAR_GROOVE_COLOR": "#1f1f1f",
@@ -152,51 +169,963 @@ GRUVBOX_DARK_PALETTE = {  # white on accent 4.5:1
 }
 
 
-TOKYO_NIGHT_PALETTE = {  # white on accent 6.7:1
+GITHUB_DARK_PALETTE = {  # GitHub Dark Default; white on accent 4.6:1
+    "TEXT_COLOR": "#e6edf3",
+    "BACKGROUND_COLOR": "#0d1117",
+    "INPUT_BG_COLOR": "#161b22",
+    "ACCENT_COLOR": "#1f6feb",
+    "HOVER_BG": "rgba(230, 237, 243, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#30363d",
+    "SCROLLBAR_GROOVE_COLOR": "#0a0d11",
+    "HOLIDAY_COLOR": "#f85149",
+    "GREY_COLOR": "#6e7681",
+    "WEEKDAY_NAMES_COLOR": "#8b949e",
+    "CALENDAR_BACKGROUND_COLOR": "#0d1117",
+    "CALENDAR_BORDER_COLOR": "#30363d",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(110, 118, 129, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(110, 118, 129, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(230, 237, 243, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(230, 237, 243, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#0d1117",
+    "MENU_BORDER_COLOR": "#30363d",
+    "MENU_HOVER_COLOR": (48, 54, 61, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(230, 237, 243, 0.15)",
+}
+
+
+TOKYO_NIGHT_STORM_PALETTE = {  # dark; Tokyo Night Storm (official folke palette); text on accent: dark (7.2:1)
     "TEXT_COLOR": "#c0caf5",
-    "BACKGROUND_COLOR": "#1a1b26",
-    "INPUT_BG_COLOR": "#24283b",
-    "ACCENT_COLOR": "#3d59a1",
+    "BACKGROUND_COLOR": "#24283b",
+    "INPUT_BG_COLOR": "#292e42",
+    "ACCENT_COLOR": "#7aa2f7",
     "HOVER_BG": "rgba(192, 202, 245, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#3b4261",
-    "SCROLLBAR_GROOVE_COLOR": "#14151d",
+    "SCROLLBAR_HANDLE_COLOR": "#414868",
+    "SCROLLBAR_GROOVE_COLOR": "#1b1e2d",
     "HOLIDAY_COLOR": "#f7768e",
     "GREY_COLOR": "#565f89",
     "WEEKDAY_NAMES_COLOR": "#a9b1d6",
-    "CALENDAR_BACKGROUND_COLOR": "#1a1b26",
-    "CALENDAR_BORDER_COLOR": "#3b4261",
+    "CALENDAR_BACKGROUND_COLOR": "#24283b",
+    "CALENDAR_BORDER_COLOR": "#414868",
     "CALENDAR_TODAY_BG_COLOR": "rgba(86, 95, 137, 0.35)",
     "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(86, 95, 137, 0.55)",
     "CALENDAR_SELECTED_BG_COLOR": "rgba(192, 202, 245, 0.2)",
     "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(192, 202, 245, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#1a1b26",
-    "MENU_BORDER_COLOR": "#3b4261",
-    "MENU_HOVER_COLOR": (59, 66, 97, 200),
+    "MENU_BACKGROUND_COLOR": "#24283b",
+    "MENU_BORDER_COLOR": "#414868",
+    "MENU_HOVER_COLOR": (65, 72, 104, 200),
     "GREGORIAN_DATE_HOVER_BG": "rgba(192, 202, 245, 0.15)",
 }
 
 
-ROSE_PINE_PALETTE = {  # white on accent 5.2:1
+MONOKAI_PALETTE = {  # dark; Monokai (VS Code theme); text on accent: dark (11.6:1)
+    "TEXT_COLOR": "#f8f8f2",
+    "BACKGROUND_COLOR": "#272822",
+    "INPUT_BG_COLOR": "#3e3d32",
+    "ACCENT_COLOR": "#a6e22e",
+    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#49483e",
+    "SCROLLBAR_GROOVE_COLOR": "#1e1f1a",
+    "HOLIDAY_COLOR": "#f94e8c",
+    "GREY_COLOR": "#75715e",
+    "WEEKDAY_NAMES_COLOR": "#a59f85",
+    "CALENDAR_BACKGROUND_COLOR": "#272822",
+    "CALENDAR_BORDER_COLOR": "#49483e",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(117, 113, 94, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(117, 113, 94, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#272822",
+    "MENU_BORDER_COLOR": "#49483e",
+    "MENU_HOVER_COLOR": (73, 72, 62, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
+}
+
+
+MONOKAI_PRO_PALETTE = {  # dark; Monokai Pro (published values); text on accent: dark (13.1:1)
+    "TEXT_COLOR": "#fcfcfa",
+    "BACKGROUND_COLOR": "#2d2a2e",
+    "INPUT_BG_COLOR": "#403e41",
+    "ACCENT_COLOR": "#ffd866",
+    "HOVER_BG": "rgba(252, 252, 250, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#5b595c",
+    "SCROLLBAR_GROOVE_COLOR": "#232023",
+    "HOLIDAY_COLOR": "#ff6188",
+    "GREY_COLOR": "#727072",
+    "WEEKDAY_NAMES_COLOR": "#c1c0c0",
+    "CALENDAR_BACKGROUND_COLOR": "#2d2a2e",
+    "CALENDAR_BORDER_COLOR": "#5b595c",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(114, 112, 114, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(114, 112, 114, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(252, 252, 250, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(252, 252, 250, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#2d2a2e",
+    "MENU_BORDER_COLOR": "#5b595c",
+    "MENU_HOVER_COLOR": (91, 89, 92, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(252, 252, 250, 0.15)",
+}
+
+
+WINTER_IS_COMING_PALETTE = {  # dark; Winter Is Coming, Dark Blue (official johnpapa theme); text on accent: white (3.0:1)
+    "TEXT_COLOR": "#d6deeb",
+    "BACKGROUND_COLOR": "#011627",
+    "INPUT_BG_COLOR": "#0b253a",
+    "ACCENT_COLOR": "#219fd5",
+    "HOVER_BG": "rgba(214, 222, 235, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#0b2942",
+    "SCROLLBAR_GROOVE_COLOR": "#010e1a",
+    "HOLIDAY_COLOR": "#ef5350",
+    "GREY_COLOR": "#5f7e97",
+    "WEEKDAY_NAMES_COLOR": "#7799bb",
+    "CALENDAR_BACKGROUND_COLOR": "#011627",
+    "CALENDAR_BORDER_COLOR": "#0b2942",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(95, 126, 151, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(95, 126, 151, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(214, 222, 235, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(214, 222, 235, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#011627",
+    "MENU_BORDER_COLOR": "#0b2942",
+    "MENU_HOVER_COLOR": (11, 41, 66, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(214, 222, 235, 0.15)",
+}
+
+
+SYNTHWAVE_84_PALETTE = {  # dark; SynthWave '84; text on accent: dark (8.0:1)
+    "TEXT_COLOR": "#ffffff",
+    "BACKGROUND_COLOR": "#262335",
+    "INPUT_BG_COLOR": "#2a2139",
+    "ACCENT_COLOR": "#ff7edb",
+    "HOVER_BG": "rgba(255, 255, 255, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#34294f",
+    "SCROLLBAR_GROOVE_COLOR": "#1d1b29",
+    "HOLIDAY_COLOR": "#fe4d59",
+    "GREY_COLOR": "#848bbd",
+    "WEEKDAY_NAMES_COLOR": "#b6b1b1",
+    "CALENDAR_BACKGROUND_COLOR": "#262335",
+    "CALENDAR_BORDER_COLOR": "#34294f",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(132, 139, 189, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(132, 139, 189, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 255, 255, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 255, 255, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#262335",
+    "MENU_BORDER_COLOR": "#34294f",
+    "MENU_HOVER_COLOR": (52, 41, 79, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
+}
+
+
+HORIZON_PALETTE = {  # dark; Horizon (VS Code theme); text on accent: dark (10.5:1)
+    "TEXT_COLOR": "#d5d8da",
+    "BACKGROUND_COLOR": "#1c1e26",
+    "INPUT_BG_COLOR": "#232530",
+    "ACCENT_COLOR": "#fab795",
+    "HOVER_BG": "rgba(213, 216, 218, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#2e303e",
+    "SCROLLBAR_GROOVE_COLOR": "#15171d",
+    "HOLIDAY_COLOR": "#e95678",
+    "GREY_COLOR": "#6c6f93",
+    "WEEKDAY_NAMES_COLOR": "#9da0a2",
+    "CALENDAR_BACKGROUND_COLOR": "#1c1e26",
+    "CALENDAR_BORDER_COLOR": "#2e303e",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(108, 111, 147, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(108, 111, 147, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(213, 216, 218, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(213, 216, 218, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1c1e26",
+    "MENU_BORDER_COLOR": "#2e303e",
+    "MENU_HOVER_COLOR": (46, 48, 62, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(213, 216, 218, 0.15)",
+}
+
+
+POIMANDRES_PALETTE = {  # dark; Poimandres (VS Code theme); text on accent: dark (11.5:1)
+    "TEXT_COLOR": "#a6accd",
+    "BACKGROUND_COLOR": "#1b2431",
+    "INPUT_BG_COLOR": "#252837",
+    "ACCENT_COLOR": "#5de4c7",
+    "HOVER_BG": "rgba(166, 172, 205, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#303340",
+    "SCROLLBAR_GROOVE_COLOR": "#15171f",
+    "HOLIDAY_COLOR": "#d0679d",
+    "GREY_COLOR": "#767c9d",
+    "WEEKDAY_NAMES_COLOR": "#8f95b8",
+    "CALENDAR_BACKGROUND_COLOR": "#1b2431",
+    "CALENDAR_BORDER_COLOR": "#303340",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(118, 124, 157, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(118, 124, 157, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(166, 172, 205, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(166, 172, 205, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1b2431",
+    "MENU_BORDER_COLOR": "#303340",
+    "MENU_HOVER_COLOR": (48, 51, 64, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(166, 172, 205, 0.15)",
+}
+
+
+MATERIAL_3_DARK_PALETTE = {  # dark; Material Design 3 baseline (#6750A4); text on accent: dark (10.6:1)
+    "TEXT_COLOR": "#e6e0e9",
+    "BACKGROUND_COLOR": "#141218",
+    "INPUT_BG_COLOR": "#211f26",
+    "ACCENT_COLOR": "#d0bcff",
+    "HOVER_BG": "rgba(230, 224, 233, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#49454f",
+    "SCROLLBAR_GROOVE_COLOR": "#0f0e12",
+    "HOLIDAY_COLOR": "#f2b8b5",
+    "GREY_COLOR": "#938f99",
+    "WEEKDAY_NAMES_COLOR": "#cac4d0",
+    "CALENDAR_BACKGROUND_COLOR": "#141218",
+    "CALENDAR_BORDER_COLOR": "#49454f",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(147, 143, 153, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(147, 143, 153, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(230, 224, 233, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(230, 224, 233, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#141218",
+    "MENU_BORDER_COLOR": "#49454f",
+    "MENU_HOVER_COLOR": (73, 69, 79, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(230, 224, 233, 0.15)",
+}
+
+
+OXOCARBON_DARK_PALETTE = {  # dark; Oxocarbon (official nvim palette); text on accent: dark (7.7:1)
+    "TEXT_COLOR": "#f2f4f8",
+    "BACKGROUND_COLOR": "#161616",
+    "INPUT_BG_COLOR": "#262626",
+    "ACCENT_COLOR": "#78a9ff",
+    "HOVER_BG": "rgba(242, 244, 248, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#393939",
+    "SCROLLBAR_GROOVE_COLOR": "#111111",
+    "HOLIDAY_COLOR": "#ee5396",
+    "GREY_COLOR": "#525252",
+    "WEEKDAY_NAMES_COLOR": "#a8a8a8",
+    "CALENDAR_BACKGROUND_COLOR": "#161616",
+    "CALENDAR_BORDER_COLOR": "#393939",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(82, 82, 82, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(82, 82, 82, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(242, 244, 248, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(242, 244, 248, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#161616",
+    "MENU_BORDER_COLOR": "#393939",
+    "MENU_HOVER_COLOR": (57, 57, 57, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(242, 244, 248, 0.15)",
+}
+
+
+FLEXOKI_DARK_PALETTE = {  # dark; Flexoki (official palette); text on accent: white (3.9:1)
+    "TEXT_COLOR": "#cecdc3",
+    "BACKGROUND_COLOR": "#100f0f",
+    "INPUT_BG_COLOR": "#1c1b1a",
+    "ACCENT_COLOR": "#4385be",
+    "HOVER_BG": "rgba(206, 205, 195, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#343331",
+    "SCROLLBAR_GROOVE_COLOR": "#0c0b0b",
+    "HOLIDAY_COLOR": "#d3564a",
+    "GREY_COLOR": "#575653",
+    "WEEKDAY_NAMES_COLOR": "#878580",
+    "CALENDAR_BACKGROUND_COLOR": "#100f0f",
+    "CALENDAR_BORDER_COLOR": "#343331",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(87, 86, 83, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(87, 86, 83, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(206, 205, 195, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(206, 205, 195, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#100f0f",
+    "MENU_BORDER_COLOR": "#343331",
+    "MENU_HOVER_COLOR": (52, 51, 49, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(206, 205, 195, 0.15)",
+}
+
+
+AYU_MIRAGE_PALETTE = {  # Ayu Mirage; white on accent 4.7:1; accent deepened from official #ffcc66
+    "TEXT_COLOR": "#cccac2",
+    "BACKGROUND_COLOR": "#242936",
+    "INPUT_BG_COLOR": "#2d3343",
+    "ACCENT_COLOR": "#ba5700",
+    "HOVER_BG": "rgba(204, 202, 194, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#343b4d",
+    "SCROLLBAR_GROOVE_COLOR": "#1c1f2a",
+    "HOLIDAY_COLOR": "#ff6666",
+    "GREY_COLOR": "#707a8c",
+    "WEEKDAY_NAMES_COLOR": "#9aa2b1",
+    "CALENDAR_BACKGROUND_COLOR": "#242936",
+    "CALENDAR_BORDER_COLOR": "#343b4d",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(112, 122, 140, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(112, 122, 140, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(204, 202, 194, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(204, 202, 194, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#242936",
+    "MENU_BORDER_COLOR": "#343b4d",
+    "MENU_HOVER_COLOR": (52, 59, 77, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(204, 202, 194, 0.15)",
+}
+
+
+AYU_DARK_PALETTE = {  # dark; Ayu Dark (official vscode-ayu palette); text on accent: dark (9.5:1)
+    "TEXT_COLOR": "#fcf8ec",
+    "BACKGROUND_COLOR": "#10141c",
+    "INPUT_BG_COLOR": "#141821",
+    "ACCENT_COLOR": "#e6b450",
+    "HOVER_BG": "rgba(252, 248, 236, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#2e3542",
+    "SCROLLBAR_GROOVE_COLOR": "#0d1017",
+    "HOLIDAY_COLOR": "#d95757",
+    "GREY_COLOR": "#5a6673",
+    "WEEKDAY_NAMES_COLOR": "#6a758d",
+    "CALENDAR_BACKGROUND_COLOR": "#10141c",
+    "CALENDAR_BORDER_COLOR": "#2e3542",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(90, 102, 115, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(90, 102, 115, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(252, 248, 236, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(252, 248, 236, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#10141c",
+    "MENU_BORDER_COLOR": "#2e3542",
+    "MENU_HOVER_COLOR": (46, 53, 66, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(252, 248, 236, 0.15)",
+}
+
+
+SOLARIZED_DARK_PALETTE = {  # dark; Solarized Dark; text on accent: white (3.7:1)
+    "TEXT_COLOR": "#93a1a1",
+    "BACKGROUND_COLOR": "#002b36",
+    "INPUT_BG_COLOR": "#073642",
+    "ACCENT_COLOR": "#268bd2",
+    "HOVER_BG": "rgba(147, 161, 161, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#124755",
+    "SCROLLBAR_GROOVE_COLOR": "#00212a",
+    "HOLIDAY_COLOR": "#e56866",
+    "GREY_COLOR": "#586e75",
+    "WEEKDAY_NAMES_COLOR": "#839496",
+    "CALENDAR_BACKGROUND_COLOR": "#002b36",
+    "CALENDAR_BORDER_COLOR": "#124755",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(88, 110, 117, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(88, 110, 117, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(147, 161, 161, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(147, 161, 161, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#002b36",
+    "MENU_BORDER_COLOR": "#124755",
+    "MENU_HOVER_COLOR": (18, 71, 85, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(147, 161, 161, 0.15)",
+}
+
+
+ROSE_PINE_MOON_PALETTE = {  # dark; Rose Pine Moon (official); text on accent: dark (8.6:1)
     "TEXT_COLOR": "#e0def4",
-    "BACKGROUND_COLOR": "#191724",
-    "INPUT_BG_COLOR": "#26233a",
-    "ACCENT_COLOR": "#31748f",
+    "BACKGROUND_COLOR": "#232136",
+    "INPUT_BG_COLOR": "#2a273f",
+    "ACCENT_COLOR": "#c4a7e7",
     "HOVER_BG": "rgba(224, 222, 244, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#403d52",
-    "SCROLLBAR_GROOVE_COLOR": "#13111c",
+    "SCROLLBAR_HANDLE_COLOR": "#393552",
+    "SCROLLBAR_GROOVE_COLOR": "#1b192a",
     "HOLIDAY_COLOR": "#eb6f92",
     "GREY_COLOR": "#6e6a86",
     "WEEKDAY_NAMES_COLOR": "#908caa",
-    "CALENDAR_BACKGROUND_COLOR": "#191724",
-    "CALENDAR_BORDER_COLOR": "#403d52",
+    "CALENDAR_BACKGROUND_COLOR": "#232136",
+    "CALENDAR_BORDER_COLOR": "#393552",
     "CALENDAR_TODAY_BG_COLOR": "rgba(110, 106, 134, 0.35)",
     "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(110, 106, 134, 0.55)",
     "CALENDAR_SELECTED_BG_COLOR": "rgba(224, 222, 244, 0.2)",
     "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(224, 222, 244, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#191724",
-    "MENU_BORDER_COLOR": "#403d52",
-    "MENU_HOVER_COLOR": (64, 61, 82, 200),
+    "MENU_BACKGROUND_COLOR": "#232136",
+    "MENU_BORDER_COLOR": "#393552",
+    "MENU_HOVER_COLOR": (57, 53, 82, 200),
     "GREGORIAN_DATE_HOVER_BG": "rgba(224, 222, 244, 0.15)",
+}
+
+
+KANAGAWA_WAVE_PALETTE = {  # dark; Kanagawa Wave (official palette); text on accent: dark (6.6:1)
+    "TEXT_COLOR": "#dcd7ba",
+    "BACKGROUND_COLOR": "#1f1f28",
+    "INPUT_BG_COLOR": "#2a2a37",
+    "ACCENT_COLOR": "#7e9cd8",
+    "HOVER_BG": "rgba(220, 215, 186, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#363646",
+    "SCROLLBAR_GROOVE_COLOR": "#18181f",
+    "HOLIDAY_COLOR": "#e46876",
+    "GREY_COLOR": "#54546d",
+    "WEEKDAY_NAMES_COLOR": "#c8c093",
+    "CALENDAR_BACKGROUND_COLOR": "#1f1f28",
+    "CALENDAR_BORDER_COLOR": "#363646",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(84, 84, 109, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(84, 84, 109, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(220, 215, 186, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(220, 215, 186, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1f1f28",
+    "MENU_BORDER_COLOR": "#363646",
+    "MENU_HOVER_COLOR": (54, 54, 70, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(220, 215, 186, 0.15)",
+}
+
+
+EVERFOREST_DARK_PALETTE = {  # dark; Everforest Dark, medium contrast (official); text on accent: dark (9.0:1)
+    "TEXT_COLOR": "#d3c6aa",
+    "BACKGROUND_COLOR": "#2d353b",
+    "INPUT_BG_COLOR": "#343f44",
+    "ACCENT_COLOR": "#a7c080",
+    "HOVER_BG": "rgba(211, 198, 170, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#475258",
+    "SCROLLBAR_GROOVE_COLOR": "#23292e",
+    "HOLIDAY_COLOR": "#e67e80",
+    "GREY_COLOR": "#7a8478",
+    "WEEKDAY_NAMES_COLOR": "#9da9a0",
+    "CALENDAR_BACKGROUND_COLOR": "#2d353b",
+    "CALENDAR_BORDER_COLOR": "#475258",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(122, 132, 120, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(122, 132, 120, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(211, 198, 170, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(211, 198, 170, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#2d353b",
+    "MENU_BORDER_COLOR": "#475258",
+    "MENU_HOVER_COLOR": (71, 82, 88, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(211, 198, 170, 0.15)",
+}
+
+
+COBALT2_PALETTE = {  # dark; Cobalt2 (official wesbos theme); text on accent: dark (11.5:1)
+    "TEXT_COLOR": "#e1efff",
+    "BACKGROUND_COLOR": "#193549",
+    "INPUT_BG_COLOR": "#122738",
+    "ACCENT_COLOR": "#ffc600",
+    "HOVER_BG": "rgba(225, 239, 255, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#0d3a58",
+    "SCROLLBAR_GROOVE_COLOR": "#10222f",
+    "HOLIDAY_COLOR": "#ff628c",
+    "GREY_COLOR": "#aaaaaa",
+    "WEEKDAY_NAMES_COLOR": "#aaaaaa",
+    "CALENDAR_BACKGROUND_COLOR": "#193549",
+    "CALENDAR_BORDER_COLOR": "#0d3a58",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(170, 170, 170, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(170, 170, 170, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(225, 239, 255, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(225, 239, 255, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#193549",
+    "MENU_BORDER_COLOR": "#0d3a58",
+    "MENU_HOVER_COLOR": (13, 58, 88, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(225, 239, 255, 0.15)",
+}
+
+
+TOMORROW_NIGHT_BLUE_PALETTE = {  # dark; Tomorrow Night Blue (official chriskempson palette); text on accent: dark (12.5:1)
+    "TEXT_COLOR": "#ffffff",
+    "BACKGROUND_COLOR": "#002451",
+    "INPUT_BG_COLOR": "#00346e",
+    "ACCENT_COLOR": "#bbdaff",
+    "HOVER_BG": "rgba(255, 255, 255, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#003f8e",
+    "SCROLLBAR_GROOVE_COLOR": "#001229",
+    "HOLIDAY_COLOR": "#ff9da4",
+    "GREY_COLOR": "#7285b7",
+    "WEEKDAY_NAMES_COLOR": "#99a7b9",
+    "CALENDAR_BACKGROUND_COLOR": "#002451",
+    "CALENDAR_BORDER_COLOR": "#003f8e",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(114, 133, 183, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(114, 133, 183, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 255, 255, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 255, 255, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#002451",
+    "MENU_BORDER_COLOR": "#003f8e",
+    "MENU_HOVER_COLOR": (0, 63, 142, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
+}
+
+
+CYBERPUNK_2077_PALETTE = {  # dark; user-specified Cyberpunk 2077 palette (#000000, #c5003c, #880425, #f3e600, #55ead4); text on accent: dark (13.9:1)
+    "TEXT_COLOR": "#e5e5e5",
+    "BACKGROUND_COLOR": "#10121B",
+    "INPUT_BG_COLOR": "#121212",
+    "ACCENT_COLOR": "#f3e600",
+    "HOVER_BG": "rgba(229, 229, 229, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#880425",
+    "SCROLLBAR_GROOVE_COLOR": "#000000",
+    "HOLIDAY_COLOR": "#c5003c",
+    "GREY_COLOR": "#565656",
+    "WEEKDAY_NAMES_COLOR": "#55ead4",
+    "CALENDAR_BACKGROUND_COLOR": "#000000",
+    "CALENDAR_BORDER_COLOR": "#252a3d",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(86, 86, 86, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(86, 86, 86, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(229, 229, 229, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(229, 229, 229, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#000000",
+    "MENU_BORDER_COLOR": "#252a3d",
+    "MENU_HOVER_COLOR": (136, 4, 37, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(229, 229, 229, 0.15)",
+}
+
+
+JELLYFISH_PALETTE = {  # dark; Jellyfish (official palette.json); text on accent: white (3.8:1)
+    "TEXT_COLOR": "#ffffff",
+    "BACKGROUND_COLOR": "#00002c",
+    "INPUT_BG_COLOR": "#28002b",
+    "ACCENT_COLOR": "#ff0080",
+    "HOVER_BG": "rgba(255, 255, 255, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#3a3a5c",
+    "SCROLLBAR_GROOVE_COLOR": "#000016",
+    "HOLIDAY_COLOR": "#ff0000",
+    "GREY_COLOR": "#9b9b9b",
+    "WEEKDAY_NAMES_COLOR": "#00ffff",
+    "CALENDAR_BACKGROUND_COLOR": "#00002c",
+    "CALENDAR_BORDER_COLOR": "#3a3a5c",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(155, 155, 155, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(155, 155, 155, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 255, 255, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 255, 255, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#00002c",
+    "MENU_BORDER_COLOR": "#3a3a5c",
+    "MENU_HOVER_COLOR": (58, 58, 92, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
+}
+
+
+MELANGE_PALETTE = {  # dark; Melange (official savq palette); text on accent: white (3.2:1)
+    "TEXT_COLOR": "#ece1d7",
+    "BACKGROUND_COLOR": "#292522",
+    "INPUT_BG_COLOR": "#34302c",
+    "ACCENT_COLOR": "#7f91b2",
+    "HOVER_BG": "rgba(236, 225, 215, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#403a36",
+    "SCROLLBAR_GROOVE_COLOR": "#12110f",
+    "HOLIDAY_COLOR": "#bd8183",
+    "GREY_COLOR": "#867462",
+    "WEEKDAY_NAMES_COLOR": "#c1a78e",
+    "CALENDAR_BACKGROUND_COLOR": "#292522",
+    "CALENDAR_BORDER_COLOR": "#403a36",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(134, 116, 98, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(134, 116, 98, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(236, 225, 215, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(236, 225, 215, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#292522",
+    "MENU_BORDER_COLOR": "#403a36",
+    "MENU_HOVER_COLOR": (64, 58, 54, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(236, 225, 215, 0.15)",
+}
+
+
+PEACOCK_PALETTE = {  # dark; Peacock (Dayle Rees official); text on accent: dark (6.1:1)
+    "TEXT_COLOR": "#ede0ce",
+    "BACKGROUND_COLOR": "#2b2a27",
+    "INPUT_BG_COLOR": "#3b3a32",
+    "ACCENT_COLOR": "#26a6a6",
+    "HOVER_BG": "rgba(237, 224, 206, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#403c37",
+    "SCROLLBAR_GROOVE_COLOR": "#181715",
+    "HOLIDAY_COLOR": "#ff5d38",
+    "GREY_COLOR": "#7a7267",
+    "WEEKDAY_NAMES_COLOR": "#969483",
+    "CALENDAR_BACKGROUND_COLOR": "#2b2a27",
+    "CALENDAR_BORDER_COLOR": "#403c37",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(122, 114, 103, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(122, 114, 103, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(237, 224, 206, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(237, 224, 206, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#2b2a27",
+    "MENU_BORDER_COLOR": "#403c37",
+    "MENU_HOVER_COLOR": (64, 60, 55, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(237, 224, 206, 0.15)",
+}
+
+
+HALCYON_PALETTE = {  # dark; Halcyon (official bchiang7 theme); text on accent: dark (12.1:1)
+    "TEXT_COLOR": "#d7dce2",
+    "BACKGROUND_COLOR": "#1d2433",
+    "INPUT_BG_COLOR": "#2f3b54",
+    "ACCENT_COLOR": "#ffcc66",
+    "HOVER_BG": "rgba(215, 220, 226, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#3a4251",
+    "SCROLLBAR_GROOVE_COLOR": "#171c28",
+    "HOLIDAY_COLOR": "#ef6b73",
+    "GREY_COLOR": "#4d5870",
+    "WEEKDAY_NAMES_COLOR": "#96a6cc",
+    "CALENDAR_BACKGROUND_COLOR": "#1d2433",
+    "CALENDAR_BORDER_COLOR": "#3a4251",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(77, 88, 112, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(77, 88, 112, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(215, 220, 226, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(215, 220, 226, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1d2433",
+    "MENU_BORDER_COLOR": "#3a4251",
+    "MENU_HOVER_COLOR": (58, 66, 81, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(215, 220, 226, 0.15)",
+}
+
+
+PAPERCOLOR_DARK_PALETTE = {  # dark; PaperColor (official vim palette); text on accent: white (4.0:1)
+    "TEXT_COLOR": "#d0d0d0",
+    "BACKGROUND_COLOR": "#1c1c1c",
+    "INPUT_BG_COLOR": "#303030",
+    "ACCENT_COLOR": "#5f8787",
+    "HOVER_BG": "rgba(208, 208, 208, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#3a3a3a",
+    "SCROLLBAR_GROOVE_COLOR": "#151515",
+    "HOLIDAY_COLOR": "#cd5e9b",
+    "GREY_COLOR": "#585858",
+    "WEEKDAY_NAMES_COLOR": "#8a8a8a",
+    "CALENDAR_BACKGROUND_COLOR": "#1c1c1c",
+    "CALENDAR_BORDER_COLOR": "#3a3a3a",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(88, 88, 88, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(88, 88, 88, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(208, 208, 208, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(208, 208, 208, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#1c1c1c",
+    "MENU_BORDER_COLOR": "#3a3a3a",
+    "MENU_HOVER_COLOR": (58, 58, 58, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(208, 208, 208, 0.15)",
+}
+
+
+OLED_BLACK_PALETTE = {  # dark; custom: true #000, single blue accent; text on accent: white (4.7:1)
+    "TEXT_COLOR": "#f2f2f2",
+    "BACKGROUND_COLOR": "#000000",
+    "INPUT_BG_COLOR": "#121212",
+    "ACCENT_COLOR": "#0071e3",
+    "HOVER_BG": "rgba(242, 242, 242, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#262626",
+    "SCROLLBAR_GROOVE_COLOR": "#000000",
+    "HOLIDAY_COLOR": "#ff5c5c",
+    "GREY_COLOR": "#5e5e5e",
+    "WEEKDAY_NAMES_COLOR": "#a6a6a6",
+    "CALENDAR_BACKGROUND_COLOR": "#000000",
+    "CALENDAR_BORDER_COLOR": "#262626",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(94, 94, 94, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(94, 94, 94, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(242, 242, 242, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(242, 242, 242, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#000000",
+    "MENU_BORDER_COLOR": "#262626",
+    "MENU_HOVER_COLOR": (38, 38, 38, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(242, 242, 242, 0.15)",
+}
+
+
+GRAPHITE_PALETTE = {  # dark; custom: dark monochrome; text on accent: dark (14.5:1)
+    "TEXT_COLOR": "#ededed",
+    "BACKGROUND_COLOR": "#161616",
+    "INPUT_BG_COLOR": "#222222",
+    "ACCENT_COLOR": "#e6e6e6",
+    "HOVER_BG": "rgba(237, 237, 237, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#333333",
+    "SCROLLBAR_GROOVE_COLOR": "#111111",
+    "HOLIDAY_COLOR": "#e07a70",
+    "GREY_COLOR": "#666666",
+    "WEEKDAY_NAMES_COLOR": "#a8a8a8",
+    "CALENDAR_BACKGROUND_COLOR": "#161616",
+    "CALENDAR_BORDER_COLOR": "#333333",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(102, 102, 102, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(102, 102, 102, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(237, 237, 237, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(237, 237, 237, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#161616",
+    "MENU_BORDER_COLOR": "#333333",
+    "MENU_HOVER_COLOR": (51, 51, 51, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(237, 237, 237, 0.15)",
+}
+
+
+HIGH_CONTRAST_DARK_PALETTE = {  # dark; custom: yellow on black; text on accent: dark (13.4:1)
+    "TEXT_COLOR": "#ffffff",
+    "BACKGROUND_COLOR": "#000000",
+    "INPUT_BG_COLOR": "#0d0d0d",
+    "ACCENT_COLOR": "#ffdd00",
+    "HOVER_BG": "rgba(255, 255, 255, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#bfbfbf",
+    "SCROLLBAR_GROOVE_COLOR": "#000000",
+    "HOLIDAY_COLOR": "#ff7b7b",
+    "GREY_COLOR": "#9a9a9a",
+    "WEEKDAY_NAMES_COLOR": "#ffff00",
+    "CALENDAR_BACKGROUND_COLOR": "#000000",
+    "CALENDAR_BORDER_COLOR": "#bfbfbf",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(154, 154, 154, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(154, 154, 154, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 255, 255, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 255, 255, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#000000",
+    "MENU_BORDER_COLOR": "#bfbfbf",
+    "MENU_HOVER_COLOR": (191, 191, 191, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
+}
+
+
+CARBON_GRAY_90_PALETTE = {  # dark; IBM Carbon g90 (@carbon/themes tokens); text on accent: white (5.0:1)
+    "TEXT_COLOR": "#f4f4f4",
+    "BACKGROUND_COLOR": "#262626",
+    "INPUT_BG_COLOR": "#393939",
+    "ACCENT_COLOR": "#0f62fe",
+    "HOVER_BG": "rgba(244, 244, 244, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#525252",
+    "SCROLLBAR_GROOVE_COLOR": "#1d1d1d",
+    "HOLIDAY_COLOR": "#ff8389",
+    "GREY_COLOR": "#8d8d8d",
+    "WEEKDAY_NAMES_COLOR": "#c6c6c6",
+    "CALENDAR_BACKGROUND_COLOR": "#262626",
+    "CALENDAR_BORDER_COLOR": "#525252",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(141, 141, 141, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(141, 141, 141, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(244, 244, 244, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(244, 244, 244, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#262626",
+    "MENU_BORDER_COLOR": "#525252",
+    "MENU_HOVER_COLOR": (82, 82, 82, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(244, 244, 244, 0.15)",
+}
+
+
+ISFAHAN_MIDNIGHT_PALETTE = {  # dark; custom: midnight blue + saffron gold, turquoise weekdays; text on accent: dark (8.5:1)
+    "TEXT_COLOR": "#f3ead5",
+    "BACKGROUND_COLOR": "#0c1a33",
+    "INPUT_BG_COLOR": "#132746",
+    "ACCENT_COLOR": "#e3a72f",
+    "HOVER_BG": "rgba(243, 234, 213, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#274570",
+    "SCROLLBAR_GROOVE_COLOR": "#091427",
+    "HOLIDAY_COLOR": "#f0735c",
+    "GREY_COLOR": "#6b7fa3",
+    "WEEKDAY_NAMES_COLOR": "#35d6c9",
+    "CALENDAR_BACKGROUND_COLOR": "#0c1a33",
+    "CALENDAR_BORDER_COLOR": "#274570",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(107, 127, 163, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(107, 127, 163, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(243, 234, 213, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(243, 234, 213, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#0c1a33",
+    "MENU_BORDER_COLOR": "#274570",
+    "MENU_HOVER_COLOR": (39, 69, 112, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(243, 234, 213, 0.15)",
+}
+
+
+MIDNIGHT_VIOLET_PALETTE = {  # dark; image: Midnight Violet + Dry Sage; white on accent 4.5:1
+    "TEXT_COLOR": "#d6d4c4",
+    "BACKGROUND_COLOR": "#261732",
+    "INPUT_BG_COLOR": "#34263e",
+    "ACCENT_COLOR": "#7c7755",
+    "HOVER_BG": "rgba(214, 212, 196, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#46394c",
+    "SCROLLBAR_GROOVE_COLOR": "#1d1127",
+    "HOLIDAY_COLOR": "#ea6f86",
+    "GREY_COLOR": "#70666f",
+    "WEEKDAY_NAMES_COLOR": "#a59f9b",
+    "CALENDAR_BACKGROUND_COLOR": "#261732",
+    "CALENDAR_BORDER_COLOR": "#46394c",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(112, 102, 111, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(112, 102, 111, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(214, 212, 196, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(214, 212, 196, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#261732",
+    "MENU_BORDER_COLOR": "#46394c",
+    "MENU_HOVER_COLOR": (70, 57, 76, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(214, 212, 196, 0.15)",
+}
+
+
+FIG_AND_LEAF_PALETTE = {  # dark; image: sugared figs / mocha latte / park leaf crunch / glowing river water; white on accent 4.6:1
+    "TEXT_COLOR": "#efdfdb",
+    "BACKGROUND_COLOR": "#303225",
+    "INPUT_BG_COLOR": "#3f4034",
+    "ACCENT_COLOR": "#aa624d",
+    "HOVER_BG": "rgba(239, 223, 219, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#525146",
+    "SCROLLBAR_GROOVE_COLOR": "#25271c",
+    "HOLIDAY_COLOR": "#e8776e",
+    "GREY_COLOR": "#807b71",
+    "WEEKDAY_NAMES_COLOR": "#baafa8",
+    "CALENDAR_BACKGROUND_COLOR": "#303225",
+    "CALENDAR_BORDER_COLOR": "#525146",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(128, 123, 113, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(128, 123, 113, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(239, 223, 219, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(239, 223, 219, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#303225",
+    "MENU_BORDER_COLOR": "#525146",
+    "MENU_HOVER_COLOR": (82, 81, 70, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(239, 223, 219, 0.15)",
+}
+
+
+JAVA_AND_CERULEAN_PALETTE = {  # dark; image: Transparent Yellow / Sceptre Red / Cerulean / Potting Soil / Java; white on accent 4.6:1
+    "TEXT_COLOR": "#f5efc6",
+    "BACKGROUND_COLOR": "#231815",
+    "INPUT_BG_COLOR": "#35221d",
+    "ACCENT_COLOR": "#4d78a9",
+    "HOVER_BG": "rgba(245, 239, 198, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#4a2e27",
+    "SCROLLBAR_GROOVE_COLOR": "#1b1210",
+    "HOLIDAY_COLOR": "#e5675f",
+    "GREY_COLOR": "#7b725f",
+    "WEEKDAY_NAMES_COLOR": "#bab394",
+    "CALENDAR_BACKGROUND_COLOR": "#231815",
+    "CALENDAR_BORDER_COLOR": "#4a2e27",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(123, 114, 95, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(123, 114, 95, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(245, 239, 198, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(245, 239, 198, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#231815",
+    "MENU_BORDER_COLOR": "#4a2e27",
+    "MENU_HOVER_COLOR": (74, 46, 39, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(245, 239, 198, 0.15)",
+}
+
+
+COCOA_AND_LAVENDER_PALETTE = {  # dark; image: Dark Cocoa + Lavender Mist; white on accent 4.6:1
+    "TEXT_COLOR": "#d8c7de",
+    "BACKGROUND_COLOR": "#352928",
+    "INPUT_BG_COLOR": "#423637",
+    "ACCENT_COLOR": "#9364a3",
+    "HOVER_BG": "rgba(216, 199, 222, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#524549",
+    "SCROLLBAR_GROOVE_COLOR": "#291f1f",
+    "HOLIDAY_COLOR": "#f07a85",
+    "GREY_COLOR": "#796b74",
+    "WEEKDAY_NAMES_COLOR": "#aa9bab",
+    "CALENDAR_BACKGROUND_COLOR": "#352928",
+    "CALENDAR_BORDER_COLOR": "#524549",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(121, 107, 116, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(121, 107, 116, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(216, 199, 222, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(216, 199, 222, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#352928",
+    "MENU_BORDER_COLOR": "#524549",
+    "MENU_HOVER_COLOR": (82, 69, 73, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(216, 199, 222, 0.15)",
+}
+
+
+MERLOT_AND_CASHMERE_PALETTE = {  # dark; image: Merlot + Cashmere Blue; white on accent 4.6:1
+    "TEXT_COLOR": "#d6e0e9",
+    "BACKGROUND_COLOR": "#51121a",
+    "INPUT_BG_COLOR": "#5c222b",
+    "ACCENT_COLOR": "#55799e",
+    "HOVER_BG": "rgba(214, 224, 233, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#69373f",
+    "SCROLLBAR_GROOVE_COLOR": "#3f0e14",
+    "HOLIDAY_COLOR": "#ff8a8a",
+    "GREY_COLOR": "#896971",
+    "WEEKDAY_NAMES_COLOR": "#b1a6af",
+    "CALENDAR_BACKGROUND_COLOR": "#51121a",
+    "CALENDAR_BORDER_COLOR": "#69373f",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(137, 105, 113, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(137, 105, 113, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(214, 224, 233, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(214, 224, 233, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#51121a",
+    "MENU_BORDER_COLOR": "#69373f",
+    "MENU_HOVER_COLOR": (105, 55, 63, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(214, 224, 233, 0.15)",
+}
+
+
+NAVY_RED_PALETTE = {  # dark; user-specified navy-and-red spec (#001d38 base, #d53434 accent, #ff7468 Fridays); text on accent: white (4.8:1)
+    "TEXT_COLOR": "#f8f8f2",
+    "BACKGROUND_COLOR": "#001d38",
+    "INPUT_BG_COLOR": "#042a4e",
+    "ACCENT_COLOR": "#d53434",
+    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#05325c",
+    "SCROLLBAR_GROOVE_COLOR": "#00182e",
+    "HOLIDAY_COLOR": "#ff7468",
+    "GREY_COLOR": "#9ba6b1",
+    "WEEKDAY_NAMES_COLOR": "#b7ddff",
+    "CALENDAR_BACKGROUND_COLOR": "#00182e",
+    "CALENDAR_BORDER_COLOR": "#05325c",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(155, 166, 177, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(155, 166, 177, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#00182e",
+    "MENU_BORDER_COLOR": "#05325c",
+    "MENU_HOVER_COLOR": (5, 50, 92, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
+}
+
+
+PURPLE_LAGOON_PALETTE = {  # dark; coolors palette (#3c1642, #086375, #1dd3b0, #affc41, #b2ff9e) with derived neutrals; text on accent: dark (14.5:1)
+    "TEXT_COLOR": "#a6e895",
+    "BACKGROUND_COLOR": "#3c1642",
+    "INPUT_BG_COLOR": "#492f4c",
+    "ACCENT_COLOR": "#affc41",
+    "HOVER_BG": "rgba(166, 232, 149, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#534454",
+    "SCROLLBAR_GROOVE_COLOR": "#270e2b",
+    "HOLIDAY_COLOR": "#1dd3b0",
+    "GREY_COLOR": "#6c7567",
+    "WEEKDAY_NAMES_COLOR": "#7e9876",
+    "CALENDAR_BACKGROUND_COLOR": "#3c1642",
+    "CALENDAR_BORDER_COLOR": "#534454",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(108, 117, 103, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(108, 117, 103, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(166, 232, 149, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(166, 232, 149, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#3c1642",
+    "MENU_BORDER_COLOR": "#534454",
+    "MENU_HOVER_COLOR": (83, 68, 84, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(166, 232, 149, 0.15)",
+}
+
+
+SUNNY_BEACH_DAY_PALETTE = {  # dark; coolors palette (#264653, #2a9d8f, #e9c46a, #f4a261, #e76f51) with derived neutrals; text on accent: white (3.3:1)
+    "TEXT_COLOR": "#e9c46a",
+    "BACKGROUND_COLOR": "#264653",
+    "INPUT_BG_COLOR": "#3d5556",
+    "ACCENT_COLOR": "#2a9d8f",
+    "HOVER_BG": "rgba(233, 196, 106, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#516258",
+    "SCROLLBAR_GROOVE_COLOR": "#192e36",
+    "HOLIDAY_COLOR": "#e76f51",
+    "GREY_COLOR": "#787b5d",
+    "WEEKDAY_NAMES_COLOR": "#9b9261",
+    "CALENDAR_BACKGROUND_COLOR": "#264653",
+    "CALENDAR_BORDER_COLOR": "#516258",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(120, 123, 93, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(120, 123, 93, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(233, 196, 106, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(233, 196, 106, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#264653",
+    "MENU_BORDER_COLOR": "#516258",
+    "MENU_HOVER_COLOR": (81, 98, 88, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(233, 196, 106, 0.15)",
+}
+
+
+WATERMELON_SORBET_PALETTE = {  # dark; coolors palette (#ef476f, #ffd166, #06d6a0, #118ab2, #073b4c) with derived neutrals; text on accent: dark (9.6:1)
+    "TEXT_COLOR": "#ffd166",
+    "BACKGROUND_COLOR": "#073b4c",
+    "INPUT_BG_COLOR": "#254d4f",
+    "ACCENT_COLOR": "#06d6a0",
+    "HOVER_BG": "rgba(255, 209, 102, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#3e5c52",
+    "SCROLLBAR_GROOVE_COLOR": "#052631",
+    "HOLIDAY_COLOR": "#ef476f",
+    "GREY_COLOR": "#777f58",
+    "WEEKDAY_NAMES_COLOR": "#9c955c",
+    "CALENDAR_BACKGROUND_COLOR": "#073b4c",
+    "CALENDAR_BORDER_COLOR": "#3e5c52",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(119, 127, 88, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(119, 127, 88, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 209, 102, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 209, 102, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#073b4c",
+    "MENU_BORDER_COLOR": "#3e5c52",
+    "MENU_HOVER_COLOR": (62, 92, 82, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 209, 102, 0.15)",
+}
+
+
+FAIRYFLOSS_PALETTE = {  # dark; Fairyfloss (official sailorhg palette); text on accent: dark (14.6:1)
+    "TEXT_COLOR": "#f8f8f2",
+    "BACKGROUND_COLOR": "#5a5475",
+    "INPUT_BG_COLOR": "#716799",
+    "ACCENT_COLOR": "#ffea00",
+    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
+    "SCROLLBAR_HANDLE_COLOR": "#8077a8",
+    "SCROLLBAR_GROOVE_COLOR": "#343144",
+    "HOLIDAY_COLOR": "#ff857f",
+    "GREY_COLOR": "#aba6b4",
+    "WEEKDAY_NAMES_COLOR": "#c8c4ca",
+    "CALENDAR_BACKGROUND_COLOR": "#5a5475",
+    "CALENDAR_BORDER_COLOR": "#8077a8",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(171, 166, 180, 0.35)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(171, 166, 180, 0.55)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
+    "MENU_BACKGROUND_COLOR": "#5a5475",
+    "MENU_BORDER_COLOR": "#8077a8",
+    "MENU_HOVER_COLOR": (128, 119, 168, 200),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
 }
 
 
@@ -225,11 +1154,11 @@ CATPPUCCIN_LATTE_PALETTE = {  # white on accent 5.4:1
 }
 
 
-SOLARIZED_LIGHT_PALETTE = {  # white on accent 5.4:1
+SOLARIZED_LIGHT_PALETTE = {  # text on accent: white (3.7:1)
     "TEXT_COLOR": "#586e75",
     "BACKGROUND_COLOR": "#fdf6e3",
     "INPUT_BG_COLOR": "#fffbf0",
-    "ACCENT_COLOR": "#1f6fa8",
+    "ACCENT_COLOR": "#268bd2",
     "HOVER_BG": "#eee8d5",
     "SCROLLBAR_HANDLE_COLOR": "#e3dcc4",
     "SCROLLBAR_GROOVE_COLOR": "#fdf6e3",
@@ -249,49 +1178,25 @@ SOLARIZED_LIGHT_PALETTE = {  # white on accent 5.4:1
 }
 
 
-ROSE_PINE_DAWN_PALETTE = {  # white on accent 6.1:1
-    "TEXT_COLOR": "#575279",
-    "BACKGROUND_COLOR": "#faf4ed",
-    "INPUT_BG_COLOR": "#fffaf3",
-    "ACCENT_COLOR": "#286983",
-    "HOVER_BG": "#f2e9e1",
-    "SCROLLBAR_HANDLE_COLOR": "#dfdad9",
-    "SCROLLBAR_GROOVE_COLOR": "#faf4ed",
-    "HOLIDAY_COLOR": "#a8506b",
-    "GREY_COLOR": "#9893a5",
-    "WEEKDAY_NAMES_COLOR": "#6e6a86",
-    "CALENDAR_BACKGROUND_COLOR": "#fffaf3",
-    "CALENDAR_BORDER_COLOR": "#dfdad9",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(152, 147, 165, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(152, 147, 165, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(87, 82, 121, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(87, 82, 121, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#fffaf3",
-    "MENU_BORDER_COLOR": "#dfdad9",
-    "MENU_HOVER_COLOR": (60, 60, 60, 60),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
-GRUVBOX_LIGHT_PALETTE = {  # white on accent 6.1:1
-    "TEXT_COLOR": "#3c3836",
-    "BACKGROUND_COLOR": "#fbf1c7",
-    "INPUT_BG_COLOR": "#fdf8dc",
-    "ACCENT_COLOR": "#af3a03",
-    "HOVER_BG": "#ebdbb2",
-    "SCROLLBAR_HANDLE_COLOR": "#d5c4a1",
-    "SCROLLBAR_GROOVE_COLOR": "#fbf1c7",
-    "HOLIDAY_COLOR": "#9d0006",
-    "GREY_COLOR": "#928374",
-    "WEEKDAY_NAMES_COLOR": "#665c54",
-    "CALENDAR_BACKGROUND_COLOR": "#fdf8dc",
-    "CALENDAR_BORDER_COLOR": "#d5c4a1",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(146, 131, 116, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(146, 131, 116, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(60, 56, 54, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(60, 56, 54, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#fdf8dc",
-    "MENU_BORDER_COLOR": "#d5c4a1",
+GITHUB_LIGHT_PALETTE = {  # GitHub Light Default; white on accent 5.2:1
+    "TEXT_COLOR": "#1f2328",
+    "BACKGROUND_COLOR": "#f6f8fa",
+    "INPUT_BG_COLOR": "#ffffff",
+    "ACCENT_COLOR": "#0969da",
+    "HOVER_BG": "#eaeef2",
+    "SCROLLBAR_HANDLE_COLOR": "#d0d7de",
+    "SCROLLBAR_GROOVE_COLOR": "#f6f8fa",
+    "HOLIDAY_COLOR": "#cf222e",
+    "GREY_COLOR": "#8c959f",
+    "WEEKDAY_NAMES_COLOR": "#59636e",
+    "CALENDAR_BACKGROUND_COLOR": "#ffffff",
+    "CALENDAR_BORDER_COLOR": "#d0d7de",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(140, 149, 159, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(140, 149, 159, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(31, 35, 40, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(31, 35, 40, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#ffffff",
+    "MENU_BORDER_COLOR": "#d0d7de",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
 }
@@ -321,148 +1226,49 @@ NORD_LIGHT_PALETTE = {  # white on accent 5.9:1
 }
 
 
-# ===== popular palettes (the popular VS Code themes) =====
-# ===== DARK =====
-ONE_DARK_PALETTE = {  # One Dark Pro (most-installed VS Code theme); white on accent 4.5:1; accent deepened from official #61afef
-    "TEXT_COLOR": "#abb2bf",
-    "BACKGROUND_COLOR": "#282c34",
-    "INPUT_BG_COLOR": "#2f343d",
-    "ACCENT_COLOR": "#1579cb",
-    "HOVER_BG": "rgba(171, 178, 191, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#3e4452",
-    "SCROLLBAR_GROOVE_COLOR": "#1f2228",
-    "HOLIDAY_COLOR": "#e2737c",
-    "GREY_COLOR": "#5c6370",
-    "WEEKDAY_NAMES_COLOR": "#8e96a3",
-    "CALENDAR_BACKGROUND_COLOR": "#282c34",
-    "CALENDAR_BORDER_COLOR": "#3e4452",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(92, 99, 112, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(92, 99, 112, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(171, 178, 191, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(171, 178, 191, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#282c34",
-    "MENU_BORDER_COLOR": "#3e4452",
-    "MENU_HOVER_COLOR": (62, 68, 82, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(171, 178, 191, 0.15)",
-}
-
-
-GITHUB_DARK_PALETTE = {  # GitHub Dark Default; white on accent 4.6:1
-    "TEXT_COLOR": "#e6edf3",
-    "BACKGROUND_COLOR": "#0d1117",
-    "INPUT_BG_COLOR": "#161b22",
-    "ACCENT_COLOR": "#1f6feb",
-    "HOVER_BG": "rgba(230, 237, 243, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#30363d",
-    "SCROLLBAR_GROOVE_COLOR": "#0a0d11",
-    "HOLIDAY_COLOR": "#f85149",
-    "GREY_COLOR": "#6e7681",
-    "WEEKDAY_NAMES_COLOR": "#8b949e",
-    "CALENDAR_BACKGROUND_COLOR": "#0d1117",
-    "CALENDAR_BORDER_COLOR": "#30363d",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(110, 118, 129, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(110, 118, 129, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(230, 237, 243, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(230, 237, 243, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#0d1117",
-    "MENU_BORDER_COLOR": "#30363d",
-    "MENU_HOVER_COLOR": (48, 54, 61, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(230, 237, 243, 0.15)",
-}
-
-
-AYU_MIRAGE_PALETTE = {  # Ayu Mirage; white on accent 4.7:1; accent deepened from official #ffa759
-    "TEXT_COLOR": "#cccac2",
-    "BACKGROUND_COLOR": "#242936",
-    "INPUT_BG_COLOR": "#2d3343",
-    "ACCENT_COLOR": "#ba5700",
-    "HOVER_BG": "rgba(204, 202, 194, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#343b4d",
-    "SCROLLBAR_GROOVE_COLOR": "#1c1f2a",
-    "HOLIDAY_COLOR": "#ff6666",
-    "GREY_COLOR": "#707a8c",
-    "WEEKDAY_NAMES_COLOR": "#9aa2b1",
-    "CALENDAR_BACKGROUND_COLOR": "#242936",
-    "CALENDAR_BORDER_COLOR": "#343b4d",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(112, 122, 140, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(112, 122, 140, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(204, 202, 194, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(204, 202, 194, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#242936",
-    "MENU_BORDER_COLOR": "#343b4d",
-    "MENU_HOVER_COLOR": (52, 59, 77, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(204, 202, 194, 0.15)",
-}
-
-
-NIGHT_OWL_PALETTE = {  # Night Owl; white on accent 5.2:1
-    "TEXT_COLOR": "#d6deeb",
-    "BACKGROUND_COLOR": "#011627",
-    "INPUT_BG_COLOR": "#0b253a",
-    "ACCENT_COLOR": "#7e57c2",
-    "HOVER_BG": "rgba(214, 222, 235, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#1d3b53",
-    "SCROLLBAR_GROOVE_COLOR": "#00111e",
-    "HOLIDAY_COLOR": "#ef5350",
-    "GREY_COLOR": "#5f7e97",
-    "WEEKDAY_NAMES_COLOR": "#8ba3b5",
-    "CALENDAR_BACKGROUND_COLOR": "#011627",
-    "CALENDAR_BORDER_COLOR": "#1d3b53",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(95, 126, 151, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(95, 126, 151, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(214, 222, 235, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(214, 222, 235, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#011627",
-    "MENU_BORDER_COLOR": "#1d3b53",
-    "MENU_HOVER_COLOR": (29, 59, 83, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(214, 222, 235, 0.15)",
-}
-
-
-# ===== LIGHT =====
-GITHUB_LIGHT_PALETTE = {  # GitHub Light Default; white on accent 5.2:1
-    "TEXT_COLOR": "#1f2328",
-    "BACKGROUND_COLOR": "#f6f8fa",
-    "INPUT_BG_COLOR": "#ffffff",
-    "ACCENT_COLOR": "#0969da",
-    "HOVER_BG": "#eaeef2",
-    "SCROLLBAR_HANDLE_COLOR": "#d0d7de",
-    "SCROLLBAR_GROOVE_COLOR": "#f6f8fa",
-    "HOLIDAY_COLOR": "#cf222e",
-    "GREY_COLOR": "#8c959f",
-    "WEEKDAY_NAMES_COLOR": "#59636e",
-    "CALENDAR_BACKGROUND_COLOR": "#ffffff",
-    "CALENDAR_BORDER_COLOR": "#d0d7de",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(140, 149, 159, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(140, 149, 159, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(31, 35, 40, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(31, 35, 40, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#ffffff",
-    "MENU_BORDER_COLOR": "#d0d7de",
+GRUVBOX_LIGHT_PALETTE = {  # white on accent 6.1:1
+    "TEXT_COLOR": "#3c3836",
+    "BACKGROUND_COLOR": "#fbf1c7",
+    "INPUT_BG_COLOR": "#fdf8dc",
+    "ACCENT_COLOR": "#af3a03",
+    "HOVER_BG": "#ebdbb2",
+    "SCROLLBAR_HANDLE_COLOR": "#d5c4a1",
+    "SCROLLBAR_GROOVE_COLOR": "#fbf1c7",
+    "HOLIDAY_COLOR": "#9d0006",
+    "GREY_COLOR": "#928374",
+    "WEEKDAY_NAMES_COLOR": "#665c54",
+    "CALENDAR_BACKGROUND_COLOR": "#fdf8dc",
+    "CALENDAR_BORDER_COLOR": "#d5c4a1",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(146, 131, 116, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(146, 131, 116, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(60, 56, 54, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(60, 56, 54, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#fdf8dc",
+    "MENU_BORDER_COLOR": "#d5c4a1",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
 }
 
 
-ONE_LIGHT_PALETTE = {  # Atom One Light; white on accent 4.5:1; accent deepened from official #4078f2
-    "TEXT_COLOR": "#383a42",
-    "BACKGROUND_COLOR": "#fafafa",
-    "INPUT_BG_COLOR": "#ffffff",
-    "ACCENT_COLOR": "#326ef1",
-    "HOVER_BG": "#eaeaeb",
-    "SCROLLBAR_HANDLE_COLOR": "#dbdbdc",
-    "SCROLLBAR_GROOVE_COLOR": "#fafafa",
-    "HOLIDAY_COLOR": "#c44a3f",
-    "GREY_COLOR": "#a0a1a7",
-    "WEEKDAY_NAMES_COLOR": "#696c77",
-    "CALENDAR_BACKGROUND_COLOR": "#ffffff",
-    "CALENDAR_BORDER_COLOR": "#dbdbdc",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(160, 161, 167, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(160, 161, 167, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(56, 58, 66, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(56, 58, 66, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#ffffff",
-    "MENU_BORDER_COLOR": "#dbdbdc",
+ROSE_PINE_DAWN_PALETTE = {  # white on accent 6.1:1
+    "TEXT_COLOR": "#575279",
+    "BACKGROUND_COLOR": "#faf4ed",
+    "INPUT_BG_COLOR": "#fffaf3",
+    "ACCENT_COLOR": "#286983",
+    "HOVER_BG": "#f2e9e1",
+    "SCROLLBAR_HANDLE_COLOR": "#dfdad9",
+    "SCROLLBAR_GROOVE_COLOR": "#faf4ed",
+    "HOLIDAY_COLOR": "#a8506b",
+    "GREY_COLOR": "#9893a5",
+    "WEEKDAY_NAMES_COLOR": "#6e6a86",
+    "CALENDAR_BACKGROUND_COLOR": "#fffaf3",
+    "CALENDAR_BORDER_COLOR": "#dfdad9",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(152, 147, 165, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(152, 147, 165, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(87, 82, 121, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(87, 82, 121, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#fffaf3",
+    "MENU_BORDER_COLOR": "#dfdad9",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
 }
@@ -470,12 +1276,12 @@ ONE_LIGHT_PALETTE = {  # Atom One Light; white on accent 4.5:1; accent deepened 
 
 AYU_LIGHT_PALETTE = {  # Ayu Light; white on accent 4.5:1; accent deepened from official #f29718
     "TEXT_COLOR": "#5c6166",
-    "BACKGROUND_COLOR": "#f8f9fa",
+    "BACKGROUND_COLOR": "#fcfcfc",
     "INPUT_BG_COLOR": "#fcfcfc",
     "ACCENT_COLOR": "#aa670a",
     "HOVER_BG": "#eceff2",
     "SCROLLBAR_HANDLE_COLOR": "#dde1e6",
-    "SCROLLBAR_GROOVE_COLOR": "#f8f9fa",
+    "SCROLLBAR_GROOVE_COLOR": "#fcfcfc",
     "HOLIDAY_COLOR": "#c54444",
     "GREY_COLOR": "#8a9199",
     "WEEKDAY_NAMES_COLOR": "#67707a",
@@ -540,8 +1346,6 @@ VITESSE_LIGHT_PALETTE = {  # Vitesse Light; white on accent 6.5:1
 }
 
 
-# ===== more palettes (the Alucard/Kanagawa/Everforest and mixed custom sets) =====
-# ===== LIGHT =====
 ALUCARD_PALETTE = {  # light; Alucard Classic (official Dracula light), UI surfaces from the Dracula spec; white on accent 6.2:1
     "TEXT_COLOR": "#1f1f1f",
     "BACKGROUND_COLOR": "#ece9df",
@@ -590,11 +1394,11 @@ KANAGAWA_LOTUS_PALETTE = {  # light; Kanagawa Lotus (official palette); white on
 }
 
 
-EVERFOREST_LIGHT_PALETTE = {  # light; Everforest Light, medium contrast (official); white on accent 4.5:1
+EVERFOREST_LIGHT_PALETTE = {  # light; Everforest Light, medium contrast (official); text on accent: dark (6.2:1)
     "TEXT_COLOR": "#5c6a72",
     "BACKGROUND_COLOR": "#fdf6e3",
     "INPUT_BG_COLOR": "#fffbef",
-    "ACCENT_COLOR": "#6e7e01",
+    "ACCENT_COLOR": "#8da101",
     "HOVER_BG": "#efebd4",
     "SCROLLBAR_HANDLE_COLOR": "#e6e2cc",
     "SCROLLBAR_GROOVE_COLOR": "#fdf6e3",
@@ -609,6 +1413,150 @@ EVERFOREST_LIGHT_PALETTE = {  # light; Everforest Light, medium contrast (offici
     "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(92, 106, 114, 0.24)",
     "MENU_BACKGROUND_COLOR": "#fffbef",
     "MENU_BORDER_COLOR": "#e6e2cc",
+    "MENU_HOVER_COLOR": (60, 60, 60, 60),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+}
+
+
+MATERIAL_3_LIGHT_PALETTE = {  # light; Material Design 3 baseline (#6750A4); text on accent: white (6.4:1)
+    "TEXT_COLOR": "#1d1b20",
+    "BACKGROUND_COLOR": "#fef7ff",
+    "INPUT_BG_COLOR": "#f3edf7",
+    "ACCENT_COLOR": "#6750a4",
+    "HOVER_BG": "#ece6f0",
+    "SCROLLBAR_HANDLE_COLOR": "#cac4d0",
+    "SCROLLBAR_GROOVE_COLOR": "#fef7ff",
+    "HOLIDAY_COLOR": "#b3261e",
+    "GREY_COLOR": "#a69fae",
+    "WEEKDAY_NAMES_COLOR": "#49454f",
+    "CALENDAR_BACKGROUND_COLOR": "#f3edf7",
+    "CALENDAR_BORDER_COLOR": "#cac4d0",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(166, 159, 174, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(166, 159, 174, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(29, 27, 32, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(29, 27, 32, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#f3edf7",
+    "MENU_BORDER_COLOR": "#cac4d0",
+    "MENU_HOVER_COLOR": (60, 60, 60, 60),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+}
+
+
+FLEXOKI_LIGHT_PALETTE = {  # light; Flexoki (official palette); text on accent: white (6.5:1)
+    "TEXT_COLOR": "#100f0f",
+    "BACKGROUND_COLOR": "#f2f0e5",
+    "INPUT_BG_COLOR": "#fffcf0",
+    "ACCENT_COLOR": "#205ea6",
+    "HOVER_BG": "#e6e4d9",
+    "SCROLLBAR_HANDLE_COLOR": "#dad8ce",
+    "SCROLLBAR_GROOVE_COLOR": "#f2f0e5",
+    "HOLIDAY_COLOR": "#af3029",
+    "GREY_COLOR": "#b7b5ac",
+    "WEEKDAY_NAMES_COLOR": "#696864",
+    "CALENDAR_BACKGROUND_COLOR": "#fffcf0",
+    "CALENDAR_BORDER_COLOR": "#dad8ce",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(183, 181, 172, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(183, 181, 172, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(16, 15, 15, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(16, 15, 15, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#fffcf0",
+    "MENU_BORDER_COLOR": "#dad8ce",
+    "MENU_HOVER_COLOR": (60, 60, 60, 60),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+}
+
+
+TOKYO_NIGHT_DAY_PALETTE = {  # light; Tokyo Night Day (official); text on accent: white (4.0:1)
+    "TEXT_COLOR": "#3760bf",
+    "BACKGROUND_COLOR": "#e1e2e7",
+    "INPUT_BG_COLOR": "#f0f1f5",
+    "ACCENT_COLOR": "#2e7de9",
+    "HOVER_BG": "#d0d5e3",
+    "SCROLLBAR_HANDLE_COLOR": "#c4c8da",
+    "SCROLLBAR_GROOVE_COLOR": "#e1e2e7",
+    "HOLIDAY_COLOR": "#d22456",
+    "GREY_COLOR": "#a8aecb",
+    "WEEKDAY_NAMES_COLOR": "#536297",
+    "CALENDAR_BACKGROUND_COLOR": "#f0f1f5",
+    "CALENDAR_BORDER_COLOR": "#c4c8da",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(168, 174, 203, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(168, 174, 203, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(55, 96, 191, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(55, 96, 191, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#f0f1f5",
+    "MENU_BORDER_COLOR": "#c4c8da",
+    "MENU_HOVER_COLOR": (60, 60, 60, 60),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+}
+
+
+PAPERCOLOR_LIGHT_PALETTE = {  # light; PaperColor (official vim palette); text on accent: white (7.0:1)
+    "TEXT_COLOR": "#444444",
+    "BACKGROUND_COLOR": "#eeeeee",
+    "INPUT_BG_COLOR": "#f9f9f9",
+    "ACCENT_COLOR": "#005f87",
+    "HOVER_BG": "#e4e4e4",
+    "SCROLLBAR_HANDLE_COLOR": "#d0d0d0",
+    "SCROLLBAR_GROOVE_COLOR": "#eeeeee",
+    "HOLIDAY_COLOR": "#af0000",
+    "GREY_COLOR": "#b2b2b2",
+    "WEEKDAY_NAMES_COLOR": "#686868",
+    "CALENDAR_BACKGROUND_COLOR": "#f9f9f9",
+    "CALENDAR_BORDER_COLOR": "#d0d0d0",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(178, 178, 178, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(178, 178, 178, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(68, 68, 68, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(68, 68, 68, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#f9f9f9",
+    "MENU_BORDER_COLOR": "#d0d0d0",
+    "MENU_HOVER_COLOR": (60, 60, 60, 60),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+}
+
+
+SOFT_ERA_PALETTE = {  # light; Soft Era (official soft-aesthetic theme); text on accent: dark (8.1:1)
+    "TEXT_COLOR": "#4a4543",
+    "BACKGROUND_COLOR": "#f9f5f4",
+    "INPUT_BG_COLOR": "#fbfbfb",
+    "ACCENT_COLOR": "#87b6b6",
+    "HOVER_BG": "#e3e6ed",
+    "SCROLLBAR_HANDLE_COLOR": "#e4bcbf",
+    "SCROLLBAR_GROOVE_COLOR": "#f9f5f4",
+    "HOLIDAY_COLOR": "#dd698c",
+    "GREY_COLOR": "#948484",
+    "WEEKDAY_NAMES_COLOR": "#666d7d",
+    "CALENDAR_BACKGROUND_COLOR": "#fbfbfb",
+    "CALENDAR_BORDER_COLOR": "#e4bcbf",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(148, 132, 132, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(148, 132, 132, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(74, 69, 67, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(74, 69, 67, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#fbfbfb",
+    "MENU_BORDER_COLOR": "#e4bcbf",
+    "MENU_HOVER_COLOR": (60, 60, 60, 60),
+    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
+}
+
+
+SAKURA_PALETTE = {  # light; custom: blush + deep rose; text on accent: white (5.5:1)
+    "TEXT_COLOR": "#4a2a35",
+    "BACKGROUND_COLOR": "#fdf0f3",
+    "INPUT_BG_COLOR": "#fffafb",
+    "ACCENT_COLOR": "#b83b64",
+    "HOVER_BG": "#f9e1e7",
+    "SCROLLBAR_HANDLE_COLOR": "#f1cdd6",
+    "SCROLLBAR_GROOVE_COLOR": "#fdf0f3",
+    "HOLIDAY_COLOR": "#c0243b",
+    "GREY_COLOR": "#caa0ac",
+    "WEEKDAY_NAMES_COLOR": "#8b5666",
+    "CALENDAR_BACKGROUND_COLOR": "#fffafb",
+    "CALENDAR_BORDER_COLOR": "#f1cdd6",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(202, 160, 172, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(202, 160, 172, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(74, 42, 53, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(74, 42, 53, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#fffafb",
+    "MENU_BORDER_COLOR": "#f1cdd6",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
 }
@@ -633,30 +1581,6 @@ RED_PLUM_PALETTE = {  # light; image: Pale Banana + Red Plum; white on accent 9.
     "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(50, 17, 25, 0.24)",
     "MENU_BACKGROUND_COLOR": "#fffaef",
     "MENU_BORDER_COLOR": "#ddceb4",
-    "MENU_HOVER_COLOR": (60, 60, 60, 60),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
-AMERICANA_PALETTE = {  # light; image: Burnt Umber / Redwood / Macadamia / Cool Blue / Light Grayish; white on accent 4.6:1
-    "TEXT_COLOR": "#113047",
-    "BACKGROUND_COLOR": "#fbf0d8",
-    "INPUT_BG_COLOR": "#fffaee",
-    "ACCENT_COLOR": "#4e799c",
-    "HOVER_BG": "#ebe3ce",
-    "SCROLLBAR_HANDLE_COLOR": "#d6d1c1",
-    "SCROLLBAR_GROOVE_COLOR": "#fbf0d8",
-    "HOLIDAY_COLOR": "#b02a29",
-    "GREY_COLOR": "#929a97",
-    "WEEKDAY_NAMES_COLOR": "#536670",
-    "CALENDAR_BACKGROUND_COLOR": "#fffaee",
-    "CALENDAR_BORDER_COLOR": "#d6d1c1",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(146, 154, 151, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(146, 154, 151, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(17, 48, 71, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(17, 48, 71, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#fffaee",
-    "MENU_BORDER_COLOR": "#d6d1c1",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
 }
@@ -734,249 +1658,6 @@ BURGUNDY_AND_BLUE_PALETTE = {  # light; image: Burgundy + Blue; white on accent 
 }
 
 
-# ===== DARK =====
-KANAGAWA_WAVE_PALETTE = {  # dark; Kanagawa Wave (official palette); white on accent 4.7:1
-    "TEXT_COLOR": "#dcd7ba",
-    "BACKGROUND_COLOR": "#1f1f28",
-    "INPUT_BG_COLOR": "#2a2a37",
-    "ACCENT_COLOR": "#4772c7",
-    "HOVER_BG": "rgba(220, 215, 186, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#363646",
-    "SCROLLBAR_GROOVE_COLOR": "#18181f",
-    "HOLIDAY_COLOR": "#e46876",
-    "GREY_COLOR": "#54546d",
-    "WEEKDAY_NAMES_COLOR": "#c8c093",
-    "CALENDAR_BACKGROUND_COLOR": "#1f1f28",
-    "CALENDAR_BORDER_COLOR": "#363646",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(84, 84, 109, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(84, 84, 109, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(220, 215, 186, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(220, 215, 186, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#1f1f28",
-    "MENU_BORDER_COLOR": "#363646",
-    "MENU_HOVER_COLOR": (54, 54, 70, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(220, 215, 186, 0.15)",
-}
-
-
-KANAGAWA_DRAGON_PALETTE = {  # dark; Kanagawa Dragon (official palette); white on accent 4.6:1
-    "TEXT_COLOR": "#c5c9c5",
-    "BACKGROUND_COLOR": "#181616",
-    "INPUT_BG_COLOR": "#282727",
-    "ACCENT_COLOR": "#5c7a88",
-    "HOVER_BG": "rgba(197, 201, 197, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#393836",
-    "SCROLLBAR_GROOVE_COLOR": "#121111",
-    "HOLIDAY_COLOR": "#c4746e",
-    "GREY_COLOR": "#625e5a",
-    "WEEKDAY_NAMES_COLOR": "#a6a69c",
-    "CALENDAR_BACKGROUND_COLOR": "#181616",
-    "CALENDAR_BORDER_COLOR": "#393836",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(98, 94, 90, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(98, 94, 90, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(197, 201, 197, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(197, 201, 197, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#181616",
-    "MENU_BORDER_COLOR": "#393836",
-    "MENU_HOVER_COLOR": (57, 56, 54, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(197, 201, 197, 0.15)",
-}
-
-
-EVERFOREST_DARK_PALETTE = {  # dark; Everforest Dark, medium contrast (official); white on accent 4.6:1
-    "TEXT_COLOR": "#d3c6aa",
-    "BACKGROUND_COLOR": "#2d353b",
-    "INPUT_BG_COLOR": "#343f44",
-    "ACCENT_COLOR": "#657d3e",
-    "HOVER_BG": "rgba(211, 198, 170, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#475258",
-    "SCROLLBAR_GROOVE_COLOR": "#23292e",
-    "HOLIDAY_COLOR": "#e67e80",
-    "GREY_COLOR": "#7a8478",
-    "WEEKDAY_NAMES_COLOR": "#9da9a0",
-    "CALENDAR_BACKGROUND_COLOR": "#2d353b",
-    "CALENDAR_BORDER_COLOR": "#475258",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(122, 132, 120, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(122, 132, 120, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(211, 198, 170, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(211, 198, 170, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#2d353b",
-    "MENU_BORDER_COLOR": "#475258",
-    "MENU_HOVER_COLOR": (71, 82, 88, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(211, 198, 170, 0.15)",
-}
-
-
-FIG_AND_LEAF_PALETTE = {  # dark; image: sugared figs / mocha latte / park leaf crunch / glowing river water; white on accent 4.6:1
-    "TEXT_COLOR": "#efdfdb",
-    "BACKGROUND_COLOR": "#303225",
-    "INPUT_BG_COLOR": "#3f4034",
-    "ACCENT_COLOR": "#aa624d",
-    "HOVER_BG": "rgba(239, 223, 219, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#525146",
-    "SCROLLBAR_GROOVE_COLOR": "#25271c",
-    "HOLIDAY_COLOR": "#e8776e",
-    "GREY_COLOR": "#807b71",
-    "WEEKDAY_NAMES_COLOR": "#baafa8",
-    "CALENDAR_BACKGROUND_COLOR": "#303225",
-    "CALENDAR_BORDER_COLOR": "#525146",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(128, 123, 113, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(128, 123, 113, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(239, 223, 219, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(239, 223, 219, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#303225",
-    "MENU_BORDER_COLOR": "#525146",
-    "MENU_HOVER_COLOR": (82, 81, 70, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(239, 223, 219, 0.15)",
-}
-
-
-WINE_AND_KHAKI_PALETTE = {  # dark; image: Deep wine / Burgundy / Khaki / Pastel Blue Grey; white on accent 4.7:1
-    "TEXT_COLOR": "#d8e4ed",
-    "BACKGROUND_COLOR": "#452928",
-    "INPUT_BG_COLOR": "#513838",
-    "ACCENT_COLOR": "#82733f",
-    "HOVER_BG": "rgba(216, 228, 237, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#5f4b4b",
-    "SCROLLBAR_GROOVE_COLOR": "#351f1f",
-    "HOLIDAY_COLOR": "#e97767",
-    "GREY_COLOR": "#83787b",
-    "WEEKDAY_NAMES_COLOR": "#afb0b6",
-    "CALENDAR_BACKGROUND_COLOR": "#452928",
-    "CALENDAR_BORDER_COLOR": "#5f4b4b",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(131, 120, 123, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(131, 120, 123, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(216, 228, 237, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(216, 228, 237, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#452928",
-    "MENU_BORDER_COLOR": "#5f4b4b",
-    "MENU_HOVER_COLOR": (95, 75, 75, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(216, 228, 237, 0.15)",
-}
-
-
-JAVA_AND_CERULEAN_PALETTE = {  # dark; image: Transparent Yellow / Sceptre Red / Cerulean / Potting Soil / Java; white on accent 4.6:1
-    "TEXT_COLOR": "#f5efc6",
-    "BACKGROUND_COLOR": "#231815",
-    "INPUT_BG_COLOR": "#35221d",
-    "ACCENT_COLOR": "#4d78a9",
-    "HOVER_BG": "rgba(245, 239, 198, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#4a2e27",
-    "SCROLLBAR_GROOVE_COLOR": "#1b1210",
-    "HOLIDAY_COLOR": "#e5675f",
-    "GREY_COLOR": "#7b725f",
-    "WEEKDAY_NAMES_COLOR": "#bab394",
-    "CALENDAR_BACKGROUND_COLOR": "#231815",
-    "CALENDAR_BORDER_COLOR": "#4a2e27",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(123, 114, 95, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(123, 114, 95, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(245, 239, 198, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(245, 239, 198, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#231815",
-    "MENU_BORDER_COLOR": "#4a2e27",
-    "MENU_HOVER_COLOR": (74, 46, 39, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(245, 239, 198, 0.15)",
-}
-
-
-MIDNIGHT_VIOLET_PALETTE = {  # dark; image: Midnight Violet + Dry Sage; white on accent 4.5:1
-    "TEXT_COLOR": "#d6d4c4",
-    "BACKGROUND_COLOR": "#261732",
-    "INPUT_BG_COLOR": "#34263e",
-    "ACCENT_COLOR": "#7c7755",
-    "HOVER_BG": "rgba(214, 212, 196, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#46394c",
-    "SCROLLBAR_GROOVE_COLOR": "#1d1127",
-    "HOLIDAY_COLOR": "#ea6f86",
-    "GREY_COLOR": "#70666f",
-    "WEEKDAY_NAMES_COLOR": "#a59f9b",
-    "CALENDAR_BACKGROUND_COLOR": "#261732",
-    "CALENDAR_BORDER_COLOR": "#46394c",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(112, 102, 111, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(112, 102, 111, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(214, 212, 196, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(214, 212, 196, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#261732",
-    "MENU_BORDER_COLOR": "#46394c",
-    "MENU_HOVER_COLOR": (70, 57, 76, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(214, 212, 196, 0.15)",
-}
-
-
-COPPER_AND_OLIVE_PALETTE = {  # dark; image: copper + olive; white on accent 4.7:1
-    "TEXT_COLOR": "#efedcc",
-    "BACKGROUND_COLOR": "#292815",
-    "INPUT_BG_COLOR": "#393824",
-    "ACCENT_COLOR": "#a0664c",
-    "HOVER_BG": "rgba(239, 237, 204, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#4d4b36",
-    "SCROLLBAR_GROOVE_COLOR": "#1f1f10",
-    "HOLIDAY_COLOR": "#e5675a",
-    "GREY_COLOR": "#7c7b62",
-    "WEEKDAY_NAMES_COLOR": "#b8b699",
-    "CALENDAR_BACKGROUND_COLOR": "#292815",
-    "CALENDAR_BORDER_COLOR": "#4d4b36",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(124, 123, 98, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(124, 123, 98, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(239, 237, 204, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(239, 237, 204, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#292815",
-    "MENU_BORDER_COLOR": "#4d4b36",
-    "MENU_HOVER_COLOR": (77, 75, 54, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(239, 237, 204, 0.15)",
-}
-
-
-COCOA_AND_LAVENDER_PALETTE = {  # dark; image: Dark Cocoa + Lavender Mist; white on accent 4.6:1
-    "TEXT_COLOR": "#d8c7de",
-    "BACKGROUND_COLOR": "#352928",
-    "INPUT_BG_COLOR": "#423637",
-    "ACCENT_COLOR": "#9364a3",
-    "HOVER_BG": "rgba(216, 199, 222, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#524549",
-    "SCROLLBAR_GROOVE_COLOR": "#291f1f",
-    "HOLIDAY_COLOR": "#f07a85",
-    "GREY_COLOR": "#796b74",
-    "WEEKDAY_NAMES_COLOR": "#aa9bab",
-    "CALENDAR_BACKGROUND_COLOR": "#352928",
-    "CALENDAR_BORDER_COLOR": "#524549",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(121, 107, 116, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(121, 107, 116, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(216, 199, 222, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(216, 199, 222, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#352928",
-    "MENU_BORDER_COLOR": "#524549",
-    "MENU_HOVER_COLOR": (82, 69, 73, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(216, 199, 222, 0.15)",
-}
-
-
-MERLOT_AND_CASHMERE_PALETTE = {  # dark; image: Merlot + Cashmere Blue; white on accent 4.6:1
-    "TEXT_COLOR": "#d6e0e9",
-    "BACKGROUND_COLOR": "#51121a",
-    "INPUT_BG_COLOR": "#5c222b",
-    "ACCENT_COLOR": "#55799e",
-    "HOVER_BG": "rgba(214, 224, 233, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#69373f",
-    "SCROLLBAR_GROOVE_COLOR": "#3f0e14",
-    "HOLIDAY_COLOR": "#ff8a8a",
-    "GREY_COLOR": "#896971",
-    "WEEKDAY_NAMES_COLOR": "#b1a6af",
-    "CALENDAR_BACKGROUND_COLOR": "#51121a",
-    "CALENDAR_BORDER_COLOR": "#69373f",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(137, 105, 113, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(137, 105, 113, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(214, 224, 233, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(214, 224, 233, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#51121a",
-    "MENU_BORDER_COLOR": "#69373f",
-    "MENU_HOVER_COLOR": (105, 55, 63, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(214, 224, 233, 0.15)",
-}
-
-
-# ===== requested palettes (the requested brand accents and Persian sets) =====
-# ===== LIGHT =====
 ISFAHAN_IVORY_PALETTE = {  # light; custom: ivory + firuzeh turquoise, lapis weekdays; text on accent: dark (6.7:1)
     "TEXT_COLOR": "#1b2a41",
     "BACKGROUND_COLOR": "#f7f1e1",
@@ -1025,30 +1706,6 @@ PAPER_MONO_PALETTE = {  # light; custom: black/white/grey; text on accent: white
 }
 
 
-SAKURA_PALETTE = {  # light; custom: blush + deep rose; text on accent: white (5.5:1)
-    "TEXT_COLOR": "#4a2a35",
-    "BACKGROUND_COLOR": "#fdf0f3",
-    "INPUT_BG_COLOR": "#fffafb",
-    "ACCENT_COLOR": "#b83b64",
-    "HOVER_BG": "#f9e1e7",
-    "SCROLLBAR_HANDLE_COLOR": "#f1cdd6",
-    "SCROLLBAR_GROOVE_COLOR": "#fdf0f3",
-    "HOLIDAY_COLOR": "#c0243b",
-    "GREY_COLOR": "#caa0ac",
-    "WEEKDAY_NAMES_COLOR": "#8b5666",
-    "CALENDAR_BACKGROUND_COLOR": "#fffafb",
-    "CALENDAR_BORDER_COLOR": "#f1cdd6",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(202, 160, 172, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(202, 160, 172, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(74, 42, 53, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(74, 42, 53, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#fffafb",
-    "MENU_BORDER_COLOR": "#f1cdd6",
-    "MENU_HOVER_COLOR": (60, 60, 60, 60),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
 HIGH_CONTRAST_LIGHT_PALETTE = {  # light; custom: black on white, strong blue; text on accent: white (9.0:1)
     "TEXT_COLOR": "#000000",
     "BACKGROUND_COLOR": "#ffffff",
@@ -1073,628 +1730,51 @@ HIGH_CONTRAST_LIGHT_PALETTE = {  # light; custom: black on white, strong blue; t
 }
 
 
-FLEXOKI_LIGHT_PALETTE = {  # light; Flexoki (official palette); text on accent: white (6.5:1)
-    "TEXT_COLOR": "#100f0f",
-    "BACKGROUND_COLOR": "#f2f0e5",
-    "INPUT_BG_COLOR": "#fffcf0",
-    "ACCENT_COLOR": "#205ea6",
-    "HOVER_BG": "#e6e4d9",
-    "SCROLLBAR_HANDLE_COLOR": "#dad8ce",
-    "SCROLLBAR_GROOVE_COLOR": "#f2f0e5",
-    "HOLIDAY_COLOR": "#af3029",
-    "GREY_COLOR": "#b7b5ac",
-    "WEEKDAY_NAMES_COLOR": "#696864",
-    "CALENDAR_BACKGROUND_COLOR": "#fffcf0",
-    "CALENDAR_BORDER_COLOR": "#dad8ce",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(183, 181, 172, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(183, 181, 172, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(16, 15, 15, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(16, 15, 15, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#fffcf0",
-    "MENU_BORDER_COLOR": "#dad8ce",
+MELANGE_LIGHT_PALETTE = {  # light; Melange Light (official savq palette); text on accent: white (6.4:1)
+    "TEXT_COLOR": "#54433a",
+    "BACKGROUND_COLOR": "#f1f1f1",
+    "INPUT_BG_COLOR": "#e9e1db",
+    "ACCENT_COLOR": "#465aa4",
+    "HOVER_BG": "#d9d3ce",
+    "SCROLLBAR_HANDLE_COLOR": "#d9d3ce",
+    "SCROLLBAR_GROOVE_COLOR": "#f1f1f1",
+    "HOLIDAY_COLOR": "#bf0021",
+    "GREY_COLOR": "#a98a78",
+    "WEEKDAY_NAMES_COLOR": "#7d6658",
+    "CALENDAR_BACKGROUND_COLOR": "#e9e1db",
+    "CALENDAR_BORDER_COLOR": "#d9d3ce",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(169, 138, 120, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(169, 138, 120, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(84, 67, 58, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(84, 67, 58, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#e9e1db",
+    "MENU_BORDER_COLOR": "#d9d3ce",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
 }
 
 
-TOKYO_NIGHT_DAY_PALETTE = {  # light; Tokyo Night Day (official); text on accent: dark (4.5:1)
-    "TEXT_COLOR": "#3760bf",
-    "BACKGROUND_COLOR": "#e1e2e7",
-    "INPUT_BG_COLOR": "#f0f1f5",
-    "ACCENT_COLOR": "#2e7de9",
-    "HOVER_BG": "#d0d5e3",
-    "SCROLLBAR_HANDLE_COLOR": "#c4c8da",
-    "SCROLLBAR_GROOVE_COLOR": "#e1e2e7",
-    "HOLIDAY_COLOR": "#d22456",
-    "GREY_COLOR": "#a8aecb",
-    "WEEKDAY_NAMES_COLOR": "#536297",
-    "CALENDAR_BACKGROUND_COLOR": "#f0f1f5",
-    "CALENDAR_BORDER_COLOR": "#c4c8da",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(168, 174, 203, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(168, 174, 203, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(55, 96, 191, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(55, 96, 191, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#f0f1f5",
-    "MENU_BORDER_COLOR": "#c4c8da",
+PASTEL_DREAMLAND_ADVENTURE_PALETTE = {  # light; coolors palette (#cdb4db, #ffc8dd, #ffafcc, #bde0fe, #a2d2ff) with derived neutrals; text on accent: dark (9.6:1)
+    "TEXT_COLOR": "#473f4d",
+    "BACKGROUND_COLOR": "#f7f4fa",
+    "INPUT_BG_COLOR": "#fcfbfd",
+    "ACCENT_COLOR": "#cdb4db",
+    "HOVER_BG": "#e1d4eb",
+    "SCROLLBAR_HANDLE_COLOR": "#a694b4",
+    "SCROLLBAR_GROOVE_COLOR": "#f7f4fa",
+    "HOLIDAY_COLOR": "#734f5c",
+    "GREY_COLOR": "#9887a4",
+    "WEEKDAY_NAMES_COLOR": "#5b5163",
+    "CALENDAR_BACKGROUND_COLOR": "#fcfbfd",
+    "CALENDAR_BORDER_COLOR": "#a694b4",
+    "CALENDAR_TODAY_BG_COLOR": "rgba(152, 135, 164, 0.2)",
+    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(152, 135, 164, 0.35)",
+    "CALENDAR_SELECTED_BG_COLOR": "rgba(71, 63, 77, 0.14)",
+    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(71, 63, 77, 0.24)",
+    "MENU_BACKGROUND_COLOR": "#fcfbfd",
+    "MENU_BORDER_COLOR": "#a694b4",
     "MENU_HOVER_COLOR": (60, 60, 60, 60),
     "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
-OXOCARBON_LIGHT_PALETTE = {  # light; Oxocarbon (official nvim palette); text on accent: white (5.0:1)
-    "TEXT_COLOR": "#161616",
-    "BACKGROUND_COLOR": "#ffffff",
-    "INPUT_BG_COLOR": "#f3f3f3",
-    "ACCENT_COLOR": "#0f62fe",
-    "HOVER_BG": "#f3f3f3",
-    "SCROLLBAR_HANDLE_COLOR": "#d5d5d5",
-    "SCROLLBAR_GROOVE_COLOR": "#ffffff",
-    "HOLIDAY_COLOR": "#da1e28",
-    "GREY_COLOR": "#8d8d8d",
-    "WEEKDAY_NAMES_COLOR": "#525252",
-    "CALENDAR_BACKGROUND_COLOR": "#f3f3f3",
-    "CALENDAR_BORDER_COLOR": "#d5d5d5",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(141, 141, 141, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(141, 141, 141, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(22, 22, 22, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(22, 22, 22, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#f3f3f3",
-    "MENU_BORDER_COLOR": "#d5d5d5",
-    "MENU_HOVER_COLOR": (60, 60, 60, 60),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
-MATERIAL_3_LIGHT_PALETTE = {  # light; Material Design 3 baseline (#6750A4); text on accent: white (6.4:1)
-    "TEXT_COLOR": "#1d1b20",
-    "BACKGROUND_COLOR": "#fef7ff",
-    "INPUT_BG_COLOR": "#f3edf7",
-    "ACCENT_COLOR": "#6750a4",
-    "HOVER_BG": "#ece6f0",
-    "SCROLLBAR_HANDLE_COLOR": "#cac4d0",
-    "SCROLLBAR_GROOVE_COLOR": "#fef7ff",
-    "HOLIDAY_COLOR": "#b3261e",
-    "GREY_COLOR": "#a69fae",
-    "WEEKDAY_NAMES_COLOR": "#49454f",
-    "CALENDAR_BACKGROUND_COLOR": "#f3edf7",
-    "CALENDAR_BORDER_COLOR": "#cac4d0",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(166, 159, 174, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(166, 159, 174, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(29, 27, 32, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(29, 27, 32, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#f3edf7",
-    "MENU_BORDER_COLOR": "#cac4d0",
-    "MENU_HOVER_COLOR": (60, 60, 60, 60),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
-PAPERCOLOR_LIGHT_PALETTE = {  # light; PaperColor (official vim palette); text on accent: white (7.0:1)
-    "TEXT_COLOR": "#444444",
-    "BACKGROUND_COLOR": "#eeeeee",
-    "INPUT_BG_COLOR": "#f9f9f9",
-    "ACCENT_COLOR": "#005f87",
-    "HOVER_BG": "#e4e4e4",
-    "SCROLLBAR_HANDLE_COLOR": "#d0d0d0",
-    "SCROLLBAR_GROOVE_COLOR": "#eeeeee",
-    "HOLIDAY_COLOR": "#af0000",
-    "GREY_COLOR": "#b2b2b2",
-    "WEEKDAY_NAMES_COLOR": "#686868",
-    "CALENDAR_BACKGROUND_COLOR": "#f9f9f9",
-    "CALENDAR_BORDER_COLOR": "#d0d0d0",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(178, 178, 178, 0.2)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(178, 178, 178, 0.35)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(68, 68, 68, 0.14)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(68, 68, 68, 0.24)",
-    "MENU_BACKGROUND_COLOR": "#f9f9f9",
-    "MENU_BORDER_COLOR": "#d0d0d0",
-    "MENU_HOVER_COLOR": (60, 60, 60, 60),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(0, 0, 0, 0.2)",
-}
-
-
-# ===== DARK =====
-ISFAHAN_MIDNIGHT_PALETTE = {  # dark; custom: midnight blue + saffron gold, turquoise weekdays; text on accent: dark (8.5:1)
-    "TEXT_COLOR": "#f3ead5",
-    "BACKGROUND_COLOR": "#0c1a33",
-    "INPUT_BG_COLOR": "#132746",
-    "ACCENT_COLOR": "#e3a72f",
-    "HOVER_BG": "rgba(243, 234, 213, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#274570",
-    "SCROLLBAR_GROOVE_COLOR": "#091427",
-    "HOLIDAY_COLOR": "#f0735c",
-    "GREY_COLOR": "#6b7fa3",
-    "WEEKDAY_NAMES_COLOR": "#35d6c9",
-    "CALENDAR_BACKGROUND_COLOR": "#0c1a33",
-    "CALENDAR_BORDER_COLOR": "#274570",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(107, 127, 163, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(107, 127, 163, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(243, 234, 213, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(243, 234, 213, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#0c1a33",
-    "MENU_BORDER_COLOR": "#274570",
-    "MENU_HOVER_COLOR": (39, 69, 112, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(243, 234, 213, 0.15)",
-}
-
-
-OLED_BLACK_PALETTE = {  # dark; custom: true #000, single blue accent; text on accent: white (4.7:1)
-    "TEXT_COLOR": "#f2f2f2",
-    "BACKGROUND_COLOR": "#000000",
-    "INPUT_BG_COLOR": "#121212",
-    "ACCENT_COLOR": "#0071e3",
-    "HOVER_BG": "rgba(242, 242, 242, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#262626",
-    "SCROLLBAR_GROOVE_COLOR": "#000000",
-    "HOLIDAY_COLOR": "#ff5c5c",
-    "GREY_COLOR": "#5e5e5e",
-    "WEEKDAY_NAMES_COLOR": "#a6a6a6",
-    "CALENDAR_BACKGROUND_COLOR": "#000000",
-    "CALENDAR_BORDER_COLOR": "#262626",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(94, 94, 94, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(94, 94, 94, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(242, 242, 242, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(242, 242, 242, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#000000",
-    "MENU_BORDER_COLOR": "#262626",
-    "MENU_HOVER_COLOR": (38, 38, 38, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(242, 242, 242, 0.15)",
-}
-
-
-GRAPHITE_PALETTE = {  # dark; custom: dark monochrome; text on accent: dark (14.5:1)
-    "TEXT_COLOR": "#ededed",
-    "BACKGROUND_COLOR": "#161616",
-    "INPUT_BG_COLOR": "#222222",
-    "ACCENT_COLOR": "#e6e6e6",
-    "HOVER_BG": "rgba(237, 237, 237, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#333333",
-    "SCROLLBAR_GROOVE_COLOR": "#111111",
-    "HOLIDAY_COLOR": "#e07a70",
-    "GREY_COLOR": "#666666",
-    "WEEKDAY_NAMES_COLOR": "#a8a8a8",
-    "CALENDAR_BACKGROUND_COLOR": "#161616",
-    "CALENDAR_BORDER_COLOR": "#333333",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(102, 102, 102, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(102, 102, 102, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(237, 237, 237, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(237, 237, 237, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#161616",
-    "MENU_BORDER_COLOR": "#333333",
-    "MENU_HOVER_COLOR": (51, 51, 51, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(237, 237, 237, 0.15)",
-}
-
-
-HIGH_CONTRAST_DARK_PALETTE = {  # dark; custom: yellow on black; text on accent: dark (13.4:1)
-    "TEXT_COLOR": "#ffffff",
-    "BACKGROUND_COLOR": "#000000",
-    "INPUT_BG_COLOR": "#0d0d0d",
-    "ACCENT_COLOR": "#ffdd00",
-    "HOVER_BG": "rgba(255, 255, 255, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#bfbfbf",
-    "SCROLLBAR_GROOVE_COLOR": "#000000",
-    "HOLIDAY_COLOR": "#ff7b7b",
-    "GREY_COLOR": "#9a9a9a",
-    "WEEKDAY_NAMES_COLOR": "#ffff00",
-    "CALENDAR_BACKGROUND_COLOR": "#000000",
-    "CALENDAR_BORDER_COLOR": "#bfbfbf",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(154, 154, 154, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(154, 154, 154, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 255, 255, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 255, 255, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#000000",
-    "MENU_BORDER_COLOR": "#bfbfbf",
-    "MENU_HOVER_COLOR": (191, 191, 191, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
-}
-
-
-DRACULA_PINK_PALETTE = {  # dark; Dracula + pink accent; text on accent: dark (7.6:1)
-    "TEXT_COLOR": "#f8f8f2",
-    "BACKGROUND_COLOR": "#282a36",
-    "INPUT_BG_COLOR": "#343746",
-    "ACCENT_COLOR": "#ff79c6",
-    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#44475a",
-    "SCROLLBAR_GROOVE_COLOR": "#1f202a",
-    "HOLIDAY_COLOR": "#ff5555",
-    "GREY_COLOR": "#6272a4",
-    "WEEKDAY_NAMES_COLOR": "#bfbfd6",
-    "CALENDAR_BACKGROUND_COLOR": "#282a36",
-    "CALENDAR_BORDER_COLOR": "#44475a",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(98, 114, 164, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(98, 114, 164, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#282a36",
-    "MENU_BORDER_COLOR": "#44475a",
-    "MENU_HOVER_COLOR": (68, 71, 90, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
-}
-
-
-DRACULA_GREEN_PALETTE = {  # dark; Dracula + green accent; text on accent: dark (13.1:1)
-    "TEXT_COLOR": "#f8f8f2",
-    "BACKGROUND_COLOR": "#282a36",
-    "INPUT_BG_COLOR": "#343746",
-    "ACCENT_COLOR": "#50fa7b",
-    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#44475a",
-    "SCROLLBAR_GROOVE_COLOR": "#1f202a",
-    "HOLIDAY_COLOR": "#ff5555",
-    "GREY_COLOR": "#6272a4",
-    "WEEKDAY_NAMES_COLOR": "#bfbfd6",
-    "CALENDAR_BACKGROUND_COLOR": "#282a36",
-    "CALENDAR_BORDER_COLOR": "#44475a",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(98, 114, 164, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(98, 114, 164, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#282a36",
-    "MENU_BORDER_COLOR": "#44475a",
-    "MENU_HOVER_COLOR": (68, 71, 90, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
-}
-
-
-DRACULA_CYAN_PALETTE = {  # dark; Dracula + cyan accent; text on accent: dark (13.0:1)
-    "TEXT_COLOR": "#f8f8f2",
-    "BACKGROUND_COLOR": "#282a36",
-    "INPUT_BG_COLOR": "#343746",
-    "ACCENT_COLOR": "#8be9fd",
-    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#44475a",
-    "SCROLLBAR_GROOVE_COLOR": "#1f202a",
-    "HOLIDAY_COLOR": "#ff5555",
-    "GREY_COLOR": "#6272a4",
-    "WEEKDAY_NAMES_COLOR": "#bfbfd6",
-    "CALENDAR_BACKGROUND_COLOR": "#282a36",
-    "CALENDAR_BORDER_COLOR": "#44475a",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(98, 114, 164, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(98, 114, 164, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#282a36",
-    "MENU_BORDER_COLOR": "#44475a",
-    "MENU_HOVER_COLOR": (68, 71, 90, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
-}
-
-
-DRACULA_ORANGE_PALETTE = {  # dark; Dracula + orange accent; text on accent: dark (10.6:1)
-    "TEXT_COLOR": "#f8f8f2",
-    "BACKGROUND_COLOR": "#282a36",
-    "INPUT_BG_COLOR": "#343746",
-    "ACCENT_COLOR": "#ffb86c",
-    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#44475a",
-    "SCROLLBAR_GROOVE_COLOR": "#1f202a",
-    "HOLIDAY_COLOR": "#ff5555",
-    "GREY_COLOR": "#6272a4",
-    "WEEKDAY_NAMES_COLOR": "#bfbfd6",
-    "CALENDAR_BACKGROUND_COLOR": "#282a36",
-    "CALENDAR_BORDER_COLOR": "#44475a",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(98, 114, 164, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(98, 114, 164, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#282a36",
-    "MENU_BORDER_COLOR": "#44475a",
-    "MENU_HOVER_COLOR": (68, 71, 90, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
-}
-
-
-FLEXOKI_DARK_PALETTE = {  # dark; Flexoki (official palette); text on accent: dark (4.6:1)
-    "TEXT_COLOR": "#cecdc3",
-    "BACKGROUND_COLOR": "#100f0f",
-    "INPUT_BG_COLOR": "#1c1b1a",
-    "ACCENT_COLOR": "#4385be",
-    "HOVER_BG": "rgba(206, 205, 195, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#343331",
-    "SCROLLBAR_GROOVE_COLOR": "#0c0b0b",
-    "HOLIDAY_COLOR": "#d3564a",
-    "GREY_COLOR": "#575653",
-    "WEEKDAY_NAMES_COLOR": "#878580",
-    "CALENDAR_BACKGROUND_COLOR": "#100f0f",
-    "CALENDAR_BORDER_COLOR": "#343331",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(87, 86, 83, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(87, 86, 83, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(206, 205, 195, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(206, 205, 195, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#100f0f",
-    "MENU_BORDER_COLOR": "#343331",
-    "MENU_HOVER_COLOR": (52, 51, 49, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(206, 205, 195, 0.15)",
-}
-
-
-ROSE_PINE_MOON_PALETTE = {  # dark; Rose Pine Moon (official); text on accent: dark (8.6:1)
-    "TEXT_COLOR": "#e0def4",
-    "BACKGROUND_COLOR": "#232136",
-    "INPUT_BG_COLOR": "#2a273f",
-    "ACCENT_COLOR": "#c4a7e7",
-    "HOVER_BG": "rgba(224, 222, 244, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#393552",
-    "SCROLLBAR_GROOVE_COLOR": "#1b192a",
-    "HOLIDAY_COLOR": "#eb6f92",
-    "GREY_COLOR": "#6e6a86",
-    "WEEKDAY_NAMES_COLOR": "#908caa",
-    "CALENDAR_BACKGROUND_COLOR": "#232136",
-    "CALENDAR_BORDER_COLOR": "#393552",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(110, 106, 134, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(110, 106, 134, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(224, 222, 244, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(224, 222, 244, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#232136",
-    "MENU_BORDER_COLOR": "#393552",
-    "MENU_HOVER_COLOR": (57, 53, 82, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(224, 222, 244, 0.15)",
-}
-
-
-OXOCARBON_DARK_PALETTE = {  # dark; Oxocarbon (official nvim palette); text on accent: dark (7.7:1)
-    "TEXT_COLOR": "#f2f4f8",
-    "BACKGROUND_COLOR": "#161616",
-    "INPUT_BG_COLOR": "#262626",
-    "ACCENT_COLOR": "#78a9ff",
-    "HOVER_BG": "rgba(242, 244, 248, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#393939",
-    "SCROLLBAR_GROOVE_COLOR": "#111111",
-    "HOLIDAY_COLOR": "#ee5396",
-    "GREY_COLOR": "#525252",
-    "WEEKDAY_NAMES_COLOR": "#a8a8a8",
-    "CALENDAR_BACKGROUND_COLOR": "#161616",
-    "CALENDAR_BORDER_COLOR": "#393939",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(82, 82, 82, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(82, 82, 82, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(242, 244, 248, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(242, 244, 248, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#161616",
-    "MENU_BORDER_COLOR": "#393939",
-    "MENU_HOVER_COLOR": (57, 57, 57, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(242, 244, 248, 0.15)",
-}
-
-
-CARBON_GRAY_90_PALETTE = {  # dark; IBM Carbon g90 (@carbon/themes tokens); text on accent: white (5.0:1)
-    "TEXT_COLOR": "#f4f4f4",
-    "BACKGROUND_COLOR": "#262626",
-    "INPUT_BG_COLOR": "#393939",
-    "ACCENT_COLOR": "#0f62fe",
-    "HOVER_BG": "rgba(244, 244, 244, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#525252",
-    "SCROLLBAR_GROOVE_COLOR": "#1d1d1d",
-    "HOLIDAY_COLOR": "#ff8389",
-    "GREY_COLOR": "#8d8d8d",
-    "WEEKDAY_NAMES_COLOR": "#c6c6c6",
-    "CALENDAR_BACKGROUND_COLOR": "#262626",
-    "CALENDAR_BORDER_COLOR": "#525252",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(141, 141, 141, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(141, 141, 141, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(244, 244, 244, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(244, 244, 244, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#262626",
-    "MENU_BORDER_COLOR": "#525252",
-    "MENU_HOVER_COLOR": (82, 82, 82, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(244, 244, 244, 0.15)",
-}
-
-
-POIMANDRES_PALETTE = {  # dark; Poimandres (VS Code theme); text on accent: dark (11.5:1)
-    "TEXT_COLOR": "#a6accd",
-    "BACKGROUND_COLOR": "#1b1e28",
-    "INPUT_BG_COLOR": "#252837",
-    "ACCENT_COLOR": "#5de4c7",
-    "HOVER_BG": "rgba(166, 172, 205, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#303340",
-    "SCROLLBAR_GROOVE_COLOR": "#15171f",
-    "HOLIDAY_COLOR": "#d0679d",
-    "GREY_COLOR": "#767c9d",
-    "WEEKDAY_NAMES_COLOR": "#8f95b8",
-    "CALENDAR_BACKGROUND_COLOR": "#1b1e28",
-    "CALENDAR_BORDER_COLOR": "#303340",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(118, 124, 157, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(118, 124, 157, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(166, 172, 205, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(166, 172, 205, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#1b1e28",
-    "MENU_BORDER_COLOR": "#303340",
-    "MENU_HOVER_COLOR": (48, 51, 64, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(166, 172, 205, 0.15)",
-}
-
-
-SOLARIZED_DARK_PALETTE = {  # dark; Solarized Dark; text on accent: dark (4.9:1)
-    "TEXT_COLOR": "#93a1a1",
-    "BACKGROUND_COLOR": "#002b36",
-    "INPUT_BG_COLOR": "#073642",
-    "ACCENT_COLOR": "#268bd2",
-    "HOVER_BG": "rgba(147, 161, 161, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#124755",
-    "SCROLLBAR_GROOVE_COLOR": "#00212a",
-    "HOLIDAY_COLOR": "#e56866",
-    "GREY_COLOR": "#586e75",
-    "WEEKDAY_NAMES_COLOR": "#839496",
-    "CALENDAR_BACKGROUND_COLOR": "#002b36",
-    "CALENDAR_BORDER_COLOR": "#124755",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(88, 110, 117, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(88, 110, 117, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(147, 161, 161, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(147, 161, 161, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#002b36",
-    "MENU_BORDER_COLOR": "#124755",
-    "MENU_HOVER_COLOR": (18, 71, 85, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(147, 161, 161, 0.15)",
-}
-
-
-HORIZON_PALETTE = {  # dark; Horizon (VS Code theme); text on accent: dark (10.5:1)
-    "TEXT_COLOR": "#d5d8da",
-    "BACKGROUND_COLOR": "#1c1e26",
-    "INPUT_BG_COLOR": "#232530",
-    "ACCENT_COLOR": "#fab795",
-    "HOVER_BG": "rgba(213, 216, 218, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#2e303e",
-    "SCROLLBAR_GROOVE_COLOR": "#15171d",
-    "HOLIDAY_COLOR": "#e95678",
-    "GREY_COLOR": "#6c6f93",
-    "WEEKDAY_NAMES_COLOR": "#9da0a2",
-    "CALENDAR_BACKGROUND_COLOR": "#1c1e26",
-    "CALENDAR_BORDER_COLOR": "#2e303e",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(108, 111, 147, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(108, 111, 147, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(213, 216, 218, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(213, 216, 218, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#1c1e26",
-    "MENU_BORDER_COLOR": "#2e303e",
-    "MENU_HOVER_COLOR": (46, 48, 62, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(213, 216, 218, 0.15)",
-}
-
-
-MONOKAI_PALETTE = {  # dark; Monokai (VS Code theme); text on accent: dark (11.6:1)
-    "TEXT_COLOR": "#f8f8f2",
-    "BACKGROUND_COLOR": "#272822",
-    "INPUT_BG_COLOR": "#3e3d32",
-    "ACCENT_COLOR": "#a6e22e",
-    "HOVER_BG": "rgba(248, 248, 242, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#49483e",
-    "SCROLLBAR_GROOVE_COLOR": "#1e1f1a",
-    "HOLIDAY_COLOR": "#f94e8c",
-    "GREY_COLOR": "#75715e",
-    "WEEKDAY_NAMES_COLOR": "#a59f85",
-    "CALENDAR_BACKGROUND_COLOR": "#272822",
-    "CALENDAR_BORDER_COLOR": "#49483e",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(117, 113, 94, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(117, 113, 94, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(248, 248, 242, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(248, 248, 242, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#272822",
-    "MENU_BORDER_COLOR": "#49483e",
-    "MENU_HOVER_COLOR": (73, 72, 62, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(248, 248, 242, 0.15)",
-}
-
-
-MONOKAI_PRO_PALETTE = {  # dark; Monokai Pro (published values); text on accent: dark (13.1:1)
-    "TEXT_COLOR": "#fcfcfa",
-    "BACKGROUND_COLOR": "#2d2a2e",
-    "INPUT_BG_COLOR": "#403e41",
-    "ACCENT_COLOR": "#ffd866",
-    "HOVER_BG": "rgba(252, 252, 250, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#5b595c",
-    "SCROLLBAR_GROOVE_COLOR": "#232023",
-    "HOLIDAY_COLOR": "#ff6188",
-    "GREY_COLOR": "#727072",
-    "WEEKDAY_NAMES_COLOR": "#c1c0c0",
-    "CALENDAR_BACKGROUND_COLOR": "#2d2a2e",
-    "CALENDAR_BORDER_COLOR": "#5b595c",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(114, 112, 114, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(114, 112, 114, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(252, 252, 250, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(252, 252, 250, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#2d2a2e",
-    "MENU_BORDER_COLOR": "#5b595c",
-    "MENU_HOVER_COLOR": (91, 89, 92, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(252, 252, 250, 0.15)",
-}
-
-
-MATERIAL_PALENIGHT_PALETTE = {  # dark; Material Theme Palenight; text on accent: dark (7.5:1)
-    "TEXT_COLOR": "#babed8",
-    "BACKGROUND_COLOR": "#292d3e",
-    "INPUT_BG_COLOR": "#333747",
-    "ACCENT_COLOR": "#c792ea",
-    "HOVER_BG": "rgba(186, 190, 216, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#3a3f58",
-    "SCROLLBAR_GROOVE_COLOR": "#1f2330",
-    "HOLIDAY_COLOR": "#f07178",
-    "GREY_COLOR": "#676e95",
-    "WEEKDAY_NAMES_COLOR": "#9598a7",
-    "CALENDAR_BACKGROUND_COLOR": "#292d3e",
-    "CALENDAR_BORDER_COLOR": "#3a3f58",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(103, 110, 149, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(103, 110, 149, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(186, 190, 216, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(186, 190, 216, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#292d3e",
-    "MENU_BORDER_COLOR": "#3a3f58",
-    "MENU_HOVER_COLOR": (58, 63, 88, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(186, 190, 216, 0.15)",
-}
-
-
-SYNTHWAVE_84_PALETTE = {  # dark; SynthWave '84; text on accent: dark (8.0:1)
-    "TEXT_COLOR": "#ffffff",
-    "BACKGROUND_COLOR": "#262335",
-    "INPUT_BG_COLOR": "#2a2139",
-    "ACCENT_COLOR": "#ff7edb",
-    "HOVER_BG": "rgba(255, 255, 255, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#34294f",
-    "SCROLLBAR_GROOVE_COLOR": "#1d1b29",
-    "HOLIDAY_COLOR": "#fe4d59",
-    "GREY_COLOR": "#848bbd",
-    "WEEKDAY_NAMES_COLOR": "#b6b1b1",
-    "CALENDAR_BACKGROUND_COLOR": "#262335",
-    "CALENDAR_BORDER_COLOR": "#34294f",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(132, 139, 189, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(132, 139, 189, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(255, 255, 255, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(255, 255, 255, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#262335",
-    "MENU_BORDER_COLOR": "#34294f",
-    "MENU_HOVER_COLOR": (52, 41, 79, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(255, 255, 255, 0.15)",
-}
-
-
-MATERIAL_3_DARK_PALETTE = {  # dark; Material Design 3 baseline (#6750A4); text on accent: dark (10.6:1)
-    "TEXT_COLOR": "#e6e0e9",
-    "BACKGROUND_COLOR": "#141218",
-    "INPUT_BG_COLOR": "#211f26",
-    "ACCENT_COLOR": "#d0bcff",
-    "HOVER_BG": "rgba(230, 224, 233, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#49454f",
-    "SCROLLBAR_GROOVE_COLOR": "#0f0e12",
-    "HOLIDAY_COLOR": "#f2b8b5",
-    "GREY_COLOR": "#938f99",
-    "WEEKDAY_NAMES_COLOR": "#cac4d0",
-    "CALENDAR_BACKGROUND_COLOR": "#141218",
-    "CALENDAR_BORDER_COLOR": "#49454f",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(147, 143, 153, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(147, 143, 153, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(230, 224, 233, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(230, 224, 233, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#141218",
-    "MENU_BORDER_COLOR": "#49454f",
-    "MENU_HOVER_COLOR": (73, 69, 79, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(230, 224, 233, 0.15)",
-}
-
-
-PAPERCOLOR_DARK_PALETTE = {  # dark; PaperColor (official vim palette); text on accent: dark (4.6:1)
-    "TEXT_COLOR": "#d0d0d0",
-    "BACKGROUND_COLOR": "#1c1c1c",
-    "INPUT_BG_COLOR": "#303030",
-    "ACCENT_COLOR": "#5f8787",
-    "HOVER_BG": "rgba(208, 208, 208, 0.08)",
-    "SCROLLBAR_HANDLE_COLOR": "#3a3a3a",
-    "SCROLLBAR_GROOVE_COLOR": "#151515",
-    "HOLIDAY_COLOR": "#cd5e9b",
-    "GREY_COLOR": "#585858",
-    "WEEKDAY_NAMES_COLOR": "#8a8a8a",
-    "CALENDAR_BACKGROUND_COLOR": "#1c1c1c",
-    "CALENDAR_BORDER_COLOR": "#3a3a3a",
-    "CALENDAR_TODAY_BG_COLOR": "rgba(88, 88, 88, 0.35)",
-    "CALENDAR_TODAY_HOVER_BG_COLOR": "rgba(88, 88, 88, 0.55)",
-    "CALENDAR_SELECTED_BG_COLOR": "rgba(208, 208, 208, 0.2)",
-    "CALENDAR_SELECTED_HOVER_BG_COLOR": "rgba(208, 208, 208, 0.3)",
-    "MENU_BACKGROUND_COLOR": "#1c1c1c",
-    "MENU_BORDER_COLOR": "#3a3a3a",
-    "MENU_HOVER_COLOR": (58, 58, 58, 200),
-    "GREGORIAN_DATE_HOVER_BG": "rgba(208, 208, 208, 0.15)",
 }
 
 
@@ -1710,4 +1790,24 @@ THEMES = {
     if _name.isupper() and _name.endswith("_PALETTE")
 }
 
-
+# Exact display names for the slugs word-splitting names wrong: brand
+# spellings ("Synthwave '84", "PaperColor"), the accent in "Rosé Pine", and
+# the custom image sets whose two-part names use "&". Everything else names
+# itself from its slug (config._theme_display_name). New slugs join only
+# when their title-cased form is not the name the user meets.
+THEME_NAMES = {
+    "synthwave_84": "Synthwave '84",
+    "rose_pine_moon": "Rosé Pine Moon",
+    "rose_pine_dawn": "Rosé Pine Dawn",
+    "papercolor_dark": "PaperColor Dark",
+    "papercolor_light": "PaperColor Light",
+    "carbon_gray_90": "Carbon Gray",
+    "fig_and_leaf": "Fig & Leaf",
+    "java_and_cerulean": "Java & Cerulean",
+    "cocoa_and_lavender": "Cocoa & Lavender",
+    "merlot_and_cashmere": "Merlot & Cashmere",
+    "fig_and_sage": "Fig & Sage",
+    "rust_and_beige": "Rust & Beige",
+    "burgundy_and_blue": "Burgundy & Blue",
+    "winter_is_coming": "Winter is Coming",
+}
