@@ -62,8 +62,9 @@ STATE_FILL_OPACITY = 0.30         # the holiday tint behind the dot
 EVENT_FILL_OPACITY = 0.32         # the event day's tint behind the dot
 MUTED_HOLIDAY_DOT_OPACITY = 0.45  # the trailing out-of-month Friday's dot
 MUTED_HOLIDAY_FILL_OPACITY = 0.09 # ...and the whisper of tint under it
-DIVIDER_Y = 92.0                  # the divider under the grid
-NAME_TOP_Y = 98.0                 # the theme name's band top
+DIVIDER_Y = 89.0                  # the divider under the grid
+NAME_TOP_Y = 91.0                 # the theme name's band top
+NAME_BAND_HEIGHT = 24.0           # two centred Inter lines sit exactly inside
 NAME_FONT_PX = 10.5               # Inter semibold, floored to whole pixels
 
 # --- filters ----------------------------------------------------------------------
@@ -207,6 +208,25 @@ def _draw_dot(painter: QPainter, x: float, y: float, radius: float,
     painter.drawEllipse(QPointF(x, y), radius, radius)
 
 
+def _balanced_name_split(name: str, metrics: QFontMetrics,
+                         available: float) -> tuple[str, str] | None:
+    """The two-line split for a name that does not fit on one line: the word
+    boundary whose split lines both fit with the smallest widest line. None
+    when no boundary fits (an over-long single word) - the card falls back to
+    an elided single line."""
+    parts = name.split()
+    best: tuple[str, str] | None = None
+    best_width = float("inf")
+    for cut in range(1, len(parts)):
+        first, second = " ".join(parts[:cut]), " ".join(parts[cut:])
+        widest = max(metrics.horizontalAdvance(first),
+                     metrics.horizontalAdvance(second))
+        if widest > available or widest >= best_width:
+            continue
+        best, best_width = (first, second), widest
+    return best
+
+
 def theme_card_pixmap(palette: dict, theme_name: str) -> QPixmap:
     """The picker card art: the calendar abstracted to its silhouette in
     ``palette``'s colors, at the "1b" reference's proportions.
@@ -219,7 +239,8 @@ def theme_card_pixmap(palette: dict, theme_name: str) -> QPixmap:
     the muted Friday, the event day in the event color, today's fill, the
     selected day's fill plus a thin text ring - never a different dot shape),
     out-of-month days as plain grey dots, and, after a divider line, the
-    theme's own name centered inside the card in Inter semibold. Every
+    theme's own name centered inside the card in Inter semibold, wrapped to
+    the balanced two-line split when it does not fit on one. Every
     element is an ordinary palette key, so the card is a faithful miniature of
     what the theme does to the app."""
     width, height = CARD_WIDTH, CARD_HEIGHT
@@ -347,14 +368,29 @@ def theme_card_pixmap(palette: dict, theme_name: str) -> QPixmap:
     name_font.setWeight(QFont.Weight.DemiBold)
     metrics = QFontMetrics(name_font)
     available = width - 2 * CARD_SIDE_PADDING * scale
-    elided = metrics.elidedText(theme_name, Qt.TextElideMode.ElideRight,
-                                int(available))
+    # TextDontClip: the taller band's line boxes may not spare a whole glyph
+    # box, and the default rect clipping shaves descender tails off.
+    draw_flags = (Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+                  | Qt.TextFlag.TextDontClip)
+    if metrics.horizontalAdvance(theme_name) <= available:
+        lines = [theme_name]
+    else:
+        split = _balanced_name_split(theme_name, metrics, available)
+        if split is None:
+            lines = [metrics.elidedText(theme_name,
+                                        Qt.TextElideMode.ElideRight,
+                                        int(available))]
+        else:
+            lines = list(split)
     painter.setFont(name_font)
     painter.setPen(text)
-    painter.drawText(QRectF(CARD_SIDE_PADDING * scale, NAME_TOP_Y * scale,
-                            available, 12 * scale),
-                     Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                     elided)
+    step = metrics.lineSpacing() * scale
+    box = metrics.height() * scale
+    top = NAME_TOP_Y * scale + max(
+        0.0, (NAME_BAND_HEIGHT * scale - box - step * (len(lines) - 1)) / 2)
+    for index, line in enumerate(lines):
+        painter.drawText(QRectF(CARD_SIDE_PADDING * scale, top + index * step,
+                                available, box), draw_flags, line)
     painter.end()
     return pixmap
 

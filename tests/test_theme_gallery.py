@@ -501,8 +501,9 @@ def test_card_art_is_the_calendar_silhouette():
                     f"accent ink outside the event cell at ({x},{y})"
                 )
 
-    # The divider under the grid reads in the palette's calendar border color.
-    assert close(image.pixelColor(CARD_WIDTH, 184),
+    # The divider under the grid reads in the palette's calendar border color
+    # (DIVIDER_Y = 89 -> device y = 178).
+    assert close(image.pixelColor(CARD_WIDTH, 178),
                  APP_CONFIG.DARK_PALETTE["CALENDAR_BORDER_COLOR"]), "the divider line"
 
 
@@ -519,7 +520,7 @@ def test_card_name_wears_the_cards_own_text_color_never_the_accent():
     background = QColor(palette["BACKGROUND_COLOR"])
 
     ink = 0
-    for y in range(194, 222):  # the name band, device pixels
+    for y in range(182, 230):  # the name band, device pixels
         for x in range(0, image.width()):
             color = image.pixelColor(x, y)
             if color.alpha() == 0:
@@ -537,6 +538,66 @@ def test_card_name_wears_the_cards_own_text_color_never_the_accent():
                     + abs(color.blue() - text.blue())) < 90:
                 ink += 1
     assert ink > 40, "the name must render in the theme's own text color"
+
+
+def test_card_long_names_wrap_to_two_balanced_lines():
+    """A name that does not fit the 98px band wraps at the word boundary
+    whose wider line is smallest: ink renders in each band half and stays
+    inside the band's width, while a short name still centers a single line
+    in the taller band."""
+    from PyQt6.QtGui import QFont, QFontMetrics
+
+    from utils.asset_loader import load_fonts
+    load_fonts()
+
+    from ui.widgets.gallery_widgets import (CARD_SIDE_PADDING, CARD_WIDTH,
+                                            NAME_BAND_HEIGHT, NAME_FONT_PX,
+                                            NAME_TOP_Y, _balanced_name_split,
+                                            theme_card_pixmap)
+
+    palette = APP_CONFIG.DARK_PALETTE
+    top, bottom = int(NAME_TOP_Y * 2), int((NAME_TOP_Y + NAME_BAND_HEIGHT) * 2)
+    mid = (top + bottom) // 2
+    band_left = int(CARD_SIDE_PADDING * 2)
+    band_right = int((CARD_WIDTH - CARD_SIDE_PADDING) * 2)
+
+    def ink_rows(image):
+        """Name-ink rows, scanned inside the band's own x-window: the card's
+        border curve dips a few logical px into these rows at the sides, and
+        only the name lives between the padded edges."""
+        background = QColor(palette["BACKGROUND_COLOR"])
+        rows = []
+        for y in range(top, bottom):
+            xs = [x for x in range(band_left, band_right + 1)
+                  if image.pixelColor(x, y).alpha() > 0
+                  and (abs(image.pixelColor(x, y).red() - background.red())
+                       + abs(image.pixelColor(x, y).green() - background.green())
+                       + abs(image.pixelColor(x, y).blue() - background.blue())) >= 60]
+            if xs:
+                rows.append((y, min(xs), max(xs)))
+        return rows
+
+    image = theme_card_pixmap(palette, "Pastel Dreamland Adventure").toImage()
+    rows = ink_rows(image)
+    assert [r for r in rows if r[0] < mid], "a line renders above the band's middle"
+    assert [r for r in rows if r[0] >= mid], "a line renders below the band's middle"
+
+    font = QFont(APP_CONFIG.GREGORIAN_FONT_FAMILY)
+    font.setPixelSize(int(NAME_FONT_PX))
+    font.setWeight(QFont.Weight.DemiBold)
+    metrics = QFontMetrics(font)
+    assert _balanced_name_split("Pastel Dreamland Adventure", metrics, 98) == \
+        ("Pastel Dreamland", "Adventure")
+    assert _balanced_name_split("Tomorrow Night Blue", metrics, 98) == \
+        ("Tomorrow", "Night Blue")
+    assert _balanced_name_split("Supercalifragilistic", metrics, 98) is None, (
+        "no fitting word boundary means the elide fallback, not a forced split")
+
+    solo = theme_card_pixmap(palette, "Default").toImage()
+    ys = [row[0] for row in ink_rows(solo)]
+    assert ys, "the one-line name still renders"
+    assert min(ys) >= top + 8 and max(ys) <= bottom - 8, (
+        "the single line sits centered inside the taller band")
 
 
 def test_card_header_is_abstract_not_text():
