@@ -57,7 +57,8 @@ from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
 from utils.startup_registry import RUN_KEY_PATH, StartupRegistry
 from utils.windows_theme import WindowsThemeBackend
-from utils.ui_helpers import create_tray_pixmap, global_scrollbar_stylesheet
+from utils.ui_helpers import (create_tray_pixmap, global_scrollbar_stylesheet,
+                              legible_on)
 
 if TYPE_CHECKING:
     from ui.windows.tutorial_window import TutorialWindow
@@ -95,6 +96,14 @@ TIME_CHANGE_COALESCE_MS = 300
 # by priority (weekday, date, holidays, then the event text) and trim the
 # lowest-priority content ourselves instead of losing the tail mid-line.
 WINDOWS_TOOLTIP_MAX_CHARS = 127
+
+# The grounds the tray glyph is actually painted on: the Windows taskbar's own
+# tones (the strip's light and dark modes), NOT the app palette's surface,
+# which follows a different judgement. Pure #FFF/#000 read on both unaided;
+# the palette-borrowed event and holiday inks reach their 3:1 floor through
+# legible_on() against whichever ground the backend names.
+NOMINAL_TASKBAR_LIGHT_GROUND = "#f3f3f3"
+NOMINAL_TASKBAR_DARK_GROUND = "#202020"
 
 # Autostart is OPT-OUT: a brand-new installation has no saved preference yet and
 # defaults to ENABLED. An existing explicit False must never be read as "missing"
@@ -941,12 +950,21 @@ class SystemTrayIcon(QSystemTrayIcon):
         is_user_event = bool(day_events)
         is_holiday = bool(new_date.weekday() == 6 or self.holidays_cache.get(new_date.year, {}).get((new_date.month, new_date.day)))
 
-        color = (APP_CONFIG.TRAY_ICON_DARK_COLOR if APP_CONFIG.palette_is_dark()
-                 else APP_CONFIG.TRAY_ICON_LIGHT_COLOR)
+        # The glyph is judged against the TASKBAR it sits on, not the app
+        # palette: the shell mode answers what the strip below renders. The
+        # plain day takes the polarity-matched white/black pair; an event or
+        # holiday borrows the palette's ink and is nudged until it reads on
+        # the nominal ground (a light-theme accent on a light strip would
+        # otherwise be pastel-on-pastel).
+        taskbar_light = self.theme_backend.taskbar_uses_light()
+        ground = (NOMINAL_TASKBAR_LIGHT_GROUND if taskbar_light
+                  else NOMINAL_TASKBAR_DARK_GROUND)
+        color = (APP_CONFIG.TRAY_ICON_LIGHT_COLOR if taskbar_light
+                 else APP_CONFIG.TRAY_ICON_DARK_COLOR)
         if is_user_event:
-            color = APP_CONFIG.current_palette['ACCENT_COLOR']
+            color = legible_on(APP_CONFIG.current_palette['ACCENT_COLOR'], ground)
         elif is_holiday:
-            color = APP_CONFIG.current_palette['HOLIDAY_COLOR']
+            color = legible_on(APP_CONFIG.current_palette['HOLIDAY_COLOR'], ground)
 
         pixmap = create_tray_pixmap(day_str_persian, color)
         self.setIcon(QIcon(pixmap))

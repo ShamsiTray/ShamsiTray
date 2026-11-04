@@ -817,6 +817,95 @@ def test_update_tray_icon_without_force_skips_same_day(tray):
     assert icon_calls == []
 
 
+def _pin_tray_day(tray, monkeypatch, *, with_event=False, with_holiday=False):
+    """Freeze the tray's date to a weekday-fixed day and dress (or strip) its
+    events and holidays, so the glyph-color branch under test is the only
+    thing the repaint can see. Monday keeps the inline Friday clause inert:
+    instead of depending on which weekday the host runs on."""
+    today = jdatetime.date(1405, 8, 4)  # 2026-10-26, a Monday
+    monkeypatch.setattr(controller_module.jdatetime.date, "today",
+                        staticmethod(lambda: today))
+    monkeypatch.setattr(controller_module, "events_on_date",
+                        (lambda _events, _date: [("k", {"text": "تست"})])
+                        if with_event else (lambda _events, _date: []))
+    tray.holidays_cache = ({today.year: {(today.month, today.day): ["دست‌ساز"]}}
+                           if with_holiday else {})
+    return today
+
+
+def _record_tray_color(monkeypatch):
+    """Record the color each tray repaint hands the pixmap helper, while the
+    real pixmap is still produced so the icon stays real."""
+    calls = []
+    real = controller_module.create_tray_pixmap
+
+    def recorder(day_str, color):
+        calls.append(color)
+        return real(day_str, color)
+
+    monkeypatch.setattr(controller_module, "create_tray_pixmap", recorder)
+    return calls
+
+
+def test_tray_glyph_polarity_follows_the_taskbar_not_the_palette(tray, monkeypatch):
+    """The strip below the glyph decides its polarity. A light theme with a
+    dark taskbar keeps the white glyph - the old palette-descended rule gave
+    it black on the dark strip it cannot read on."""
+    _pin_tray_day(tray, monkeypatch)
+    colors = _record_tray_color(monkeypatch)
+
+    monkeypatch.setattr(tray.theme_backend, "taskbar_uses_light", lambda: False)
+    tray.update_tray_icon(force=True)
+    assert colors[-1] == APP_CONFIG.TRAY_ICON_DARK_COLOR
+
+    APP_CONFIG.set_theme(APP_CONFIG.SYSTEM_LIGHT_THEME)  # palette no longer consulted
+    try:
+        monkeypatch.setattr(tray.theme_backend, "taskbar_uses_light", lambda: True)
+        tray.update_tray_icon(force=True)
+        assert colors[-1] == APP_CONFIG.TRAY_ICON_LIGHT_COLOR
+    finally:
+        APP_CONFIG.set_theme(APP_CONFIG.Theme.DARK)
+
+
+@pytest.mark.parametrize("state_kwargs,palette_key", [
+    (dict(with_event=True), "ACCENT_COLOR"),
+    (dict(with_holiday=True), "HOLIDAY_COLOR"),
+], ids=["event ink", "holiday ink"])
+def test_tray_borrowed_ink_clears_the_taskbar_ground(
+        tray, monkeypatch, state_kwargs, palette_key):
+    """Event and holiday days borrow the palette's ink, but the glyph is
+    drawn on the TASKBAR: the ink is nudged through legible_on() against the
+    nominal ground the verdict named, instead of landing pastel-on-pastel on
+    a light strip."""
+    from core.app_controller import (NOMINAL_TASKBAR_DARK_GROUND,
+                                     NOMINAL_TASKBAR_LIGHT_GROUND)
+    from utils.ui_helpers import legible_on
+
+    _pin_tray_day(tray, monkeypatch, **state_kwargs)
+    colors = _record_tray_color(monkeypatch)
+
+    monkeypatch.setattr(tray.theme_backend, "taskbar_uses_light", lambda: False)
+    tray.update_tray_icon(force=True)
+    assert colors[-1] == legible_on(APP_CONFIG.current_palette[palette_key],
+                                    NOMINAL_TASKBAR_DARK_GROUND)
+
+    monkeypatch.setattr(tray.theme_backend, "taskbar_uses_light", lambda: True)
+    tray.update_tray_icon(force=True)
+    assert colors[-1] == legible_on(APP_CONFIG.current_palette[palette_key],
+                                    NOMINAL_TASKBAR_LIGHT_GROUND)
+
+
+def test_tray_repaint_asks_the_backend_for_the_ground(tray, monkeypatch):
+    """The tray asks its own backend on every forced repaint, so a live mode
+    change is picked up without any extra wiring."""
+    from tests.fake_theme import FakeThemeBackend
+
+    _pin_tray_day(tray, monkeypatch)
+    monkeypatch.setattr(tray, "theme_backend", FakeThemeBackend())
+    tray.update_tray_icon(force=True)
+    assert tray.theme_backend.taskbar_reads == 1
+
+
 def test_tray_date_is_logged_not_blank(tray):
     """jdatetime renders itself as "" under an empty format spec, so the refresh
     used to log «new date: » with nothing after it — once a minute, forever.
