@@ -492,19 +492,71 @@ def test_copy_payloads_are_rebuilt_on_every_conversion(window):
     assert QApplication.clipboard().text() == format_jalali_numeric(jdatetime.date(1404, 6, 15))
 
 
+def test_copy_rows_copy_from_the_keyboard(window):
+    """The copy rows answer the keyboard like the distance tool's lines: each
+    row takes tab focus, Enter or Space copies its payload, other keys stay on
+    the base QLabel path - and the mouse path copies the same payload."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    from tests.qt_mousing import press
+
+    _convert_jalali(window, jdatetime.date.today() + datetime.timedelta(days=400))
+    clipboard = QApplication.clipboard()
+    rows = (window.jalali_date_value_1, window.jalali_date_value_2,
+            window.gregorian_date_value_1, window.gregorian_date_value_2,
+            window.elapsed_text)
+    window.show()
+    for row in rows:
+        assert row.focusPolicy() == Qt.FocusPolicy.TabFocus
+        row.setFocus()
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Space):
+            clipboard.clear()
+            QTest.keyClick(row, key)
+            keyboard_payload = clipboard.text()
+        clipboard.clear()
+        row.mousePressEvent(press(row))
+        assert clipboard.text() == keyboard_payload
+    clipboard.clear()
+    window.elapsed_text.setFocus()
+    QTest.keyClick(window.elapsed_text, Qt.Key.Key_A)
+    assert clipboard.text() == ""
+
+
+def test_a_keyboard_copy_flashes_on_its_own_row(window, monkeypatch):
+    """A keyboard activation has no cursor truth to ride: its flash anchors to
+    the row the copy was launched from, like the distance tool's lines."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    from ui.widgets.tooltip import CustomTooltip
+
+    _convert_jalali(window, jdatetime.date.today() + datetime.timedelta(days=400))
+    window.show()
+    seen = []
+    monkeypatch.setattr(CustomTooltip.instance(), "flash_copied",
+                        lambda at, *a, **k: seen.append(at))
+    row = window.gregorian_date_value_1
+    row.setFocus()
+    QTest.keyClick(row, Qt.Key.Key_Space)
+    assert seen == [row.mapToGlobal(row.rect().center())]
+
+
 def test_elapsed_line_copies_the_span_in_latin_digits(window):
     """The elapsed row is a copy row like the date values, and the clipboard
     gets the SPAN alone - no «فاصله زمانی:» caption, no «مانده/گذشته» - in
     Latin digits, the form the distance window's breakdown row shows."""
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
+    from tests.qt_mousing import press
     from utils.date_utils import format_distance_units, from_persian_digits
 
     target = jdatetime.date.today() + datetime.timedelta(days=400)
     _convert_jalali(window, target)
     distance = describe_date_distance(target, today=jdatetime.date.today())
     QApplication.clipboard().clear()
-    window._copy_to_clipboard(window.elapsed_text)
+    window.elapsed_text.mousePressEvent(press(window.elapsed_text))
     pasted = QApplication.clipboard().text()
     assert pasted == from_persian_digits(format_distance_units(distance))
     assert "مانده" not in pasted and "گذشته" not in pasted
