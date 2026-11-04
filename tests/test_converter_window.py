@@ -360,6 +360,20 @@ def test_convert_button_state_recomputes_on_mode_switch(window):
     assert window.convert_button.isEnabled()
 
 
+def test_flip_rejudges_the_button_when_the_refill_text_is_unchanged(window):
+    """A refill that writes the year the field already held emits no signal:
+    the Jalali-out-of-range string that is Gregorian today's year must not
+    leave the button disabled over input that just became valid."""
+    stale_year = str(datetime.date.today().year)
+    window.calendar_switch.set_calendar(CALENDAR_JALALI)
+    window.year_input.setText(stale_year)
+    assert not window.convert_button.isEnabled()
+
+    window.calendar_switch.set_calendar(CALENDAR_GREGORIAN)
+    assert window.year_input.text() == stale_year
+    assert window.convert_button.isEnabled()
+
+
 def test_year_bounds_actually_differ_per_mode(window):
     """The mode-dependence the button relies on: the two calendars have
     different supported ranges, so a year can pass one and fail the other."""
