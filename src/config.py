@@ -126,6 +126,11 @@ class Config:
     _theme_map = dict(THEMES)
     current_palette = DARK_PALETTE  # Default to dark
 
+    # The plain day's glyph colors, named by the ground they must read on:
+    # DARK_COLOR is the white for a dark taskbar strip, LIGHT_COLOR the black
+    # for a light one. Which ground holds is the taskbar verdict
+    # (WindowsThemeBackend.taskbar_uses_light through app_controller), not the
+    # app palette's.
     TRAY_ICON_DARK_COLOR = "#FFFFFF"
     TRAY_ICON_LIGHT_COLOR = "#000000"
 
