@@ -381,11 +381,17 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         Applies while the stored preference is "system" (or absent) - an
         explicit "light"/"dark" choice always wins, and the tray menu's theme
-        row is what sets either.
+        row is what sets either. The tray icon repaints before both gates
+        regardless: its colors are judged against the taskbar strip
+        (``taskbar_uses_light``, the shell mode), which arrives on the same
+        broadcast but can shift while the app theme - the only thing the
+        gates argue about - does not, so a pinned choice or an unchanged
+        verdict is not evidence the strip kept its side.
         """
-        if self._theme_choice() != APP_CONFIG.Theme.SYSTEM:
-            return
         if not sys.platform == 'win32':
+            return
+        self.update_tray_icon(force=True)
+        if self._theme_choice() != APP_CONFIG.Theme.SYSTEM:
             return
         detected = self._get_windows_theme()
         if detected == self.current_theme:
