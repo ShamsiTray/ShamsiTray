@@ -3,7 +3,8 @@ calendar's delete card and the event manager's delete dialog."""
 import jdatetime
 import pytest
 
-from ui.widgets.event_input import delete_confirmation_message, recurrence_label
+from ui.widgets.event_input import (DateSelectorRow, delete_confirmation_message,
+                                    recurrence_label)
 from utils.event_io import RECURRENCE_MODES, RECURRENCE_NONE, make_event_key
 
 ONE_TIME_KEY = "1404-05-10"
@@ -59,3 +60,16 @@ def test_no_keys_still_asks_the_plain_question():
     """The empty set is the store-moved-under-the-card edge: the ask stays a
     valid question instead of rendering a count of zero or an empty list."""
     assert delete_confirmation_message([]) == "این رویداد حذف شود؟"
+
+
+def test_set_date_announces_one_complete_selection_per_call(qtbot):
+    """set_date is one announcement, and it is whole: each call lands as a
+    single `changed` whose emission already reads the complete anchor, not
+    the year alone."""
+    row = DateSelectorRow()
+    qtbot.addWidget(row)
+    seen = []
+    row.changed.connect(lambda: seen.append(row.picked()))
+    row.set_date(jdatetime.date(1405, 8, 1))
+    row.set_date(jdatetime.date(1405, 9, 20))
+    assert seen == [jdatetime.date(1405, 8, 1), jdatetime.date(1405, 9, 20)]

@@ -149,6 +149,9 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
         row_layout.addWidget(self.month_combo, 1)
         row_layout.addWidget(self.day_combo, 1)
 
+        # Only set_date turns the announcement guard off: its field writes
+        # are setup, not selections (see set_date).
+        self._announce = True
         # Maintenance before announcement: an emit always finds the day combo
         # refilled for the new anchor, so a listener never reads a stale day.
         self.year_input.textChanged.connect(self._on_anchor_changed)
@@ -159,19 +162,32 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
         self.day_combo.currentIndexChanged.connect(self._emit_changed)
 
     def _emit_changed(self, *_args):
-        self.changed.emit()
+        if self._announce:
+            self.changed.emit()
 
     def set_date(self, anchor: jdatetime.date) -> None:
-        """Show ``anchor``: the field gets its year, the combos its month/day."""
-        self.year_input.setText(to_persian_digits(anchor.year))
-        self.month_combo.blockSignals(True)
-        self.month_combo.clear()
-        for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
-            self.month_combo.addItem(name, i)
-        center_combo_items(self.month_combo)
-        self.month_combo.setCurrentIndex(anchor.month - 1)
-        self.month_combo.blockSignals(False)
-        self._repopulate_days(anchor.year, anchor.month, anchor.day)
+        """Show ``anchor`` as one completed selection.
+
+        The intermediate field writes stay silent: the year lands before the
+        month and day catch up, so a mid-write emission hands a listener an
+        incomplete date and the later writes never announce the finished
+        one. ``changed`` fires exactly once here, after the row holds the
+        whole anchor.
+        """
+        self._announce = False
+        try:
+            self.year_input.setText(to_persian_digits(anchor.year))
+            self.month_combo.blockSignals(True)
+            self.month_combo.clear()
+            for i, name in enumerate(APP_CONFIG.PERSIAN_MONTHS, start=1):
+                self.month_combo.addItem(name, i)
+            center_combo_items(self.month_combo)
+            self.month_combo.setCurrentIndex(anchor.month - 1)
+            self.month_combo.blockSignals(False)
+            self._repopulate_days(anchor.year, anchor.month, anchor.day)
+        finally:
+            self._announce = True
+        self.changed.emit()
 
     def _repopulate_days(self, year: int, month: int, keep_day: int):
         """Fill the day combo with valid days for the year/month, clamping ``keep_day``."""
