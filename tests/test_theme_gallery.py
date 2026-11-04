@@ -1772,12 +1772,12 @@ def test_filter_hover_never_touches_the_highlight(gallery):
     selected = control.highlight_rect()
     neighbour = control._segment_rect(FILTER_LIGHT)
     assert control.current_filter() == FILTER_ALL
-    inset = neighbour.adjusted(control.HOVER_INSET, control.HOVER_INSET,
-                               -control.HOVER_INSET, -control.HOVER_INSET)
+    inset = neighbour.adjusted(control.HOVER_INSET_X, control.HOVER_INSET_Y,
+                               -control.HOVER_INSET_X, -control.HOVER_INSET_Y)
     # Horizontal gap between the hover fill and the highlight.
     gap = (selected.left() - inset.right()) if selected.left() >= inset.right() \
         else (inset.left() - selected.right())
-    assert gap >= control.HOVER_INSET
+    assert gap >= control.HOVER_INSET_X
 
 
 def test_gallery_scrollbar_thumb_opens_level_with_the_first_card(gallery):

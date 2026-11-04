@@ -474,7 +474,8 @@ class SegmentedFilter(QWidget):
     TRACK_RADIUS = 14.0
     FONT_PX = 14
     STAR_RADIUS = 8.0
-    HOVER_INSET = 3         # gap between a hover fill and the highlight
+    HOVER_INSET_X = 3       # air a hover fill leaves beside the highlight
+    HOVER_INSET_Y = 1       # full-height fill, a hair shy of the segment box
     SLIDE_MS = 190
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -667,12 +668,13 @@ class SegmentedFilter(QWidget):
 
         inner_radius = self.TRACK_RADIUS - self.INSET
 
-        # A hover fill on an idle segment under the cursor. It is inset a
-        # further HOVER_INSET so it never touches the highlight beside it (two
-        # flush blobs read as one shape: the hover looked "inside" the
-        # selection), and it fades out as the highlight slides over it.
-        # HOVER_BG is an rgba(...) string QColor cannot parse (it would
-        # resolve to opaque black); _qcolor folds the notations.
+        # A hover fill on an idle segment under the cursor, near the segment's
+        # full height: only HOVER_INSET_X of air each side, so it never touches
+        # the highlight beside it (two flush blobs read as one shape: the hover
+        # once looked "inside" the selection), and it fades out as the
+        # highlight slides over it. HOVER_BG is an rgba(...) string QColor
+        # cannot parse (it would resolve to opaque black); _qcolor folds the
+        # notations.
         if self._hovered is not None and self._hovered != self._mode:
             hovered_rect = self._segment_rect(self._hovered)
             overlap = hovered_rect.intersected(self._highlight)
@@ -682,11 +684,11 @@ class SegmentedFilter(QWidget):
             tint.setAlphaF(tint.alphaF() * (1.0 - covered))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(tint)
-            hover_radius = max(2.0, inner_radius - self.HOVER_INSET)
-            painter.drawRoundedRect(
-                hovered_rect.adjusted(self.HOVER_INSET, self.HOVER_INSET,
-                                      -self.HOVER_INSET, -self.HOVER_INSET),
-                hover_radius, hover_radius)
+            hover_radius = max(2.0, inner_radius - self.HOVER_INSET_Y)
+            hover_rect = hovered_rect.adjusted(
+                self.HOVER_INSET_X, self.HOVER_INSET_Y,
+                -self.HOVER_INSET_X, -self.HOVER_INSET_Y)
+            painter.drawRoundedRect(hover_rect, hover_radius, hover_radius)
 
         # The sliding highlight.
         painter.setPen(Qt.PenStyle.NoPen)
