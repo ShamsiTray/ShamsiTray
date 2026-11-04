@@ -191,30 +191,37 @@ def test_on_accent_picks_white_for_deep_accents():
 
 
 def test_on_accent_keeps_white_for_mid_tone_accents():
-    """White stays while it clears the large-text floor, even when the
-    near-black candidate compares a hair "better": the mid-tone accents keep
-    their brand-canonical white label instead of flipping to a muddy
-    near-black (the misstep this retune exists to end)."""
+    """White stays while it clears the floor, even when the near-black
+    candidate compares better: the mid-tone accents keep their
+    brand-canonical white label instead of flipping to a muddy near-black
+    (the misstep this retune exists to end). The 2.4-band accents carry
+    white only because the floor is the tuned 2.4, not the WCAG 3.0 - that
+    band is what the floor dial exists for."""
     assert on_accent_text_color("#5e81ac") == "#ffffff"  # Nord steel blue (4.0:1)
     assert on_accent_text_color("#268bd2") == "#ffffff"  # Solarized Dark blue (3.7:1)
     assert on_accent_text_color("#2e7de9") == "#ffffff"  # Tokyo Night Day blue (4.0:1)
     assert on_accent_text_color("#5f8787") == "#ffffff"  # PaperColor Dark teal (4.0:1)
+    assert on_accent_text_color("#bd93f9") == "#ffffff"  # Dracula purple (2.4:1)
+    assert on_accent_text_color("#7aa2f7") == "#ffffff"  # Tokyo Night Storm (2.5:1)
 
 
 def test_on_accent_picks_near_black_for_light_accents():
     assert on_accent_text_color("#e6e6e6") == "#16161a"  # Graphite
     assert on_accent_text_color("#ffdd00") == "#16161a"  # High Contrast Dark
     assert on_accent_text_color("#5de4c7") == "#16161a"  # Poimandres mint
-    assert on_accent_text_color("#1fb0a8") == "#16161a"  # Isfahan Ivory turquoise (2.7:1)
+    assert on_accent_text_color("#cba6f7") == "#16161a"  # Catppuccin Mocha lilac (2.0:1)
 
 
 def test_every_accent_carries_its_chosen_label_at_aa():
-    """The point of the on-accent rule: the chosen label clears the WCAG
-    large-text floor (3:1 - these are bold UI labels) on every accent, and
-    the polarity is decided by that floor, not by a bare better-of-two:
-    white while it clears the floor, near-black only for the accents white
-    genuinely fails on, better-of-two as the last resort when neither does.
+    """The point of the on-accent rule: the chosen label clears the tuned
+    on-accent floor (2.4 - big bold captions; see ``_ON_ACCENT_MIN_RATIO``)
+    on every accent, and the polarity is decided by that floor, not by a
+    bare better-of-two: white while it clears the floor, near-black only for
+    the accents white genuinely fails on, better-of-two as the last resort
+    when neither does (no registry accent lands there today).
     """
+    from utils.ui_helpers import _ON_ACCENT_MIN_RATIO
+
     palettes = [APP_CONFIG.DARK_PALETTE]
     palettes.extend(APP_CONFIG.EXTRA_THEMES.values())
     for index, palette in enumerate(palettes):
@@ -222,15 +229,16 @@ def test_every_accent_carries_its_chosen_label_at_aa():
         label = on_accent_text_color(accent)
         white = contrast_ratio(QColor("#ffffff"), QColor(accent))
         dark = contrast_ratio(QColor("#16161a"), QColor(accent))
-        if white >= 3.0:
+        if white >= _ON_ACCENT_MIN_RATIO:
             expected = "#ffffff"
-        elif dark >= 3.0:
+        elif dark >= _ON_ACCENT_MIN_RATIO:
             expected = "#16161a"
         else:
             expected = "#ffffff" if white >= dark else "#16161a"
         assert label == expected, f"palette #{index}: unexpected label for {accent}"
         chosen = white if label == "#ffffff" else dark
-        assert chosen >= 3.0, f"palette #{index} ({accent}): {label} only {chosen:.2f}:1"
+        assert chosen >= _ON_ACCENT_MIN_RATIO, (
+            f"palette #{index} ({accent}): {label} only {chosen:.2f}:1")
 
 
 # --- shared gallery building blocks ----------------------------------------------

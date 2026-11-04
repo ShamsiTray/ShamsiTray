@@ -923,10 +923,14 @@ def legible_on(color_hex: str, background_hex: str, min_ratio: float = 3.0) -> s
 # Pure black reads harsh next to the palettes' soft text colors.
 ON_ACCENT_DARK_CANDIDATE = "#16161a"
 
-# The contrast floor an on-accent label must clear (WCAG large-text AA; the
-# labels are bold UI text). White keeps the accent while it clears this, so
-# mid-tone accents never flip to near-black on a hair-thin ratio comparison.
-_ON_ACCENT_MIN_RATIO = 3.0
+# The contrast floor an on-accent label must clear. Deliberately under the
+# WCAG large-text 3:1: the labels are big bold captions, and 3.0 hands every
+# pastel accent the gallery carries to the near-black. 2.4 keeps the
+# brand-canonical white on ~50 of the 73 accents (the lowest carrier is
+# Dracula's purple at 2.41) while the true highlighter yellows and limes
+# still fall to the near-black. A separate dial from legible_on()'s 3:1,
+# which serves small UI ink on washed grounds.
+_ON_ACCENT_MIN_RATIO = 2.4
 
 _ON_ACCENT_CACHE: dict = {}
 
@@ -935,19 +939,19 @@ def on_accent_text_color(accent_hex: str) -> str:
     """White or near-black - whichever reads on ``accent_hex``.
 
     White is the label accents have always carried in this app, so it stays
-    while it still clears the large-text floor: mid-tone accents (Nord's
-    steel blue, Solarized Dark's blue, Tokyo Night Day's blue) keep their
-    brand-canonical white label instead of flipping to a muddy near-black the
-    moment a bare ratio comparison calls black "better" by a hair - the flip
-    that made those themes' buttons look wrong. Only when white genuinely
-    fails - the light accents the gallery packs carry (Graphite's near-white,
-    High Contrast Dark's yellow, Dracula's pastels, Poimandres' mint) - does
-    the near-black candidate step in, and if neither clears the floor the
-    better of the two limps home. Every surface that paints text ON the
-    accent - accent buttons, the today pill, combo/line-edit selections, the
-    calendar switch's checked half, the holiday viewer's next-holiday tag,
-    the gallery's action dock - decides through here, so one contrast rule
-    covers all of them.
+    while it clears the 2.4 floor: mid-tone accents (Nord's steel blue,
+    Solarized Dark's blue, Tokyo Night Day's blue) keep their brand-canonical
+    white label instead of flipping to a muddy near-black the moment a bare
+    ratio comparison calls black "better" - the flip that made those themes'
+    buttons look wrong. Only when white genuinely fails - the highlighter
+    accents the gallery packs carry (Graphite's near-white, High Contrast
+    Dark's yellow, Monokai's green, Poimandres' mint) - does the near-black
+    candidate step in, and if neither clears the floor the better of the two
+    limps home (no registry accent lands there today). Every surface that
+    paints text ON the accent - accent buttons, the today pill,
+    combo/line-edit selections, the calendar switch's checked half, the
+    holiday viewer's next-holiday tag, the gallery's action dock - decides
+    through here, so one contrast rule covers all of them.
     """
     cached = _ON_ACCENT_CACHE.get(accent_hex)
     if cached is None:

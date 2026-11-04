@@ -18,7 +18,10 @@ could not carry readable text ON them were re-derived: a deepened probe of the
 official accent (the original noted per palette), or - for the coolors and
 user-specified sets - the accent kept as-is with its supported on-accent text
 polarity recorded. The polarity for text ON an accent is decided by
-``utils.ui_helpers.on_accent_text_color``.
+``utils.ui_helpers.on_accent_text_color`` against its tuned 2.4:1 floor -
+white keeps the accent down to that line (big bold captions, deliberately
+under the WCAG large-text 3:1) and the near-black ``#16161a`` takes only the
+highlighter yellow/lime/mint accents white cannot carry.
 
 The calendar's selected-day fill is the theme's own TEXT color at a whisper
 (0.20 on dark themes, 0.14 on light; hover +0.10) - the same neutral
@@ -121,7 +124,7 @@ TWITCH_PALETTE = {  # dark; Twitch (brand purple + dark theme surfaces); text on
 }
 
 
-NORD_PALETTE = {  # white on accent 4.0:1
+NORD_PALETTE = {  # text on accent: white (4.0:1)
     "TEXT_COLOR": "#eceff4",
     "BACKGROUND_COLOR": "#2e3440",
     "INPUT_BG_COLOR": "#3b4252",
@@ -169,7 +172,7 @@ GRUVBOX_DARK_PALETTE = {  # text on accent: white (3.9:1)
 }
 
 
-GITHUB_DARK_PALETTE = {  # GitHub Dark Default; white on accent 4.6:1
+GITHUB_DARK_PALETTE = {  # GitHub Dark Default; text on accent: white (4.6:1)
     "TEXT_COLOR": "#e6edf3",
     "BACKGROUND_COLOR": "#0d1117",
     "INPUT_BG_COLOR": "#161b22",
@@ -193,7 +196,7 @@ GITHUB_DARK_PALETTE = {  # GitHub Dark Default; white on accent 4.6:1
 }
 
 
-TOKYO_NIGHT_STORM_PALETTE = {  # dark; Tokyo Night Storm (official folke palette); text on accent: dark (7.2:1)
+TOKYO_NIGHT_STORM_PALETTE = {  # dark; Tokyo Night Storm (official folke palette); text on accent: white (2.5:1)
     "TEXT_COLOR": "#c0caf5",
     "BACKGROUND_COLOR": "#24283b",
     "INPUT_BG_COLOR": "#292e42",
@@ -433,7 +436,7 @@ FLEXOKI_DARK_PALETTE = {  # dark; Flexoki (official palette); text on accent: wh
 }
 
 
-AYU_MIRAGE_PALETTE = {  # Ayu Mirage; white on accent 4.7:1; accent deepened from official #ffcc66
+AYU_MIRAGE_PALETTE = {  # Ayu Mirage; text on accent: white (4.7:1); accent deepened from official #ffcc66
     "TEXT_COLOR": "#cccac2",
     "BACKGROUND_COLOR": "#242936",
     "INPUT_BG_COLOR": "#2d3343",
@@ -529,7 +532,7 @@ ROSE_PINE_MOON_PALETTE = {  # dark; Rose Pine Moon (official); text on accent: d
 }
 
 
-KANAGAWA_WAVE_PALETTE = {  # dark; Kanagawa Wave (official palette); text on accent: dark (6.6:1)
+KANAGAWA_WAVE_PALETTE = {  # dark; Kanagawa Wave (official palette); text on accent: white (2.8:1)
     "TEXT_COLOR": "#dcd7ba",
     "BACKGROUND_COLOR": "#1f1f28",
     "INPUT_BG_COLOR": "#2a2a37",
@@ -697,7 +700,7 @@ MELANGE_PALETTE = {  # dark; Melange (official savq palette); text on accent: wh
 }
 
 
-PEACOCK_PALETTE = {  # dark; Peacock (Dayle Rees official); text on accent: dark (6.1:1)
+PEACOCK_PALETTE = {  # dark; Peacock (Dayle Rees official); text on accent: white (3.0:1)
     "TEXT_COLOR": "#ede0ce",
     "BACKGROUND_COLOR": "#2b2a27",
     "INPUT_BG_COLOR": "#3b3a32",
@@ -889,7 +892,7 @@ ISFAHAN_MIDNIGHT_PALETTE = {  # dark; custom: midnight blue + saffron gold, turq
 }
 
 
-MIDNIGHT_VIOLET_PALETTE = {  # dark; image: Midnight Violet + Dry Sage; white on accent 4.5:1
+MIDNIGHT_VIOLET_PALETTE = {  # dark; image: Midnight Violet + Dry Sage; text on accent: white (4.5:1)
     "TEXT_COLOR": "#d6d4c4",
     "BACKGROUND_COLOR": "#261732",
     "INPUT_BG_COLOR": "#34263e",
@@ -913,7 +916,7 @@ MIDNIGHT_VIOLET_PALETTE = {  # dark; image: Midnight Violet + Dry Sage; white on
 }
 
 
-FIG_AND_LEAF_PALETTE = {  # dark; image: sugared figs / mocha latte / park leaf crunch / glowing river water; white on accent 4.6:1
+FIG_AND_LEAF_PALETTE = {  # dark; image: sugared figs / mocha latte / park leaf crunch / glowing river water; text on accent: white (4.6:1)
     "TEXT_COLOR": "#efdfdb",
     "BACKGROUND_COLOR": "#303225",
     "INPUT_BG_COLOR": "#3f4034",
@@ -937,7 +940,7 @@ FIG_AND_LEAF_PALETTE = {  # dark; image: sugared figs / mocha latte / park leaf 
 }
 
 
-JAVA_AND_CERULEAN_PALETTE = {  # dark; image: Transparent Yellow / Sceptre Red / Cerulean / Potting Soil / Java; white on accent 4.6:1
+JAVA_AND_CERULEAN_PALETTE = {  # dark; image: Transparent Yellow / Sceptre Red / Cerulean / Potting Soil / Java; text on accent: white (4.6:1)
     "TEXT_COLOR": "#f5efc6",
     "BACKGROUND_COLOR": "#231815",
     "INPUT_BG_COLOR": "#35221d",
@@ -961,7 +964,7 @@ JAVA_AND_CERULEAN_PALETTE = {  # dark; image: Transparent Yellow / Sceptre Red /
 }
 
 
-COCOA_AND_LAVENDER_PALETTE = {  # dark; image: Dark Cocoa + Lavender Mist; white on accent 4.6:1
+COCOA_AND_LAVENDER_PALETTE = {  # dark; image: Dark Cocoa + Lavender Mist; text on accent: white (4.6:1)
     "TEXT_COLOR": "#d8c7de",
     "BACKGROUND_COLOR": "#352928",
     "INPUT_BG_COLOR": "#423637",
@@ -985,7 +988,7 @@ COCOA_AND_LAVENDER_PALETTE = {  # dark; image: Dark Cocoa + Lavender Mist; white
 }
 
 
-MERLOT_AND_CASHMERE_PALETTE = {  # dark; image: Merlot + Cashmere Blue; white on accent 4.6:1
+MERLOT_AND_CASHMERE_PALETTE = {  # dark; image: Merlot + Cashmere Blue; text on accent: white (4.6:1)
     "TEXT_COLOR": "#d6e0e9",
     "BACKGROUND_COLOR": "#51121a",
     "INPUT_BG_COLOR": "#5c222b",
@@ -1130,7 +1133,7 @@ FAIRYFLOSS_PALETTE = {  # dark; Fairyfloss (official sailorhg palette); text on 
 
 
 # ===== LIGHT =====
-CATPPUCCIN_LATTE_PALETTE = {  # white on accent 5.4:1
+CATPPUCCIN_LATTE_PALETTE = {  # text on accent: white (5.4:1)
     "TEXT_COLOR": "#4c4f69",
     "BACKGROUND_COLOR": "#eff1f5",
     "INPUT_BG_COLOR": "#ffffff",
@@ -1178,7 +1181,7 @@ SOLARIZED_LIGHT_PALETTE = {  # text on accent: white (3.7:1)
 }
 
 
-GITHUB_LIGHT_PALETTE = {  # GitHub Light Default; white on accent 5.2:1
+GITHUB_LIGHT_PALETTE = {  # GitHub Light Default; text on accent: white (5.2:1)
     "TEXT_COLOR": "#1f2328",
     "BACKGROUND_COLOR": "#f6f8fa",
     "INPUT_BG_COLOR": "#ffffff",
@@ -1202,7 +1205,7 @@ GITHUB_LIGHT_PALETTE = {  # GitHub Light Default; white on accent 5.2:1
 }
 
 
-NORD_LIGHT_PALETTE = {  # white on accent 5.9:1
+NORD_LIGHT_PALETTE = {  # text on accent: white (5.9:1)
     "TEXT_COLOR": "#2e3440",
     "BACKGROUND_COLOR": "#eceff4",
     "INPUT_BG_COLOR": "#ffffff",
@@ -1226,7 +1229,7 @@ NORD_LIGHT_PALETTE = {  # white on accent 5.9:1
 }
 
 
-GRUVBOX_LIGHT_PALETTE = {  # white on accent 6.1:1
+GRUVBOX_LIGHT_PALETTE = {  # text on accent: white (6.1:1)
     "TEXT_COLOR": "#3c3836",
     "BACKGROUND_COLOR": "#fbf1c7",
     "INPUT_BG_COLOR": "#fdf8dc",
@@ -1250,7 +1253,7 @@ GRUVBOX_LIGHT_PALETTE = {  # white on accent 6.1:1
 }
 
 
-ROSE_PINE_DAWN_PALETTE = {  # white on accent 6.1:1
+ROSE_PINE_DAWN_PALETTE = {  # text on accent: white (6.1:1)
     "TEXT_COLOR": "#575279",
     "BACKGROUND_COLOR": "#faf4ed",
     "INPUT_BG_COLOR": "#fffaf3",
@@ -1274,7 +1277,7 @@ ROSE_PINE_DAWN_PALETTE = {  # white on accent 6.1:1
 }
 
 
-AYU_LIGHT_PALETTE = {  # Ayu Light; white on accent 4.5:1; accent deepened from official #f29718
+AYU_LIGHT_PALETTE = {  # Ayu Light; text on accent: white (4.5:1); accent deepened from official #f29718
     "TEXT_COLOR": "#5c6166",
     "BACKGROUND_COLOR": "#fcfcfc",
     "INPUT_BG_COLOR": "#fcfcfc",
@@ -1298,7 +1301,7 @@ AYU_LIGHT_PALETTE = {  # Ayu Light; white on accent 4.5:1; accent deepened from 
 }
 
 
-LIGHT_OWL_PALETTE = {  # Night Owl Light (Light Owl); white on accent 4.6:1; accent deepened from official #2aa298
+LIGHT_OWL_PALETTE = {  # Night Owl Light (Light Owl); text on accent: white (4.6:1); accent deepened from official #2aa298
     "TEXT_COLOR": "#403f53",
     "BACKGROUND_COLOR": "#fbfbfb",
     "INPUT_BG_COLOR": "#ffffff",
@@ -1322,7 +1325,7 @@ LIGHT_OWL_PALETTE = {  # Night Owl Light (Light Owl); white on accent 4.6:1; acc
 }
 
 
-VITESSE_LIGHT_PALETTE = {  # Vitesse Light; white on accent 6.5:1
+VITESSE_LIGHT_PALETTE = {  # Vitesse Light; text on accent: white (6.5:1)
     "TEXT_COLOR": "#393a34",
     "BACKGROUND_COLOR": "#f7f7f7",
     "INPUT_BG_COLOR": "#ffffff",
@@ -1346,7 +1349,7 @@ VITESSE_LIGHT_PALETTE = {  # Vitesse Light; white on accent 6.5:1
 }
 
 
-ALUCARD_PALETTE = {  # light; Alucard Classic (official Dracula light), UI surfaces from the Dracula spec; white on accent 6.2:1
+ALUCARD_PALETTE = {  # light; Alucard Classic (official Dracula light), UI surfaces from the Dracula spec; text on accent: white (6.2:1)
     "TEXT_COLOR": "#1f1f1f",
     "BACKGROUND_COLOR": "#ece9df",
     "INPUT_BG_COLOR": "#fffbeb",
@@ -1370,7 +1373,7 @@ ALUCARD_PALETTE = {  # light; Alucard Classic (official Dracula light), UI surfa
 }
 
 
-KANAGAWA_LOTUS_PALETTE = {  # light; Kanagawa Lotus (official palette); white on accent 5.5:1
+KANAGAWA_LOTUS_PALETTE = {  # light; Kanagawa Lotus (official palette); text on accent: white (5.5:1)
     "TEXT_COLOR": "#545464",
     "BACKGROUND_COLOR": "#f2ecbc",
     "INPUT_BG_COLOR": "#f9f6de",
@@ -1394,7 +1397,7 @@ KANAGAWA_LOTUS_PALETTE = {  # light; Kanagawa Lotus (official palette); white on
 }
 
 
-EVERFOREST_LIGHT_PALETTE = {  # light; Everforest Light, medium contrast (official); text on accent: dark (6.2:1)
+EVERFOREST_LIGHT_PALETTE = {  # light; Everforest Light, medium contrast (official); text on accent: white (2.9:1)
     "TEXT_COLOR": "#5c6a72",
     "BACKGROUND_COLOR": "#fdf6e3",
     "INPUT_BG_COLOR": "#fffbef",
@@ -1562,7 +1565,7 @@ SAKURA_PALETTE = {  # light; custom: blush + deep rose; text on accent: white (5
 }
 
 
-RED_PLUM_PALETTE = {  # light; image: Pale Banana + Red Plum; white on accent 9.2:1
+RED_PLUM_PALETTE = {  # light; image: Pale Banana + Red Plum; text on accent: white (9.2:1)
     "TEXT_COLOR": "#321119",
     "BACKGROUND_COLOR": "#fef2d2",
     "INPUT_BG_COLOR": "#fffaef",
@@ -1586,7 +1589,7 @@ RED_PLUM_PALETTE = {  # light; image: Pale Banana + Red Plum; white on accent 9.
 }
 
 
-FIG_AND_SAGE_PALETTE = {  # light; image: #4b3240 + #adb886; white on accent 4.5:1
+FIG_AND_SAGE_PALETTE = {  # light; image: #4b3240 + #adb886; text on accent: white (4.5:1)
     "TEXT_COLOR": "#3a2530",
     "BACKGROUND_COLOR": "#edefe4",
     "INPUT_BG_COLOR": "#f9f9f6",
@@ -1610,7 +1613,7 @@ FIG_AND_SAGE_PALETTE = {  # light; image: #4b3240 + #adb886; white on accent 4.5
 }
 
 
-RUST_AND_BEIGE_PALETTE = {  # light; image: beige + rust; white on accent 5.9:1
+RUST_AND_BEIGE_PALETTE = {  # light; image: beige + rust; text on accent: white (5.9:1)
     "TEXT_COLOR": "#3a1d10",
     "BACKGROUND_COLOR": "#f4eede",
     "INPUT_BG_COLOR": "#fbf9f3",
@@ -1634,7 +1637,7 @@ RUST_AND_BEIGE_PALETTE = {  # light; image: beige + rust; white on accent 5.9:1
 }
 
 
-BURGUNDY_AND_BLUE_PALETTE = {  # light; image: Burgundy + Blue; white on accent 4.6:1
+BURGUNDY_AND_BLUE_PALETTE = {  # light; image: Burgundy + Blue; text on accent: white (4.6:1)
     "TEXT_COLOR": "#440a19",
     "BACKGROUND_COLOR": "#e5ebf0",
     "INPUT_BG_COLOR": "#f6f8fa",
@@ -1658,7 +1661,7 @@ BURGUNDY_AND_BLUE_PALETTE = {  # light; image: Burgundy + Blue; white on accent 
 }
 
 
-ISFAHAN_IVORY_PALETTE = {  # light; custom: ivory + firuzeh turquoise, lapis weekdays; text on accent: dark (6.7:1)
+ISFAHAN_IVORY_PALETTE = {  # light; custom: ivory + firuzeh turquoise, lapis weekdays; text on accent: white (2.7:1)
     "TEXT_COLOR": "#1b2a41",
     "BACKGROUND_COLOR": "#f7f1e1",
     "INPUT_BG_COLOR": "#fffcf3",
