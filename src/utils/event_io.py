@@ -799,9 +799,9 @@ class ImportPlan(NamedTuple):
     ``internal_replaced``  import-internal same-date duplicates folded into
                            ``applied`` (later entry won)
     ``unchanged``          entries skipped as exact copies of what the store
-                           already holds: the fold and the confirmation never
-                           see them, so re-importing an already reflected file
-                           is a 0-work plan, not a round of self-replacements
+                           already holds: they never reach the confirmation,
+                           so re-importing an already reflected file is a
+                           0-work plan, not a round of self-replacements
     """
     applied: Dict[str, dict]
     replaced_existing: Dict[str, dict]
@@ -820,16 +820,15 @@ def build_import_plan(existing: Dict[str, dict],
     normalizer produced both sides) reaches none of that: it lands in
     ``unchanged`` and the rest of the file applies as if it were absent, so
     the same text under a DIFFERENT key shape (e.g. a yearly file key over a
-    one-time store key) stays a confirmed replace.
+    one-time store key) stays a confirmed replace. The fold covers the whole
+    file first, so the skips take part in it: an identical entry folds the
+    same-date strays that arrived before it, keeping the user's own copy.
     """
+    applied, internal_replaced = dedupe_events_by_visible_date(imported)
     unchanged: Dict[str, dict] = {}
-    remaining: Dict[str, dict] = {}
-    for key, entry in imported.items():
-        if existing.get(key) == entry:
-            unchanged[key] = entry
-        else:
-            remaining[key] = entry
-    applied, internal_replaced = dedupe_events_by_visible_date(remaining)
+    for key in list(applied):
+        if existing.get(key) == applied[key]:
+            unchanged[key] = applied.pop(key)
     replaced_existing: Dict[str, dict] = {}
     for new_key in applied:
         for existing_key, entry in existing.items():

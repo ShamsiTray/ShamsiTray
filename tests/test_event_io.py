@@ -438,8 +438,8 @@ def test_build_import_plan_no_collisions():
 
 def test_build_import_plan_skips_store_identical_entries():
     """Entries the store already holds exactly (same key, same normalized
-    entry) are no-op skips: they never enter the fold nor the replacement
-    set, and the rest of the file applies as if they were absent."""
+    entry) are no-op skips: they never reach the confirmation, and the rest
+    of the file applies around them."""
     existing = {
         "1405-08-01": _entry("kept exactly"),
         "1405-09-10": _entry("existing"),
@@ -454,6 +454,23 @@ def test_build_import_plan_skips_store_identical_entries():
     assert set(plan.applied) == {"1405-09-10", "1406-02-14"}
     assert set(plan.replaced_existing) == {"1405-09-10"}
     assert plan.internal_replaced == 0
+
+
+def test_build_import_plan_folds_around_a_later_store_identical_entry():
+    """The skip split runs after the fold, not before: a store-identical
+    entry that trails a same-date stray in the file folds the stray away,
+    so the plan keeps the user's copy instead of confirming its eviction
+    and re-placing it with the stray."""
+    existing = {"1405-08-01": _entry("copied note")}
+    imported = {
+        "0000-08-01": _entry("same-day stray", "yearly"),  # lands on 1405-08-01
+        "1405-08-01": _entry("copied note"),               # exact store copy, later
+    }
+    plan = event_io.build_import_plan(existing, imported)
+    assert plan.unchanged == {"1405-08-01": _entry("copied note")}
+    assert plan.applied == {}
+    assert plan.replaced_existing == {}
+    assert plan.internal_replaced == 1
 
 
 def test_build_import_plan_same_text_other_key_shape_still_replaces():
