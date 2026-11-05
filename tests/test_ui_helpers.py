@@ -18,8 +18,9 @@ from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
                               error_line_edit_stylesheet, fit_combo_width,
                               ghost_button_stylesheet, line_edit_stylesheet,
                               mix_colors, nudge_popup_inside_work_area,
-                              paint_rounded_card, rgba_string,
-                              scrollbar_stylesheet, set_popup_pixel_scroll,
+                              on_accent_text_color, paint_rounded_card,
+                              rgba_string, scrollbar_stylesheet,
+                              set_popup_pixel_scroll,
                               window_title_button_stylesheets)
 
 
@@ -349,6 +350,42 @@ def test_accent_button_stylesheet_states(palette):
     assert "QPushButton:disabled" in style
     assert "font-size: 16px" in style
     assert APP_CONFIG.FONT_FAMILY in style
+
+
+def _accent_button_hover_rule(palette, accent: str) -> tuple:
+    """The stylesheet's :hover line for ``accent`` over a real palette, and
+    the hover fill the recipe derives for it."""
+    base = QColor(accent)
+    hover = base.lighter(110)
+    style = accent_button_stylesheet(dict(palette, ACCENT_COLOR=accent))
+    line = next(rule for rule in style.split("}}")
+                if "QPushButton:hover" in rule)
+    return line + "}}", hover.name()
+
+
+def test_accent_hover_label_resolves_on_the_hover_fill(palette):
+    """A dark accent whose lighter hover fill can no longer carry the resting
+    white label does not keep it: the hover ground re-solves its label
+    through the same on-accent solver, so a midtone never drops under the
+    floor the moment the fill is hovered."""
+    # A mid gray is the flip band: white clears 2.4:1 on the resting fill,
+    # and lighter(110) pushes the fill just bright enough to lose it.
+    line, hover = _accent_button_hover_rule(palette, "#A0A0A0")
+    resting = on_accent_text_color("#A0A0A0")
+    assert resting == "#ffffff", "the premise: white holds at rest"
+    assert on_accent_text_color(hover) != resting, (
+        "the premise: the lighter hover fill loses white")
+    assert f"background-color: {hover}; color: {on_accent_text_color(hover)}; }}" in line
+
+
+def test_accent_hover_label_keeps_white_when_hover_still_carries_it(palette):
+    """A strong dark accent's hover fill still clears the floor for white, so
+    the label the resting solve chose (white) is exactly what hover keeps."""
+    accent = APP_CONFIG.DARK_PALETTE["ACCENT_COLOR"]
+    line, hover = _accent_button_hover_rule(palette, accent)
+    resting = on_accent_text_color(accent)
+    assert on_accent_text_color(hover) == resting
+    assert f"color: {resting}; }}" in line
 
 
 def test_ghost_button_stylesheet_outline_with_accent_hover(palette):
