@@ -1063,6 +1063,34 @@ def test_gallery_panel_renders_the_users_live_month_and_holidays(qtbot):
     assert APP_CONFIG.DARK_PALETTE["HOLIDAY_COLOR"].lower() in cells[0].styleSheet().lower()
 
 
+def test_shot_renderer_aims_its_render_at_the_popup_browsed_month(qtbot):
+    """The month provider aims the hidden grid at the LIVE popup's browsed
+    month at render time: the user browsed a past month in the tray popup, so
+    the preview shows that month instead of the hidden widget's own birth
+    month (the no-provider default)."""
+    import jdatetime
+
+    from ui.widgets.theme_shot import CalendarShotRenderer
+    from utils.date_utils import persian_month_name
+
+    today = jdatetime.date.today()
+    month = today.month - 3
+    year = today.year
+    while month < 1:
+        month += 12
+        year -= 1
+    browsed = jdatetime.date(year, month, min(today.day, 28))
+
+    renderer = CalendarShotRenderer(holidays={}, events={},
+                                    month_provider=lambda: browsed)
+    renderer.full_window_artwork(APP_CONFIG.Theme.DARK, APP_CONFIG.DARK_PALETTE)
+    qtbot.addWidget(renderer._widget)
+    widget = renderer._widget
+    assert (widget.display_date.year, widget.display_date.month) == (
+        browsed.year, browsed.month)
+    assert widget.month_label.text() == persian_month_name(browsed.month)
+
+
 def test_gallery_filter_narrows_the_grid(gallery):
     from ui.widgets.gallery_widgets import FILTER_DARK
 
