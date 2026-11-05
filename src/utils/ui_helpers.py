@@ -658,14 +658,22 @@ def accent_button_stylesheet(palette: dict, *, padding: str = "8px 18px",
     The label color is decided by ``on_accent_text_color`` - gallery themes
     with light accents (Graphite, yellows, mints) get near-black labels, and a
     light accent then darkens on hover instead of lightening, so the states
-    keep moving away from the resting fill in the legible direction.
-    ``radius`` lets a caller trace a larger corner curve (the gallery's action
-    dock buttons) without forking this whole recipe.
+    keep moving away from the resting fill in the legible direction. A dark
+    accent RE-solves its label against the hover fill: the lighter hover
+    ground can lose the white the resting one cleared. ``radius`` lets a
+    caller trace a larger corner curve (the gallery's action dock buttons)
+    without forking this whole recipe.
     """
     base = QColor(palette['ACCENT_COLOR'])
     text_color = on_accent_text_color(palette['ACCENT_COLOR'])
     light_accent = _luminance(base) >= 0.5
     hover_color = base.darker(108) if light_accent else base.lighter(110)
+    # The lighter hover ground a dark accent paints picks its own label
+    # through the same solver: white that cleared the 2.4:1 floor on the
+    # resting fill can fall under it there. Light accents darken on hover -
+    # their near-black label only gains contrast, so it stays.
+    hover_text = (text_color if light_accent
+                  else on_accent_text_color(hover_color.name()))
     pressed_color = base.darker(120)
     # One disabled recipe for both accent polarities: wash the fill toward the
     # background (darker(150) would turn a light accent olive) and fade the
@@ -676,7 +684,7 @@ def accent_button_stylesheet(palette: dict, *, padding: str = "8px 18px",
     font_rule = f" font-size: {font_size}px;" if font_size else ""
     return (
         f"QPushButton {{ background-color: {base.name()}; color: {text_color}; border: none; border-radius: {radius}px; padding: {padding};{font_rule} font-family: '{APP_CONFIG.FONT_FAMILY}'; font-weight: bold; }}"
-        f"QPushButton:hover {{ background-color: {hover_color.name()}; }}"
+        f"QPushButton:hover {{ background-color: {hover_color.name()}; color: {hover_text}; }}"
         f"QPushButton:pressed {{ background-color: {pressed_color.name()}; }}"
         f"QPushButton:disabled {{ background-color: {disabled_bg.name()}; color: {disabled_text}; }}")
 
