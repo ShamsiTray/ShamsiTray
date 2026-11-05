@@ -1527,6 +1527,18 @@ def test_close_menu_then_closes_and_defers(tray, qtbot, monkeypatch):
     assert marker == [1]
 
 
+def test_menu_deferral_dies_with_the_tray(tray, qtbot):
+    """A deferral must never open a dialog inside some later event loop: the
+    timer is the tray's child and the callback rides the tray, so once the
+    tray is disposed the parked callback stays parked - a static
+    QTimer.singleShot would have kept and fired it."""
+    marker = []
+    tray_menu_module.close_menu_then(tray, lambda: marker.append(1))
+    tray.deleteLater()
+    qtbot.wait(100)              # long past the 50ms deferral window
+    assert marker == []
+
+
 # --- always-on-top toggle -------------------------------------------------------------------
 
 def test_calendar_is_pinned_by_default(tray):
