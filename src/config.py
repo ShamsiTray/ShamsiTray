@@ -163,10 +163,11 @@ class Config:
     def palette_is_dark(cls, palette: dict | None = None) -> bool:
         """True when the palette's background is a dark surface.
 
-        Reads the given palette or the active one. The tray glyph polarity and
-        the gallery's dark/light grouping both key off this, so a gallery theme
-        like Graphite (dark ground) gets the white tray digit without anyone
-        hardcoding per-theme flags.
+        Reads the given palette or the active one. The gallery's dark/light
+        grouping keys off this - the catalog order and the picker's filter
+        both run on it. The tray digit's polarity does NOT: the ground it
+        prints on is the taskbar strip, judged by
+        WindowsThemeBackend.taskbar_uses_light (see TRAY_ICON_*_COLOR).
         """
         if palette is None:
             palette = cls.current_palette
