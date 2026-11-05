@@ -1284,6 +1284,25 @@ def test_picker_scrolls_one_card_row_per_wheel_notch(gallery):
                             Qt.ScrollPhase.NoScrollPhase, False)
         QApplication.sendEvent(window.grid.viewport(), event)
     assert bar.value() == 136, "sub-notch deltas accumulate into whole rows"
+    # Opposing sub-notch jitter cancels without a single step, and a lone
+    # negative half-notch waits for its second half (floor-divmod stepped on
+    # the first delta and parked a flipped remainder).
+    bar.setValue(0)
+    window.grid._wheel_remainder = 0
+    for delta in (-40, 40):
+        event = QWheelEvent(pos, pos, QPoint(0, 0), QPoint(0, delta),
+                            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                            Qt.ScrollPhase.NoScrollPhase, False)
+        QApplication.sendEvent(window.grid.viewport(), event)
+    assert bar.value() == 0
+    assert window.grid._wheel_remainder == 0
+    window.grid._wheel_remainder = 0
+    for delta in (-60, -60):
+        event = QWheelEvent(pos, pos, QPoint(0, 0), QPoint(0, delta),
+                            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                            Qt.ScrollPhase.NoScrollPhase, False)
+        QApplication.sendEvent(window.grid.viewport(), event)
+    assert bar.value() == 136, "a negative notch steps only when it is whole"
 
 
 def test_programmatic_selection_does_not_scroll_the_picker(gallery):
