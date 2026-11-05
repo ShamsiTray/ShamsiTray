@@ -420,6 +420,18 @@ class _PickerGrid(QListWidget):
                 self.favoriteToggleRequested.emit(key)
                 event.accept()
                 return
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            # The grid mirrors RTL and the stock grid walk keeps the model's
+            # own direction, which flips the pair against the reading order
+            # (Left walked away from the visually-left card). Left lands on
+            # the model's next card - the one to the reader's left - Right
+            # on the previous; bounds clamp. Up/Down stay stock.
+            row = self.currentRow()
+            step = 1 if event.key() == Qt.Key.Key_Left else -1
+            if 0 <= row + step < self.count():
+                self.setCurrentRow(row + step)
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     @contextmanager

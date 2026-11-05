@@ -1864,6 +1864,40 @@ def test_space_toggles_the_current_card_without_previewing(favorites_gallery):
     assert not window.is_favorite("dracula")
 
 
+def test_picker_arrows_walk_with_the_reading_direction(gallery):
+    """The stock grid walk keeps the model direction, which the RTL mirror
+    flips against the reading order: Left lands on the card visually LEFT of
+    the current one (the model's next card) and Right on the previous one,
+    with the bounds clamping instead of wrapping."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+
+    def press(key):
+        QApplication.sendEvent(grid, QKeyEvent(
+            QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier))
+
+    window, _calls = gallery
+    grid = window.grid
+    # The first row reads right to left: model order flows leftward.
+    rect0 = grid.visualItemRect(grid.item(0))
+    rect1 = grid.visualItemRect(grid.item(1))
+    rect2 = grid.visualItemRect(grid.item(2))
+    assert rect0.x() > rect1.x() > rect2.x()
+    grid.setCurrentRow(1)
+    press(Qt.Key.Key_Left)
+    assert grid.currentRow() == 2
+    assert grid.visualItemRect(grid.item(2)).x() < rect1.x()
+    press(Qt.Key.Key_Right)
+    assert grid.currentRow() == 1
+    # Bounds clamp; the walk never leaves the grid or wraps a card row.
+    grid.setCurrentRow(0)
+    press(Qt.Key.Key_Right)
+    assert grid.currentRow() == 0
+    grid.setCurrentRow(grid.count() - 1)
+    press(Qt.Key.Key_Left)
+    assert grid.currentRow() == grid.count() - 1
+
+
 def test_card_body_click_still_previews(favorites_gallery):
     from PyQt6.QtCore import QPoint
     from PyQt6.QtTest import QTest
