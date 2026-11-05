@@ -1446,6 +1446,10 @@ def test_controller_previews_without_persisting(tray):
     the stored preference never moves."""
     key = APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY
     tray.settings.setValue(key, "dark")
+    # setValue only records: wear the pin before previewing, so the baseline
+    # never rides the runner's own system verdict (a light-mode Windows
+    # runner resolves system onto the light theme).
+    tray._load_settings()
     tray._gallery_preview_theme("dracula")
     assert tray.current_theme == "dark", "the app never wore the preview"
     assert APP_CONFIG.get_current_palette() is not APP_CONFIG.EXTRA_THEMES["dracula"]
