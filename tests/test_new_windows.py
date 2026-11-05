@@ -1881,9 +1881,42 @@ def test_scroll_dismissal_runs_once_per_gesture(manager, qtbot):
         scrollbar.setValue(scrollbar.value() + 10)
     assert len(calls) == 1
 
+    qtbot.wait(SCROLL_SETTLE_MS - 50)
+    scrollbar.setValue(scrollbar.value() - 10)   # inside the settle window: restarts the timer
+    qtbot.wait(SCROLL_SETTLE_MS - 50)
+    scrollbar.setValue(scrollbar.value() + 10)   # same gesture only if the restart happened
+    assert len(calls) == 1
+
     qtbot.wait(SCROLL_SETTLE_MS + 50)
     scrollbar.setValue(scrollbar.value() + 10)
     assert len(calls) == 2
+
+
+def test_a_tooltip_shown_mid_gesture_drops_on_the_next_tick(manager):
+    """A hover that arms DURING the gesture pops between ticks, where the
+    first-tick sweep cannot have seen it: a later tick drops a visible one
+    by its owner, while a tooltip owned outside the list is left alone."""
+    today = jdatetime.date.today()
+    for offset in range(25):
+        manager.controller.add_user_event(today + datetime.timedelta(days=offset),
+                                          f"رویداد {offset}", "none", False)
+    manager.refresh_list()
+    scrollbar = manager.scroll_area.verticalScrollBar()
+    assert scrollbar.maximum() >= 12             # the ticks below are real valueChanged ticks
+    row = manager._rows[0]
+
+    scrollbar.setValue(10)                       # the gesture's first tick
+    CustomTooltip.instance().show_tooltip(
+        "رهنمون", row.mapToGlobal(row.rect().center()), owner=row.delete_button)
+    assert CustomTooltip.instance().isVisible()
+    scrollbar.setValue(11)                       # a later tick
+    assert not CustomTooltip.instance().isVisible()
+
+    outside = QLabel()
+    CustomTooltip.instance().show_tooltip("بیرونی", QPoint(50, 50), owner=outside)
+    scrollbar.setValue(12)
+    assert CustomTooltip.instance().isVisible()
+    CustomTooltip.instance().hide_if_owned_by(outside)
 
 
 def test_dismissal_reads_the_rows_refresh_list_built(manager):

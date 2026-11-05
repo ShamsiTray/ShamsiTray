@@ -48,7 +48,7 @@ from ui.widgets.confirm_dialog import ConfirmDialog
 from ui.widgets.event_input import (EventInputWidget, delete_confirmation_message,
                                    recurrence_label)
 from ui.widgets.overlay_blocker import OverlayBlocker
-from ui.widgets.tooltip import TooltipButton, TooltipLabel
+from ui.widgets.tooltip import CustomTooltip, TooltipButton, TooltipLabel
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
@@ -506,11 +506,22 @@ class EventManagerWindow(BaseFramelessWindow):
 
         Every wheel tick lands here, so the per-tick work is a flag check and
         a timer restart; the full per-row dismissal runs when a gesture starts
-        (see SCROLL_SETTLE_MS for the measurement behind the shape).
+        (see SCROLL_SETTLE_MS for the measurement behind the shape). A hover
+        that arms DURING the gesture pops between ticks, where the first-tick
+        sweep cannot have seen it: every later tick drops a visible one by its
+        owner - a read off the shared tooltip, not another per-row sweep. The
+        owner is one of a row's child widgets, so the guard checks the row
+        tree as well as the row list.
         """
         if not self._scrolling:
             self._scrolling = True
             self._dismiss_row_tooltips()
+        else:
+            tooltip = CustomTooltip.instance()
+            owner = tooltip.current_owner()
+            if owner is not None and (owner in self._rows
+                                      or self.scroll_area.isAncestorOf(owner)):
+                tooltip.hide_if_owned_by(owner)
         self._scroll_settle_timer.start()
 
     def _on_scroll_settled(self):

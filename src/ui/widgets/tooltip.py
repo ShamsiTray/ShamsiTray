@@ -188,6 +188,15 @@ class CustomTooltip(QWidget):
         self.hide()
         return True
 
+    def current_owner(self):
+        """The widget whose tooltip is on screen right now, or None.
+
+        A flash (and any broadcast notice) is owned by nobody, so a host can
+        check and drop only widgets it recognises - the same boundary
+        hide_if_owned_by keeps, readable instead of blind.
+        """
+        return self._owner
+
 
 class HoverTooltipMixin:
     """Routes ``setToolTip`` through ``CustomTooltip`` after a hover delay.
