@@ -1132,6 +1132,32 @@ def test_explicit_system_choice_still_follows_windows(tray, monkeypatch):
     assert applied == [1]
 
 
+def test_gallery_cancel_reverts_onto_the_flipped_windows_verdict(tray, monkeypatch):
+    """A session anchored on «هماهنگ با سیستم» reverts onto the WINDOWS verdict
+    itself, not the key it resolved to when the gallery opened: a Windows flip
+    while the gallery was up lands the app on the flip (the captured key stays
+    yesterday's answer forever)."""
+    from tests.fake_theme import FakeThemeBackend
+
+    tray.theme_backend = FakeThemeBackend(APP_CONFIG.SYSTEM_LIGHT_THEME)
+    tray.settings.setValue(APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY,
+                           APP_CONFIG.Theme.SYSTEM)
+    tray._load_settings()
+    assert tray.current_theme == APP_CONFIG.SYSTEM_LIGHT_THEME
+    tray._open_theme_gallery()
+    window = tray.theme_gallery_window
+    assert window.isVisible()
+    # Windows flips dark while the user browses the gallery.
+    tray.theme_backend.value = APP_CONFIG.Theme.DARK
+    applied = []
+    monkeypatch.setattr(tray, "_apply_theme", lambda: applied.append(1))
+    window.close()  # closeEvent -> on_cancel(anchor) -> _gallery_restore_theme
+
+    assert tray.current_theme == APP_CONFIG.Theme.DARK, (
+        "a system anchor reverts onto the flip, not the captured light key")
+    assert applied == [1]
+
+
 def test_theme_change_repaints_the_glyph_even_when_the_choice_is_pinned(tray, monkeypatch):
     """A light/dark broadcast repaints the tray icon before the follow gates:
     the glyph's ground is the taskbar strip (the shell mode), which moves on
