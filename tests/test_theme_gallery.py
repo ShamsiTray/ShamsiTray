@@ -1795,6 +1795,30 @@ def test_card_badge_click_toggles_favorite_without_previewing(favorites_gallery)
     assert window._preview_key == before, "starring a card never previews it"
 
 
+def test_space_toggles_the_current_card_without_previewing(favorites_gallery):
+    """The star badge's keyboard twin: Space on the grid toggles the current
+    card's favorite over the same signal the badge clicks ride - a favorite
+    toggle never previews the card, and the star is takeable-back."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+
+    def press_space():
+        QApplication.sendEvent(window.grid, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Space,
+            Qt.KeyboardModifier.NoModifier))
+
+    window, store = favorites_gallery
+    window.grid.setCurrentRow(_row_of(window, "dracula"))
+    before = window._preview_key
+    press_space()
+    assert window.is_favorite("dracula")
+    assert "dracula" in store["favorites"]
+    assert window._preview_key == before, (
+        "starring from the keyboard never previews")
+    press_space()
+    assert not window.is_favorite("dracula")
+
+
 def test_card_body_click_still_previews(favorites_gallery):
     from PyQt6.QtCore import QPoint
     from PyQt6.QtTest import QTest
