@@ -5,7 +5,7 @@ import re
 import jdatetime
 import pytest
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QColor, QCursor
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QDialog, QLabel, QStyle, QStyleOptionSlider,
@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
 from config import APP_CONFIG
 import core.event_service as event_service_module
 import ui.windows.event_manager_window as manager_module
+from utils.ui_helpers import contrast_ratio
 from ui.windows.base_window import BaseFramelessWindow
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.widgets.confirm_card import ConfirmCard
@@ -863,7 +864,24 @@ def test_holiday_viewer_summary_sits_on_a_distinct_chip():
     window.year_combo.setCurrentIndex(window.year_combo.findData(1403))
     assert window.count_label.objectName() == "SummaryCard"
     style = window.count_label.styleSheet()
-    assert "border" in style and "background:" in style and "border: none" not in style
+    assert "border: 1px solid" in style
+    assert "background:" in style
+    assert "background: transparent" not in style
+    window.close()
+
+
+def test_summary_accent_reads_against_the_chip_fill():
+    """The printed numbers read against the chip's own INPUT_BG fill, not the
+    window behind it: the raw dark accent is ~2.5:1 on that fill, and a
+    legible_on call fed the window ground let it through (it is 3.0 there)."""
+    holidays = {1403: {(1, 1): ["عید"]}}
+    window = HolidayViewerWindow(holidays)
+    window.year_combo.setCurrentIndex(window.year_combo.findData(1403))
+    match = re.search(r"color:([^;']+)", window.count_label.text())
+    assert match
+    palette = APP_CONFIG.get_current_palette()
+    ratio = contrast_ratio(QColor(match.group(1)), QColor(palette["INPUT_BG_COLOR"]))
+    assert ratio >= 3.0
     window.close()
 
 
