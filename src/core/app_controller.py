@@ -1330,14 +1330,19 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _gallery_restore_theme(self, theme_key: str):
         """The gallery's cancel path: put back the palette the session is
         anchored on. Previews never wrote the preference, so this stays
-        memory-only - the stored choice is exactly what it always was."""
+        memory-only - the stored choice is exactly what it always was. A
+        system choice anchors on the Windows verdict itself, not the key it
+        resolved to when the session opened, so the cancel re-reads the
+        backend: a Windows flip while the gallery was up reverts onto the
+        flip instead of yesterday's answer."""
         self._gallery_pending_theme = None
-        if theme_key not in APP_CONFIG._theme_map:
+        choice = self._theme_choice()
+        if choice == APP_CONFIG.Theme.SYSTEM:
+            theme_key = self._get_windows_theme()
+        elif theme_key not in APP_CONFIG._theme_map:
             logger.warning(f"Gallery revert target '{theme_key}' is unknown; "
                            f"re-resolving the stored preference instead.")
-            choice = self._theme_choice()
-            theme_key = (self._get_windows_theme()
-                         if choice == APP_CONFIG.Theme.SYSTEM else choice)
+            theme_key = choice
         self.current_theme = theme_key
         self._apply_theme()
 
