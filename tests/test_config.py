@@ -30,8 +30,7 @@ def test_settings_keys_are_unique():
     keys = [
         APP_CONFIG.AUTO_START_SETTING_KEY,
         APP_CONFIG.CURRENT_THEME_CHOICE_SETTING_KEY,
-        APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY,
-        APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY,
+        APP_CONFIG.TUTORIAL_SHOWN_SETTING_KEY,        APP_CONFIG.UPDATE_CHECK_ENABLED_SETTING_KEY,
         APP_CONFIG.LAST_UPDATE_CHECK_SETTING_KEY,
         APP_CONFIG.IGNORED_UPDATE_VERSION_SETTING_KEY,
     ]
@@ -248,14 +247,20 @@ def test_dark_accent_backs_white_text_at_wcag_aa():
         f"against white text")
 
 
-@pytest.mark.parametrize("theme", ["dark", "light"])
-def test_body_text_meets_wcag_aa(theme):
-    palette = APP_CONFIG.DARK_PALETTE if theme == "dark" else _LIGHT_PALETTE
+_CATALOG = APP_CONFIG.theme_catalog()
+
+
+@pytest.mark.parametrize("key,_name,palette", _CATALOG,
+                         ids=[entry[0] for entry in _CATALOG])
+def test_body_text_meets_wcag_aa(key, _name, palette):
+    """Body text must hold AA on its surfaces in EVERY registry palette, not
+    just the two representatives: a new pack asking for an unreadable text
+    color fails loudly, with the pack's key in the message."""
     for surface in ("BACKGROUND_COLOR", "CALENDAR_BACKGROUND_COLOR",
                     "MENU_BACKGROUND_COLOR", "INPUT_BG_COLOR"):
         ratio = _contrast_ratio(palette["TEXT_COLOR"], palette[surface])
         assert ratio >= WCAG_AA_NORMAL_TEXT, (
-            f"{theme} text on {surface} is only {ratio:.2f}:1")
+            f"{key}: TEXT_COLOR on {surface} is only {ratio:.2f}:1")
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
