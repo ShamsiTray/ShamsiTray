@@ -444,8 +444,14 @@ class _PickerGrid(QListWidget):
         event.accept()
         # One notch = one card row, row-aligned: the grid steps instead of
         # leaping, and every notch lands on the same rhythm the cards pitch.
+        # Partial deltas accumulate with the remainder kept SIGNED and whole
+        # steps truncated toward zero - divmod floors, which fired a step on
+        # the first negative sub-notch and flipped the remainder's sign, so
+        # opposing touchpad jitter stepped a card row in each direction
+        # instead of cancelling.
         self._wheel_remainder += notches
-        steps, self._wheel_remainder = divmod(self._wheel_remainder, 120)
+        steps = int(self._wheel_remainder / 120)
+        self._wheel_remainder -= steps * 120
         if steps:
             bar = self.verticalScrollBar()
             bar.setValue(bar.value() - steps * CARD_CELL_HEIGHT)
