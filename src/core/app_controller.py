@@ -1277,9 +1277,6 @@ class SystemTrayIcon(QSystemTrayIcon):
                                                or self.current_theme),
             holidays=lambda: self.holidays_cache,
             events=lambda: self.user_events,
-            month_provider=lambda: (self.calendar_widget.display_date
-                                    if self.calendar_widget is not None
-                                    else None),
             favorites_provider=self._favorite_themes,
             on_favorites_changed=self._gallery_save_favorites,
         )
