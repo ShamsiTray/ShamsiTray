@@ -896,6 +896,19 @@ class ThemeGalleryWindow(BaseFramelessWindow):
             self._on_cancel(self._original_key)
         super().closeEvent(event)
 
+    def refresh_data(self):
+        """Re-read the live stores into the preview mid-session.
+
+        Events or holidays committed while the gallery is up would otherwise
+        leave the panel showing its previous art until another card is
+        clicked: this runs the same contract a show starts with - the
+        renderer re-reads its providers and the current preview re-renders
+        in place."""
+        self.calendar_panel.reset_session()
+        palette = APP_CONFIG._theme_map.get(self._preview_key)
+        if palette is not None:
+            self.calendar_panel.present_palette(self._preview_key, palette)
+
     # --- styling -------------------------------------------------------------
 
     def _painted_palette(self) -> dict:
