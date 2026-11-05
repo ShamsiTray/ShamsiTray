@@ -112,13 +112,6 @@ class Config:
     # preference maps onto the same theme (see SystemTrayIcon._theme_choice).
     SYSTEM_LIGHT_THEME = "catppuccin_latte"
 
-    # The appearance preference stored under Appearance/ThemeChoice: "system"
-    # follows Windows light/dark live, anything else pins that theme key. The
-    # key's ABSENCE reads as "system" too - the behaviour a fresh install has
-    # always had. (Re-declared below once the pack themes are known; this early
-    # form covers intra-class readers.)
-    THEME_CHOICES = (Theme.SYSTEM, Theme.DARK)
-
     # The stock dark theme ("Default" in the gallery), kept addressable by
     # name for every reader that predates the registry.
     DARK_PALETTE = THEMES[Theme.DARK]
@@ -142,8 +135,11 @@ class Config:
     EXTRA_THEMES = dict(THEMES)
     EXTRA_THEMES.pop(Theme.DARK)
 
-    # Every valid value of the Appearance/ThemeChoice preference. The gallery
-    # writes into this namespace; _theme_choice validates against it on load.
+    # The appearance preference stored under Appearance/ThemeChoice: "system"
+    # follows Windows light/dark live, anything else pins that theme key. The
+    # key's ABSENCE reads as "system" too - the behaviour a fresh install has
+    # always had. The gallery writes into this namespace and _theme_choice
+    # validates the persisted value against this tuple on load.
     THEME_CHOICES = (Theme.SYSTEM, Theme.DARK) + tuple(EXTRA_THEMES)
 
     @staticmethod
