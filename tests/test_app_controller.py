@@ -566,6 +566,20 @@ def test_store_commit_reappears_in_the_open_gallery(tray, qtbot):
     assert len(renders) == 1
 
 
+def test_gallery_preview_wears_the_popups_browsed_month(tray, qtbot):
+    """The preview mirrors the popup's browsed month: a month browsed in the
+    tray popup is what the gallery's render shows, the same month a fresh
+    popup display would open on."""
+    tray.calendar_widget.prev_month()
+    browsed = tray.calendar_widget.display_date
+    tray._open_theme_gallery()
+    window = tray.theme_gallery_window
+    qtbot.addWidget(window)
+    widget = window.calendar_panel._renderer._widget
+    assert (widget.display_date.year, widget.display_date.month) == (
+        browsed.year, browsed.month)
+
+
 def _notify_recorder(monkeypatch):
     notified = []
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",
