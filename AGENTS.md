@@ -361,7 +361,7 @@ so CI does not gate on either.
 ## 10. Git Workflow
 
 - `main` holds linear release history; every released version is tagged
-- Current work in progress: `feature/roadmap-hardening` and `feature/themes` (the theme gallery) — both v1.4, unmerged
+- The v1.4 work (events/editors, distance, converter, chrome polish, theme gallery) landed through five reviewed PRs; no WIP branches are open
 - **Atomic commits**: one logical change per commit — a fix or feature lands with its tests in the same commit, and any `AGENTS.md`/docs the change makes true ride along with it instead of arriving as a separate `docs:` commit. Every commit leaves the tree in a passing state, so history stays bisectable and revert-friendly.
 - Commit subjects follow Conventional Commits and are always scoped: `type(scope): imperative summary` — lowercase, no trailing period, at most 72 characters, English only (name a UI label by what it is, e.g. "Convert button", not by its text)
   - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `style` (`style` is only for purely mechanical diffs; those go in `.git-blame-ignore-revs`)
