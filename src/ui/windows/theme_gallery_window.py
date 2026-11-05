@@ -306,6 +306,7 @@ class _PickerGrid(QListWidget):
     ignores would be stranded off-screen)."""
 
     favoriteToggleRequested = pyqtSignal(str)
+    applyRequested = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -420,6 +421,18 @@ class _PickerGrid(QListWidget):
                 self.favoriteToggleRequested.emit(key)
                 event.accept()
                 return
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            # Enter applies: the walk previews what it parks on
+            # (currentItemChanged), so the commit answers the card under the
+            # selection - the keyboard twin of the double-click connect.
+            # Enter is swallowed so the stock handler never turns it into
+            # itemActivated, whose double-click pairing does not belong here.
+            if self.currentIndex().isValid():
+                self.applyRequested.emit()
+                event.accept()
+                return
+            event.accept()
+            return
         if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             # The grid mirrors RTL and the stock grid walk keeps the model's
             # own direction, which flips the pair against the reading order
@@ -709,6 +722,7 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         self.grid.currentItemChanged.connect(self._on_current_changed)
         self.grid.itemDoubleClicked.connect(lambda _item: self._commit())
         self.grid.favoriteToggleRequested.connect(self._toggle_favorite)
+        self.grid.applyRequested.connect(self._commit)
         self._delegate = ThemeCardDelegate(self.grid)
         self._delegate.favorites = self._favorites
         self.grid.setItemDelegate(self._delegate)

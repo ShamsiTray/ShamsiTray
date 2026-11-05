@@ -1898,6 +1898,24 @@ def test_picker_arrows_walk_with_the_reading_direction(gallery):
     assert grid.currentRow() == grid.count() - 1
 
 
+def test_enter_applies_the_card_the_walk_parked_on(gallery):
+    """Enter is the keyboard's «اعمال»: the walk previews what it parks on,
+    so Enter commits exactly the card under the selection - the keyboard twin
+    of the double-click, and never a second commit through itemActivated."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+
+    window, calls = gallery
+    grid = window.grid
+    key = grid.item(2).data(Qt.ItemDataRole.UserRole)
+    grid.setCurrentRow(2)
+    assert calls["preview"] == [key], "the walk previews, the commit waits"
+    assert calls["commit"] == []
+    QApplication.sendEvent(grid, QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier))
+    assert calls["commit"] == [key]
+
+
 def test_card_body_click_still_previews(favorites_gallery):
     from PyQt6.QtCore import QPoint
     from PyQt6.QtTest import QTest
