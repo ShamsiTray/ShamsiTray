@@ -885,6 +885,19 @@ def test_summary_accent_reads_against_the_chip_fill():
     window.close()
 
 
+def test_auto_scroll_timer_is_built_once_not_per_fill():
+    """The deferral lives across refills: _fill_year starts the one
+    viewer-owned timer instead of leaving a fresh parented QTimer behind on
+    every year switch."""
+    future = {1410: {(1, 1): ["تعطیلی"]}, 1411: {(5, 5): ["تعطیلی"]}}
+    window = HolidayViewerWindow(future)
+    first = window._scroll_timer
+    window._fill_year(1411)
+    assert window._scroll_timer is first
+    window._scroll_timer.stop()      # keep the pending deferral out of later event loops
+    window.close()
+
+
 def test_split_lunar_date():
     """Bracketed lunar dates split out of the title for muted inline rendering."""
     assert split_lunar_date("تاسوعای حسینی [ ۹ محرم ]") == ("تاسوعای حسینی", "۹ محرم")

@@ -237,6 +237,14 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self._next_row: Optional[QWidget] = None
         self._next_header: Optional[QWidget] = None
         self._summary: Optional[Tuple[int, int, int]] = None
+        # The auto-scroll deferral, created once: a child timer slotted to a
+        # bound method dies with this viewer (the receiver-aware deferral
+        # shape CalendarDayCell uses) instead of scrolling a rebuilt list
+        # later - and building it here keeps every _fill_year from leaving
+        # a fresh parented QTimer behind on a year switch.
+        self._scroll_timer = QTimer(self)
+        self._scroll_timer.setSingleShot(True)
+        self._scroll_timer.timeout.connect(self._scroll_to_next)
 
         self.list_container = QWidget()
         self.rows_layout = QVBoxLayout(self.list_container)
@@ -405,15 +413,9 @@ class HolidayViewerWindow(BaseFramelessWindow):
         self._restyle_dynamic_children()
         self.scroll_area.verticalScrollBar().setValue(0)
         if self._next_row is not None:
-            # A child timer, not a static singleShot: the deferral dies with
-            # this viewer instead of scrolling a rebuilt list later. Stored
-            # here and slotted to a bound method - the receiver-aware deferral
-            # shape (CalendarDayCell._emit_after_menu_close).
-            timer = QTimer(self)
-            timer.setSingleShot(True)
-            timer.timeout.connect(self._scroll_to_next)
-            self._scroll_timer = timer
-            timer.start(0)
+            # The one viewer-owned deferral, re-aimed at the fresh fill; the
+            # 0ms start defers the scroll until the list is laid out.
+            self._scroll_timer.start(0)
 
     @staticmethod
     def _safe_date(year: int, md: Tuple[int, int]):
