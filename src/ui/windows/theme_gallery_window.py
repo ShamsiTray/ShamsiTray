@@ -407,6 +407,21 @@ class _PickerGrid(QListWidget):
             return
         super().mouseDoubleClickEvent(event)
 
+    def keyPressEvent(self, event):
+        # Space is the star badge's keyboard twin: it toggles the CURRENT
+        # card's favorite over the same signal the badge clicks use, and
+        # never falls through to the stock space (scroll/selection) - a
+        # favorite toggle must not preview the card. Other keys keep the
+        # stock walking.
+        if event.key() == Qt.Key.Key_Space:
+            index = self.currentIndex()
+            key = index.data(_ROLE_KEY) if index.isValid() else None
+            if key:
+                self.favoriteToggleRequested.emit(key)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
     @contextmanager
     def hold_viewport(self):
         """Make the current item move without the view scrolling to it."""
