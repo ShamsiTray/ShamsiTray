@@ -24,7 +24,7 @@ Correctness notes:
   the artwork cache's follow the window the controller already keeps alive.
 """
 
-from typing import Any, Callable, Dict, Optional
+from typing import Callable, Dict, Optional
 
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QPainter, QPixmap
@@ -65,14 +65,9 @@ class CalendarShotRenderer:
         holidays: Callable[[], dict] | dict | None = None,
         events: Callable[[], dict] | None = None,
         parent: Optional[QWidget] = None,
-        month_provider: Optional[Callable[[], Any]] = None,
     ):
         self._holidays_provider = _as_provider(holidays)
         self._events_provider = _as_provider(events)
-        # The browsed month the previews aim at: the controller feeds the
-        # LIVE popup's display month through it, so a render answers the
-        # month the user is browsing, never this widget's own birth month.
-        self._month_provider = month_provider
         self._widget: Optional[QWidget] = None
         # The unscaled whole-window renders (the gallery's live preview
         # panel): one cache per requested theme.
@@ -156,14 +151,6 @@ class CalendarShotRenderer:
         painted backgrounds first among them) would stick to the palette of
         the first render while ``get_current_palette()`` moved on."""
         widget = self._ensure_widget()
-        if self._month_provider is not None:
-            month = self._month_provider()
-            if month is not None:
-                # Aim the preview at the browsed month BEFORE the palette
-                # swap moves the config: go_to_date re-fills the grid from
-                # the live palette, and update_styles re-dresses it in the
-                # previewed one straight afterwards.
-                widget.go_to_date(month.year, month.month)
         config_cls = type(APP_CONFIG)
         previous = config_cls.current_palette
         config_cls.current_palette = palette

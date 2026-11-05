@@ -66,7 +66,7 @@ changes, and re-reads the active theme on every show - the controller reuses
 a visible instance via ``_show_or_raise``.
 """
 from contextlib import contextmanager
-from typing import Any, Callable, Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from PyQt6.QtCore import QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import (QColor, QPainter, QPen, QPixmap)
@@ -241,20 +241,16 @@ class RealCalendarPanel(QWidget):
     what the tray's popup would show. The panel owns no controls: the
     apply button beneath it belongs to the window."""
 
-    def __init__(self, holidays, events, parent: Optional[QWidget] = None,
-                 month_provider: Optional[Callable[[], Any]] = None):
+    def __init__(self, holidays, events, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setFixedWidth(PANEL_WIDTH)
         # The column is exactly the calendar - no dead space trailing the
         # render, no clipped art below it.
         self.setFixedHeight(PANEL_HEIGHT)
         # The engine behind the preview panel's render, asked for the
-        # unscaled whole-window artwork of the previewed theme. The month
-        # provider rides to it so every render answers the LIVE popup's
-        # browsed month, not the hidden calendar's own.
+        # unscaled whole-window artwork of the previewed theme.
         self._renderer = CalendarShotRenderer(holidays=holidays, events=events,
-                                              parent=self,
-                                              month_provider=month_provider)
+                                              parent=self)
         self._rendered_palette: Optional[dict] = None
 
         root = QVBoxLayout(self)
@@ -634,7 +630,6 @@ class ThemeGalleryWindow(BaseFramelessWindow):
                  events: Callable[[], dict] | dict | None = None,
                  favorites_provider: Optional[Callable[[], Iterable[str]]] = None,
                  on_favorites_changed: Optional[Callable[[list], None]] = None,
-                 month_provider: Optional[Callable[[], Any]] = None,
                  parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setWindowTitle("گالری تم‌ها")
@@ -665,13 +660,13 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         # build time is the same theme anyway.
         self._chrome_palette: Optional[dict] = None
 
-        self._setup_ui(holidays, events, month_provider)
+        self._setup_ui(holidays, events)
         self.update_styles()
         apply_windows_styles(self)
 
     # --- UI ------------------------------------------------------------------
 
-    def _setup_ui(self, holidays, events, month_provider=None):
+    def _setup_ui(self, holidays, events):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(18, 14, 18, 16)
         main_layout.setSpacing(10)
@@ -747,8 +742,7 @@ class ThemeGalleryWindow(BaseFramelessWindow):
         # and it re-dresses only when «اعمال» re-baselines the session onto
         # the applied theme (or the window re-opens onto a new one).
         # Closing (the caption bar's ✕, Esc) is the way out without applying.
-        self.calendar_panel = RealCalendarPanel(holidays, events,
-                                                month_provider=month_provider)
+        self.calendar_panel = RealCalendarPanel(holidays, events)
         self.apply_button = QPushButton("اعمال")
         self.apply_button.setFixedSize(PANEL_WIDTH, ACTION_BUTTON_HEIGHT)
         self.apply_button.setCursor(Qt.CursorShape.PointingHandCursor)
