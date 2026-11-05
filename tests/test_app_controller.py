@@ -540,6 +540,32 @@ def test_holidays_updated_refreshes_calendar_and_tray(tray, monkeypatch):
     assert tray.holidays_cache  # re-resolved from the (seeded) store
 
 
+def test_holidays_updated_reappear_in_the_open_gallery(tray, qtbot):
+    """A holiday store swap re-renders an OPEN gallery's preview the way a
+    fresh show starts: the renderer re-reads its stores and the current
+    preview re-presents in place (a cold gallery starts a fresh session on
+    its next show, so only a visible one is asked)."""
+    tray._open_theme_gallery()
+    window = tray.theme_gallery_window
+    qtbot.addWidget(window)
+    renders, _ = _spy(window.calendar_panel.shot_view, "set_render")
+    assert len(renders) == 0  # the builder's own render predates the spy
+    tray._on_holidays_updated()
+    assert len(renders) == 1
+
+
+def test_store_commit_reappears_in_the_open_gallery(tray, qtbot):
+    """An event commit rides the store hook into the open gallery: the panel
+    was already painted from the old store, so the settled store must
+    re-render it without waiting for another card click."""
+    tray._open_theme_gallery()
+    window = tray.theme_gallery_window
+    qtbot.addWidget(window)
+    renders, _ = _spy(window.calendar_panel.shot_view, "set_render")
+    tray.add_user_event(jdatetime.date.today(), "یک رویداد گالری")
+    assert len(renders) == 1
+
+
 def _notify_recorder(monkeypatch):
     notified = []
     monkeypatch.setattr(controller_module.ConfirmDialog, "notify",

@@ -678,6 +678,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self.holiday_viewer_window is not None and self.holiday_viewer_window.isVisible():
             self.holiday_viewer_window.set_holidays(self.holidays_cache)
         self.update_tray_icon(force=True)
+        self._refresh_open_gallery()
 
     def _on_no_updates(self):
         # Manual-check messages live in _on_round_finished, so one end-of-round
@@ -870,6 +871,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.calendar_widget.set_user_events(self.user_events)
         self.update_tray_icon(force=True)
         self._refresh_event_manager()
+        self._refresh_open_gallery()
+
+    def _refresh_open_gallery(self):
+        """Surf committed data into an open gallery's preview the way a show
+        does: the renderer re-reads its stores and the current preview
+        re-renders in place. A cold gallery needs nothing - its next show
+        starts a fresh session - so only a visible one is asked."""
+        window = self.theme_gallery_window
+        if window is not None and window.isVisible():
+            window.refresh_data()
 
     def add_user_event(self, jdate: jdatetime.date, text: str, recurrence: str = RECURRENCE_NONE,
                        remove_after_finish: bool = False):
