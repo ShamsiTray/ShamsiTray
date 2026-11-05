@@ -445,11 +445,11 @@ class HolidayViewerWindow(BaseFramelessWindow):
             return
         count, year, fridays = self._summary
         palette = APP_CONFIG.get_current_palette()
-        # The accent is a button fill (barely 2:1 against the dark ground), so
-        # the PRINTED numbers take the hue through legible_on while the white
-        # word on it stays crisp - the raw accent is what blended into the
-        # window here.
-        accent = legible_on(palette["ACCENT_COLOR"], palette["BACKGROUND_COLOR"])
+        # The accent is a button fill, and the digits print on the chip's own
+        # INPUT_BG fill (not the window behind it) - the dark accent is ~2.5:1
+        # there, so the PRINTED numbers take the hue through legible_on against
+        # that fill while the white word on it stays crisp.
+        accent = legible_on(palette["ACCENT_COLOR"], palette["INPUT_BG_COLOR"])
         rlm = "\u200f"
         text = (f"<b style='color:{accent}'>{to_persian_digits(count)}</b> روز تعطیل در سال "
                 f"{to_persian_digits(year)}{rlm}")
