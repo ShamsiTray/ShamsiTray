@@ -120,6 +120,18 @@ def test_taskbar_missing_shell_value_falls_back_to_the_app_value():
     assert wt.WindowsThemeBackend().taskbar_uses_light() is True
 
 
+def test_taskbar_read_failure_answers_dark_without_stepping_down():
+    """A DENIED shell read is an unreadable ground, not a missing value: the
+    verdict stops at dark instead of answering the app mode's, so a
+    light-app user with an unreadable shell key is not mistaken for a light
+    taskbar."""
+    _FakeWinReg.values = {"AppsUseLightTheme": 1, "SystemUsesLightTheme": 1}
+    _FakeWinReg.denial = PermissionError("denied")
+    assert wt.WindowsThemeBackend().taskbar_uses_light() is False
+    # The walk never reached the app value: exactly one open, on the shell.
+    assert _FakeWinReg.queries == (wt.WindowsThemeBackend.KEY_PATH,)
+
+
 def test_taskbar_nothing_readable_answers_dark():
     _FakeWinReg.values = {"AppsUseLightTheme": 1}
     _FakeWinReg.denial = PermissionError("denied")

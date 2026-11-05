@@ -67,16 +67,22 @@ class WindowsThemeBackend:
         SHELL mode value - independent of the app mode theme() reads, so a
         light-app/dark-shell user would otherwise get a palette-muted glyph
         judged against the wrong ground. A missing shell value falls back to
-        the app value (older builds carry only that); with nothing readable -
-        a failed registry read, or off Windows - the answer is False, the same
-        degrade-dark rule theme() keeps.
+        the app value (older builds carry only that); any other read failure
+        is an unreadable ground and stops the walk - the answer is dark
+        rather than an app mode that failed with it, and a read whose value
+        exists but cannot be fetched is not a reason to answer the app mode's
+        instead. Off Windows - and with nothing readable - the answer is
+        False, the same degrade-dark rule theme() keeps.
         """
         if not sys.platform == 'win32':
             return False
         for value_name in (self.TASKBAR_VALUE_NAME, self.VALUE_NAME):
             try:
                 return self._read_personalize(value_name) == 1
-            except Exception:
-                continue  # a missing value falls back; the last pass answers dark
+            except FileNotFoundError:
+                continue  # an absent value steps down; the last pass answers dark
+            except Exception as e:
+                logger.warning(f"Could not detect the Windows taskbar mode, assuming dark: {e}")
+                return False
         logger.warning("Could not detect the Windows taskbar mode, assuming dark")
         return False
