@@ -534,7 +534,7 @@ class SegmentedFilter(QWidget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.setAccessibleName("فیلتر تم‌ها")
+        self._update_accessible_name()
         self.update_styles()
 
     # --- geometry --------------------------------------------------------------
@@ -599,6 +599,12 @@ class SegmentedFilter(QWidget):
     def current_filter(self) -> str:
         return self._mode
 
+    def _update_accessible_name(self) -> None:
+        """Name the control plus its active stop: a screen reader hears which
+        filter a focus (or an arrow) landed on. The star stop's paint label
+        is empty, so it reads through _FILTER_ACCESSIBLE_NAMES instead."""
+        self.setAccessibleName(f"فیلتر تم‌ها: {_FILTER_ACCESSIBLE_NAMES[self._mode]}")
+
     def set_filter(self, mode: str) -> None:
         """Programmatic filter change (tests, future restore): slides the
         highlight and emits exactly like a click would."""
@@ -609,6 +615,7 @@ class SegmentedFilter(QWidget):
         if mode == self._mode:
             return
         self._mode = mode
+        self._update_accessible_name()
         target = self._segment_rect(mode)
         if self.isVisible():
             self._animation.stop()

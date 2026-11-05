@@ -1101,6 +1101,32 @@ def test_gallery_filter_narrows_the_grid(gallery):
     assert "catppuccin_latte" not in keys
 
 
+def test_filter_names_the_active_stop_for_screen_readers(gallery):
+    """The accessible name carries the active stop, refreshed through
+    _choose - clicks, set_filter and the arrow keys all land there, so a
+    screen reader hears which filter a focus (or an arrow) rests on."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+
+    from ui.widgets.gallery_widgets import (FILTER_ALL, FILTER_DARK,
+                                            FILTER_FAVORITES, FILTER_LIGHT,
+                                            _FILTER_ACCESSIBLE_NAMES)
+
+    window, _calls = gallery
+    control = window.filter_control
+    for mode in (FILTER_LIGHT, FILTER_DARK, FILTER_FAVORITES, FILTER_ALL):
+        control.set_filter(mode)
+        assert control.accessibleName() == (
+            f"فیلتر تم‌ها: {_FILTER_ACCESSIBLE_NAMES[mode]}")
+    # The arrows move through the same _choose: the bar re-names whatever
+    # stop the RTL-walked step landed on.
+    QApplication.sendEvent(control, QKeyEvent(QEvent.Type.KeyPress,
+                                              Qt.Key.Key_Left,
+                                              Qt.KeyboardModifier.NoModifier))
+    assert control.accessibleName() == (
+        f"فیلتر تم‌ها: {_FILTER_ACCESSIBLE_NAMES[control.current_filter()]}")
+
+
 def test_gallery_fits_four_card_columns(gallery):
     """The window is sized for the compact mini-calendar cards: four full
     card columns beside the calendar preview. The mirrored wrap only takes
