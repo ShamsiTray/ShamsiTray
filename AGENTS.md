@@ -241,7 +241,7 @@ pytest
 - Modern wizard, x64 only, Windows 10 1809+ (`MinVersion=10.0.17763`, the oldest build PyQt6 6.x / Python 3.12 run on)
 - **Does NOT write the autostart `Run` key** (the app manages autostart itself)
 - Seeds `%LOCALAPPDATA%\ShamsiTray\holidays.json` with `onlyifdoesntexist` / `uninsneveruninstall`
-- Uninstaller: checks for running instance (tasklist), custom page with "remove user settings" checkbox clearing `%LOCALAPPDATA%\ShamsiTray` + legacy `HKCU\Software\ShamsiTray`. A silent (`/VERYSILENT`) run never prompts or blocks on a live tray or a locked exe; at post-uninstall the install directory loses only the empty subdirectories Inno left behind, and goes itself only if that left it empty - files the uninstaller does not own are never force-deleted
+- Uninstaller: the custom page's Uninstall button closes a running app first with a re-probe-verified `taskkill /F` (no graceful path exists: `WM_CLOSE` is absorbed by the tray app by design) before it ends the wizard; a process that survives stays on screen with one error box and the page left up for a retry, and a `/VERYSILENT` run closes the app automatically in `InitializeUninstall` and only logs a survivor. The page also carries the "remove user settings" checkbox clearing `%LOCALAPPDATA%\ShamsiTray` + legacy `HKCU\Software\ShamsiTray`; at post-uninstall the install directory loses only the empty subdirectories Inno left behind, and goes itself only if that left it empty - files the uninstaller does not own are never force-deleted
 - Output: `output/ShamsiTraySetup-<version>.exe`
 
 ---
