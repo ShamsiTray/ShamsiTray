@@ -1049,5 +1049,8 @@ def combo_stylesheet(
         f"QComboBox QAbstractItemView {{ background-color: {dropdown_color}; color: {palette['TEXT_COLOR']}; selection-background-color: {palette['ACCENT_COLOR']}; border: 1px solid {palette[dropdown_border_key]}; border-radius: 8px; outline: none;}}"
         f"QComboBox QAbstractItemView::item {{ background-color: transparent; padding: 5px 10px; min-height: 25px; border: none; }}"
         f"QComboBox QAbstractItemView::item:hover {{ background-color: {palette['HOVER_BG']}; border-radius: 4px; }}"
-        f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: white; border-radius: 4px; }}"
-        f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: white; }}" + scrollbar_style)
+        # The popup's selected row sits ON the accent, so its label polarity is
+        # the same on-accent rule the combo field's selection uses - hardcoded
+        # white turned unreadable on bright accents (pastels, highlighter tones).
+        f"QComboBox QAbstractItemView::item:selected {{ background-color: {palette['ACCENT_COLOR']}; color: {accent_text}; border-radius: 4px; }}"
+        f"QComboBox QAbstractItemView::item:selected:hover {{background-color: {palette['ACCENT_COLOR']}; color: {accent_text}; }}" + scrollbar_style)

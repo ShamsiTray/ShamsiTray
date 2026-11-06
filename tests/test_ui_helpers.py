@@ -19,8 +19,8 @@ from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
                               ghost_button_stylesheet, line_edit_stylesheet,
                               mix_colors, nudge_popup_inside_work_area,
                               on_accent_text_color, paint_rounded_card,
-                              rgba_string, scrollbar_stylesheet,
-                              set_popup_pixel_scroll,
+                              palette_on_accent_text, rgba_string,
+                              scrollbar_stylesheet, set_popup_pixel_scroll,
                               window_title_button_stylesheets)
 
 
@@ -474,6 +474,23 @@ def test_combo_stylesheet_dropdown_variants(palette):
     assert "text-align: center" in custom
     # The popup scrollbar shares the round-pill rules with its own selector.
     assert "QAbstractItemView::verticalScrollBar" in custom
+
+
+def test_combo_popup_selected_row_uses_the_on_accent_text(palette):
+    """(Bug 4) The popup's selected row sits ON the accent fill, so its label
+    polarity is the shared on-accent rule - hardcoded white turned unreadable
+    on bright accents."""
+    on_accent = palette_on_accent_text(palette)
+    sheet = combo_stylesheet(palette)
+    # Both the base :selected rule and its :hover twin carry it.
+    selected_rule = ("QAbstractItemView::item:selected { background-color: "
+                     f"{palette['ACCENT_COLOR']}; color: {on_accent};"
+                     " border-radius: 4px; }")
+    assert selected_rule in sheet
+    hover_rule = ("QAbstractItemView::item:selected:hover {background-color: "
+                  f"{palette['ACCENT_COLOR']}; color: {on_accent}; }}")
+    assert hover_rule in sheet
+    assert "color: white" not in sheet
 
 
 # --- mouse-event routing lives on the mixin itself (REF-7) -------------------------
