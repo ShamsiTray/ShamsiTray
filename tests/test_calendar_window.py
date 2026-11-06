@@ -382,6 +382,23 @@ def test_the_dimmed_modes_follow_the_theme(calendar):
     assert QColor(light_grey) != QColor(dark_grey)
 
 
+def test_the_confirm_overlays_follow_the_theme(calendar):
+    """(Bug 5) The three confirm overlays are persistent children built once at
+    construction and styled in palette colors; update_styles() used to skip
+    them, so a theme switch under an open calendar left the delete/merge cards
+    dressed in the old palette until the whole popup was rebuilt."""
+    APP_CONFIG.set_theme(Config.Theme.DARK)
+    calendar.update_styles()  # must cascade to the overlays like its siblings
+    dark = calendar._remove_overlay.detail_label.styleSheet()
+
+    APP_CONFIG.set_theme("catppuccin_latte")
+    calendar.update_styles()
+    light = calendar._notice_overlay.detail_label.styleSheet()
+
+    assert Config.DARK_PALETTE["INPUT_BG_COLOR"] in dark
+    assert APP_CONFIG._theme_map["catppuccin_latte"]["INPUT_BG_COLOR"] in light
+
+
 @pytest.mark.parametrize("taken,expected", [
     ({"none": "1404-05-10"}, "monthly"),
     ({"monthly": "0000-00-10"}, "none"),

@@ -356,6 +356,14 @@ class PersianCalendarWidget(BaseFramelessWindow):
             self.event_input_widget.update_styles()
         if self.go_to_window:
             self.go_to_window.update_styles()
+        # The three confirm overlays are persistent children built once at
+        # construction: they keep their QSS in palette colors, so a theme
+        # switch must restyle them as everything else here does - otherwise
+        # the delete dialog repaints stale colors until the calendar is
+        # rebuilt.
+        self._notice_overlay.update_styles()
+        self._remove_overlay.update_styles()
+        self._merge_overlay.update_styles()
         self.fill_calendar_grid()
 
     def fill_calendar_grid(self):
