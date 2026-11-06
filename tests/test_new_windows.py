@@ -1618,12 +1618,33 @@ def test_import_confirms_before_replacing_on_exact_collision(manager, monkeypatc
     assert "وارد شد" in summary and "جایگزین شد" in summary
 
 
-def test_import_warns_on_cross_representation_collision(manager, monkeypatch, tmp_path):
-    """A one-time event and an imported yearly event landing on the same
-    visible day used to stack silently: the calendar picked a winner while
-    the manager listed both."""
+def test_import_keeps_same_date_other_text_events_independent(manager, monkeypatch, tmp_path):
+    """One-time and yearly entries that share a visible day but tell
+    different stories are independent events: no replacement is confirmed
+    and none happens - the imported event lands beside the existing one."""
     manager.controller.user_events = {"1405-08-01": _entry("one-time existing")}
     import_file = _write_import_file(tmp_path, {"0000-08-01": _entry("yearly imported", "yearly")})
+    monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (import_file, "")))
+
+    def boom(*a, **k):
+        raise AssertionError("different-text same-date events must not reach the confirm")
+
+    monkeypatch.setattr(manager_module.ConfirmDialog, "ask", staticmethod(boom))
+    boxes = []
+    monkeypatch.setattr(manager_module.ConfirmDialog, "notify",
+                        staticmethod(lambda *a, **k: boxes.append(a)))
+    assert manager._import_events_from_dialog() is True
+    assert set(manager.controller.user_events) == {
+        "1405-08-01", "0000-08-01"}
+
+
+def test_import_confirms_on_same_text_cross_representation(manager, monkeypatch, tmp_path):
+    """The same words under another key shape are one event's representation
+    upgrade: a yearly file key over a one-time store key still confirms -
+    and keeps the promise exactly - when the user accepts."""
+    manager.controller.user_events = {"1405-08-01": _entry("same words")}
+    import_file = _write_import_file(tmp_path, {"0000-08-01": _entry("same words", "yearly")})
     monkeypatch.setattr(manager_module.QFileDialog, "getOpenFileName",
                         staticmethod(lambda *a, **k: (import_file, "")))
     asks = []
@@ -1639,10 +1660,8 @@ def test_import_warns_on_cross_representation_collision(manager, monkeypatch, tm
     assert manager._import_events_from_dialog() is True
     # The confirm promised exactly ONE replacement:
     assert len(asks) == 1 and "جایگزین" in asks[0][0]
-    assert asks[0][1]["detail"] == "one-time existing"
-    # And applying it kept the one-event-per-date invariant: the imported
-    # yearly took over, the shadowed one-time is gone everywhere.
-    assert manager.controller.user_events == {"0000-08-01": _entry("yearly imported", "yearly")}
+    assert asks[0][1]["detail"] == "same words"
+    assert manager.controller.user_events == {"0000-08-01": _entry("same words", "yearly")}
 
 
 def test_import_without_collisions_never_asks(manager, monkeypatch, tmp_path):

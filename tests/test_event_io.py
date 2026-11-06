@@ -375,22 +375,63 @@ def test_keys_share_visible_date_matrix():
     assert share("0000-12-30", "0000-12-29") is True
 
 
-def test_dedupe_events_by_visible_date_later_wins():
+def test_dedupe_events_by_visible_date_keeps_other_text_same_date_entries():
+    """The fold folds same-event duplicates only; a shared visible date alone
+    claims nothing. A one-time and a yearly entry whose texts differ are
+    independent events - the store legally holds one per recurrence mode per
+    date - so the fold must not collapse them (or lose one to file order)."""
     events = dict([
-        ("1405-08-01", _entry("one-time first")),
-        ("0000-08-01", _entry("yearly wins", "yearly")),
-        ("1405-09-10", _entry("unrelated")),
-        ("0000-00-01", _entry("monthly later")),
+        ("1405-08-01", _entry("test")),
+        ("0000-08-01", _entry("Himeta's Birthday", "yearly")),  # same day as above
+        ("1405-09-10", _entry("unrelated")),                     # other day
+        ("0000-00-01", _entry("monthly ticker", "monthly")),     # fires on the same day 01 too
     ])
     deduped, replaced = event_io.dedupe_events_by_visible_date(events)
-    # 1405-08-01 (one-time) and 0000-08-01 (yearly) share 1405/08/01 ->
-    # the later yearly entry wins. The monthly day-01 entry then fires on
-    # 1405/08/01 too, so it replaces the yearly winner in turn.
-    assert "1405-08-01" not in deduped
-    assert "0000-08-01" not in deduped
-    assert deduped["0000-00-01"]["text"] == "monthly later"
-    assert deduped["1405-09-10"]["text"] == "unrelated"
-    assert replaced == 2
+    assert deduped == events
+    assert replaced == 0
+
+
+def test_dedupe_events_by_visible_date_folds_same_event_duplicates():
+    """Same-event duplicates do fold: the same words under another key shape
+    on a shared visible date are one event's representation upgrade, and the
+    later entry wins. Entries on other dates never compete, whatever their
+    text."""
+    events = dict([
+        ("1405-08-01", _entry("first wording")),
+        ("0000-08-01", _entry("first wording", "yearly")),  # same words, same slot: folds the one-timer
+        ("1405-09-10", _entry("unrelated")),                # other day, other words: untouched
+        ("1406-09-01", _entry("first wording")),            # other DATE, same words: independent
+    ])
+    deduped, replaced = event_io.dedupe_events_by_visible_date(events)
+    assert deduped == {"0000-08-01": _entry("first wording", "yearly"),
+                       "1405-09-10": _entry("unrelated"),
+                       "1406-09-01": _entry("first wording")}
+    assert replaced == 1
+
+
+def test_entries_claim_the_same_event_matrix():
+    """The one-event definition every importer answer is built on: a shared
+    visible date AND (the same canonical key OR the same text). Different
+    words on one day, or the same words on different days, are strangers."""
+    share = event_io.entries_claim_the_same_event
+    # Same key: one store slot, whatever the words (dict.update's last write).
+    assert share("1405-08-01", _entry("a"), "1405-08-01", _entry("b"))
+    # Same words under another key shape on the shared date: one event's
+    # representation upgrade (yearly key over the one-time store shape).
+    assert share("1405-08-01", _entry("same words"),
+                 "0000-08-01", _entry("same words", "yearly"))
+    # Same words on a different visible date: independent events.
+    assert not share("1405-08-01", _entry("same words"),
+                     "1406-08-01", _entry("same words"))
+    # Different words on the shared date: independent events (the store holds
+    # one event per recurrence mode per date; these two are two of them).
+    assert not share("1405-08-01", _entry("test"),
+                     "0000-08-01", _entry("Himeta's Birthday", "yearly"))
+    # The monthly wildcard shares day 01 the same way the calendar shows it.
+    assert not share("1405-08-01", _entry("one-time"),
+                     "0000-00-01", _entry("monthly ticker", "monthly"))
+    assert share("1405-08-01", _entry("ticker words"),
+                 "0000-00-01", _entry("ticker words", "monthly"))
 
 
 def test_build_import_plan_counts_exact_and_cross_collisions():
@@ -413,18 +454,19 @@ def test_build_import_plan_counts_exact_and_cross_collisions():
     assert plan.internal_replaced == 0
 
 
-def test_build_import_plan_folds_import_internal_collisions():
-    existing = {}
+def test_build_import_plan_keeps_internal_same_date_imports_of_other_texts():
+    """File-internal same-date entries with different texts are independent:
+    the store may hold several events per date (one per recurrence mode), so
+    the fold must not collapse them nor lose one to file order."""
     imported = {
         "1405-08-01": _entry("first"),
         "0000-08-01": _entry("second (yearly, same day)", "yearly"),
     }
-    plan = event_io.build_import_plan(existing, imported)
-    # The two imported entries collide with each other; nothing exists yet.
+    plan = event_io.build_import_plan({}, imported)
+    # Nothing exists yet and nothing was folded.
     assert plan.replaced_existing == {}
-    assert plan.internal_replaced == 1
-    assert "1405-08-01" not in plan.applied
-    assert plan.applied["0000-08-01"]["text"].startswith("second")
+    assert plan.internal_replaced == 0
+    assert plan.applied == imported
 
 
 def test_build_import_plan_no_collisions():
@@ -456,18 +498,40 @@ def test_build_import_plan_skips_store_identical_entries():
     assert plan.internal_replaced == 0
 
 
-def test_build_import_plan_folds_around_a_later_store_identical_entry():
+def test_build_import_plan_keeps_an_other_text_stray_beside_the_store_copy():
+    """A file entry that lands on the same visible day as a store event but
+    tells a different story imports BESIDE it: the store's yearly copy and
+    the file's one-time stray are independent events, so the file order can
+    never decide which copy survives. (The exact Himeta import shape.)"""
+    stray_first = {
+        "1405-08-05": _entry("test"),                      # lands on 1405-08-05
+        "0000-08-05": _entry("Himeta's Birthday", "yearly"),  # exact store copy, later
+    }
+    store_copy_first = {
+        "0000-08-05": _entry("Himeta's Birthday", "yearly"),
+        "1405-08-05": _entry("test"),
+    }
+    for imported in (stray_first, store_copy_first):
+        plan = event_io.build_import_plan({"0000-08-05": _entry("Himeta's Birthday", "yearly")},
+                                          imported)
+        assert plan.unchanged == {"0000-08-05": _entry("Himeta's Birthday", "yearly")}
+        assert plan.applied == {"1405-08-05": _entry("test")}
+        assert plan.replaced_existing == {}
+        assert plan.internal_replaced == 0
+
+
+def test_build_import_plan_folds_a_same_text_stray_around_a_later_store_identical_entry():
     """The skip split runs after the fold, not before: a store-identical
-    entry that trails a same-date stray in the file folds the stray away,
-    so the plan keeps the user's copy instead of confirming its eviction
-    and re-placing it with the stray."""
-    existing = {"1405-08-01": _entry("copied note")}
+    entry that trails a same-text same-date stray in the file folds the stray
+    away, so the plan keeps the user's copy instead of confirming its
+    eviction and re-placing it with the stray."""
+    existing = {"1405-08-05": _entry("copied note")}
     imported = {
-        "0000-08-01": _entry("same-day stray", "yearly"),  # lands on 1405-08-01
-        "1405-08-01": _entry("copied note"),               # exact store copy, later
+        "0000-08-05": _entry("copied note", "yearly"),  # same-event stray
+        "1405-08-05": _entry("copied note"),            # exact store copy, later
     }
     plan = event_io.build_import_plan(existing, imported)
-    assert plan.unchanged == {"1405-08-01": _entry("copied note")}
+    assert plan.unchanged == {"1405-08-05": _entry("copied note")}
     assert plan.applied == {}
     assert plan.replaced_existing == {}
     assert plan.internal_replaced == 1

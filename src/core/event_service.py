@@ -324,10 +324,10 @@ class EventService:
         """Reconcile an import against the current store, mutating nothing.
 
         The returned plan carries the exact set of existing events the import
-        would replace (exact-key overwrites AND same-date cross-representation
-        collisions), so the UI can confirm before anything is applied.
-        Entries the store already holds exactly ride through as the plan's
-        ``unchanged`` no-ops.
+        would replace (same-event takeovers: exact-key overwrites and
+        same-text same-date representation upgrades), so the UI can confirm
+        before anything is applied. Entries the store already holds exactly
+        ride through as the plan's ``unchanged`` no-ops.
         """
         return build_import_plan(self.events, imported)
 
