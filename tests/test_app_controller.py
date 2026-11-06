@@ -415,6 +415,21 @@ def _capture_popup_dialog(tray, monkeypatch):
     return captured["dialog"]
 
 
+def test_update_popup_is_tray_owned_not_parked_in_an_active_window(tray, monkeypatch):
+    """(Bug 2) Reported repro: the update ask centered on the ACTIVE window -
+    with the calendar popup up, it landed inside its 305px card. The popup is
+    tray-owned: parent AND center anchor are None, so whatever window happens
+    to be active decides nothing about its geometry."""
+    from PyQt6.QtWidgets import QWidget
+    foreign = QWidget()
+    foreign.show()
+    try:
+        dialog = _capture_popup_dialog(tray, monkeypatch)
+        assert dialog.parent() is None
+    finally:
+        foreign.close()
+
+
 def test_manual_popup_with_holiday_refresh_carries_extra_line(tray, monkeypatch):
     """The popup gains one extra line when the same manual round refreshed
     the holiday file - the report covers the whole round."""
@@ -441,8 +456,24 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
             self.version = version
             self.shown = False
             self.dismissed = False
+            self.size = (340, 120)  # what adjustSize() would measure on the card
+            # The tray-owned card sizes itself (adjustSize) then centers on the
+            # screen before show - no parent, no active-window placement.
+            self.geometry_calls = []
             self.canceled = type("Signal", (), {
                 "connect": staticmethod(lambda slot: canceled_slots.append(slot))})()
+
+        def adjustSize(self):
+            self.geometry_calls.append("adjustSize")
+
+        def width(self):
+            return self.size[0]
+
+        def height(self):
+            return self.size[1]
+
+        def move(self, x, y):
+            self.geometry_calls.append("move")
 
         def show(self):
             self.shown = True
@@ -467,6 +498,7 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     fallback = dest.parent == Path.home() / "Downloads" or dest.parent == APP_CONFIG.USER_DATA_DIR
     assert fallback
     assert canceled_slots == [tray.update_checker.cancel_download]
+    assert tray._download_dialog.geometry_calls == ["adjustSize", "move"]  # centered pre-show
     assert tray._download_dialog is not None  # dialog kept for progress updates
     tray._close_download_dialog()
     assert tray._download_dialog is None
@@ -2257,8 +2289,24 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
         def __init__(self, version, parent=None):
             self.shown = False
             self.dismissed = False
+            self.size = (340, 120)  # what adjustSize() would measure on the card
+            self.pos = None
             self.canceled = type("Signal", (), {
                 "connect": staticmethod(lambda slot: canceled_slots.append(slot))})()
+
+        def adjustSize(self):
+            pass
+
+        def width(self):
+            return self.size[0]
+
+        def height(self):
+            return self.size[1]
+
+        def move(self, x, y):
+            # The tray-owned card now centers itself on the screen (no parent):
+            # the recorded move must sit on the primary work area's center.
+            self.pos = (x, y)
 
         def show(self):
             self.shown = True

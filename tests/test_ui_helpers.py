@@ -12,7 +12,8 @@ from tests.qt_mousing import press, release
 from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
                               DigitsFirstCombo, FramelessDragMixin,
                               ReservedRailScrollArea, accent_button_stylesheet,
-                              center_combo_items, clamp_popup_to_work_area,
+                              center_combo_items, center_on_screen,
+                              clamp_popup_to_work_area,
                               combo_stylesheet, copied_pill_ground,
                               create_tray_pixmap, danger_button_stylesheet,
                               error_line_edit_stylesheet, fit_combo_width,
@@ -491,6 +492,21 @@ def test_combo_popup_selected_row_uses_the_on_accent_text(palette):
                   f"{palette['ACCENT_COLOR']}; color: {on_accent}; }}")
     assert hover_rule in sheet
     assert "color: white" not in sheet
+
+
+def test_center_on_screen_centers_on_the_primary_work_area(qtbot):
+    """(Bug 2) The tray-owned dialog family has no owner window: centering is
+    decided against the primary work area's center, never a parent's."""
+    widget = QWidget()
+    widget.resize(100, 40)
+    widget.move(10, 10)  # wherever it was born
+    qtbot.addWidget(widget)
+
+    center_on_screen(widget)
+
+    geo = QApplication.primaryScreen().availableGeometry()
+    assert widget.x() == geo.center().x() - widget.width() // 2
+    assert widget.y() == geo.center().y() - widget.height() // 2
 
 
 # --- mouse-event routing lives on the mixin itself (REF-7) -------------------------
