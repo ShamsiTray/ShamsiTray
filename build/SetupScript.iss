@@ -57,7 +57,7 @@ DisableProgramGroupPage=yes
 ; would never match it.
 CloseApplications=yes
 RestartApplications=no
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=commandline
 AllowNoIcons=yes
 
 [Languages]
@@ -79,6 +79,8 @@ Source: "..\output\ShamsiTray\*";               DestDir: "{app}"; \
 ; "Remove user settings and data" checkbox removes it explicitly).
 Source: "..\assets\data\holidays.json"; DestDir: "{localappdata}\ShamsiTray"; \
         Flags: onlyifdoesntexist uninsneveruninstall
+
+Source: "..\assets\images\wizard\WizardUninstallImage.png"; DestDir: "{app}\assets\images\wizard"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}";                       Filename: "{app}\{#MyAppExeName}"
@@ -106,6 +108,39 @@ var
   UninstallPage: TNewNotebookPage;
   UninstallUninstallButton: TNewButton;
   RemoveSettingsCheckbox: TNewCheckBox;
+  KillSucceeded: Boolean;
+
+const
+  GWL_EXSTYLE = -20;
+  WS_EX_COMPOSITED = $02000000;
+  WM_CHANGEUISTATE = $0127;
+  UIS_SET = 1;
+  UISF_HIDEFOCUS = 1;
+  VK_SPACE = $20;
+
+function GetWindowLongW(Wnd: Longint; Index: Integer): Longint;
+  external 'GetWindowLongW@user32.dll stdcall';
+function SetWindowLongW(Wnd: Longint; Index: Integer; NewLong: Longint): Longint;
+  external 'SetWindowLongW@user32.dll stdcall';
+function SendMessageW(Wnd: Longint; Msg: Integer; WParam: Longint;
+  LParam: Longint): Longint;
+  external 'SendMessageW@user32.dll stdcall';
+function GetKeyState(VKey: Integer): Integer;
+  external 'GetKeyState@user32.dll stdcall';
+
+procedure RemoveSettingsClick(Sender: TObject);
+begin
+  // The style hook's dotted focus ring ignores the UI state entirely
+  // (film: the ring holds while the checkbox stays focused, after either
+  // click), so a mouse click can only lose the ring by losing focus: hand
+  // it back to the Uninstall button, whose accent ring is the open look.
+  // Skip for Space: keyboard users keep the ring until the next click.
+  if (GetKeyState(VK_SPACE) and $8000) <> 0 then
+    Exit;
+  UninstallProgressForm.ActiveControl := UninstallUninstallButton;
+  SendMessageW(UninstallProgressForm.Handle, WM_CHANGEUISTATE,
+    UIS_SET or (UISF_HIDEFOCUS shl 16), 0);
+end;
 
 function IsAppRunning(): Boolean;
 var
@@ -118,58 +153,106 @@ begin
                  SW_HIDE, ewWaitUntilTerminated, ErrorCode) and (ErrorCode = 0);
 end;
 
-function InitializeUninstall(): Boolean;
+// A kill needs verification: poll until the process is verifiably gone
+// instead of sleeping out a fixed window along the way. Each probe already
+// blocks for the ~half second cmd.exe + tasklist need, so 300 ms between
+// polls is as tight as this check can get, and the caller moves the moment
+// the tray is verifiably dead.
+function PollUntilClosed(): Boolean;
+var
+  Poll: Integer;
+begin
+  for Poll := 1 to 3 do
+  begin
+    if not IsAppRunning() then
+    begin
+      Result := True;
+      Exit;
+    end;
+    Sleep(300);
+  end;
+  Result := False;
+end;
+
+// There is no graceful close to attempt: taskkill without /F posts WM_CLOSE,
+// which this app deliberately absorbs (setQuitOnLastWindowClosed(False) in
+// src/main.py - dismissing every window leaves the tray process running), so
+// the tray can never answer that knock, and waiting for it is pure delay.
+// The forced kill is the close; the process probe - not taskkill's exit
+// code, which is 0 along with everything else - is the proof it worked.
+// The Uninstall button runs this synchronously on every click, so the whole
+// dance only starts behind a live tray: an idle tray costs one tasklist and
+// returns immediately.
+function TryCloseApp(): Boolean;
 var
   ErrorCode: Integer;
 begin
+  if not IsAppRunning() then
+  begin
+    Result := True;
+    Exit;
+  end;
+  Exec('taskkill', '/F /IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+  Result := PollUntilClosed();
+end;
+
+function InitializeUninstall(): Boolean;
+begin
   Result := True;
+  // The interactive flow closes the app from the Uninstall button (below), so
+  // a user who cancels on that page never loses the running tray. Silent mode
+  // shows no page and closes the app here instead, because no prompt is
+  // possible there (/VERYSILENT would block forever, and Inno does not suppress
+  // a plain MsgBox for /SUPPRESSMSGBOXES either); on a process that survives
+  // the kill it logs and continues, removing what the file lock allows.
+  if not UninstallSilent then
+    Exit;
   if not IsAppRunning() then
     Exit;
+  if not TryCloseApp() then
+    Log('{#MyAppName} could not be closed; continuing the silent uninstall.');
+end;
 
-  // Inno does not suppress a plain MsgBox under /SUPPRESSMSGBOXES, so an
-  // unattended (/VERYSILENT) uninstall would block on this prompt forever.
-  // Silent mode closes the tray without asking; the interactive prompt keeps
-  // its "close it and continue" meaning, so SuppressibleMsgBox would not do.
-  if not UninstallSilent then
+// The Uninstall button is created with ModalResult mrNone, so the click can
+// never end the page by itself: the kill runs first (TryCloseApp), and only a
+// verified-closed app may end the wizard - on a stubborn process the page
+// stays up for a retry, with the single error box as the verdict.
+procedure UninstallClick(Sender: TObject);
+begin
+  if not TryCloseApp() then
   begin
-    if MsgBox('The application {#MyAppName} is currently running. ' +
-              'Do you want to close it and continue with the uninstallation?',
-              mbConfirmation, MB_YESNO) <> IDYES then
-    begin
-      Result := False;
-      Exit;
-    end;
+    MsgBox('{#MyAppName} could not be closed. Close it from the tray, then press Uninstall to try again.',
+           mbError, MB_OK);
+    Exit;
   end;
+  // End the modal from the script: Close on the modal progress form makes
+  // ShowModal return mrCancel - a user Cancel ends the modal with the same
+  // value, so the gate below reads KillSucceeded to tell the two apart. The
+  // button itself carries mrNone, so nothing here depends on when the VCL
+  // copies which control's ModalResult: the scripted Close is the only
+  // ender of a successful run.
+  KillSucceeded := True;
+  UninstallProgressForm.Close;
+end;
 
-  // Graceful close first. taskkill without /F only posts WM_CLOSE, which this
-  // app deliberately absorbs (setQuitOnLastWindowClosed(False) in src/main.py:
-  // dismissing every window leaves the tray process running), so taskkill still
-  // exits 0 and its exit code cannot be trusted as proof the app died. Re-probe
-  // the process instead of branching on that code.
-  Exec('taskkill', '/IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
-  Sleep(2000);
-
-  if IsAppRunning() then
-  begin
-    Exec('taskkill', '/F /IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
-    Sleep(2000);
-  end;
-
-  // Uninstalling under a live process would leave the exe locked, so the file
-  // removal above and the DelTree in CurUninstallStepChanged would both fail
-  // and silently leave the install directory behind. In silent mode carry on
-  // rather than block: the leftover-directory cleanup below is best-effort and
-  // the files the uninstaller owns are removed as far as the lock allows.
-  if IsAppRunning() then
-  begin
-    if UninstallSilent then
-      Log('{#MyAppName} could not be closed; continuing the silent uninstall.')
-    else
-    begin
-      MsgBox('{#MyAppName} could not be closed. Close it from the tray, then run this uninstaller again.',
-             mbError, MB_OK);
-      Result := False;
-    end;
+procedure UseLogoInUninstaller();
+var
+  Img: TBitmapImage;
+  Png: String;
+  NewSize: Integer;
+begin
+  Png := ExpandConstant('{app}\assets\images\wizard\WizardUninstallImage.png');
+  if not FileExists(Png) then Exit;
+  try
+    Img := UninstallProgressForm.WizardSmallBitmapImage;
+    Img.PngImage.LoadFromFile(Png);
+    Img.Stretch := True;
+    NewSize := ScaleX(45);
+    Img.Left := Img.Left + Img.Width - NewSize + ScaleX(18);
+    Img.Top := Img.Top - (NewSize - Img.Height) div 2 + ScaleY(4);
+    Img.Width := NewSize;
+    Img.Height := NewSize;
+  except
   end;
 end;
 
@@ -180,9 +263,13 @@ var
   PageDescriptionLabel: string;
   CancelButtonEnabled: Boolean;
   CancelButtonModalResult: Integer;
+  ModalOutcome: Integer;
 begin
   if not UninstallSilent then
   begin
+    UseLogoInUninstaller();
+    KillSucceeded := False;
+
     // Save original labels
     PageNameLabel := UninstallProgressForm.PageNameLabel.Caption;
     PageDescriptionLabel := UninstallProgressForm.PageDescriptionLabel.Caption;
@@ -212,6 +299,7 @@ begin
     RemoveSettingsCheckbox.Height := ScaleY(17);
     RemoveSettingsCheckbox.Caption := 'Remove user settings and data';
     RemoveSettingsCheckbox.Checked := False; // Default to unchecked
+    RemoveSettingsCheckbox.OnClick := @RemoveSettingsClick;
     
     // Set the page active
     UninstallProgressForm.InnerNotebook.ActivePage := UninstallPage;
@@ -232,20 +320,61 @@ begin
     UninstallUninstallButton.Width := UninstallProgressForm.CancelButton.Width;
     UninstallUninstallButton.Height := UninstallProgressForm.CancelButton.Height;
     UninstallUninstallButton.Caption := 'Uninstall';
-    UninstallUninstallButton.ModalResult := mrOK;  // Ends the wizard
+    // mrNone, not mrOK: this click must never close the page on its own - the
+    // UninstallClick handler runs the kill first and decides below.
+    UninstallUninstallButton.ModalResult := mrNone;
+    UninstallUninstallButton.OnClick := @UninstallClick;
     UninstallUninstallButton.TabOrder := UninstallProgressForm.CancelButton.TabOrder;
     
     // Fix Cancel button tab order
     UninstallProgressForm.CancelButton.TabOrder := UninstallUninstallButton.TabOrder + 1;
     
+    // The wizard's static/button/checkbox children keep their default
+    // clWindow brush, so each one's first erase paints white in the
+    // un-manifested process (film: two full-width white bars + a white Cancel
+    // across the reveal frames). WS_EX_COMPOSITED makes Windows paint the
+    // whole window tree in one buffer, so no child ever flashes its own erase;
+    // ParentBackground is the engine's own lever for custom-page backgrounds,
+    // layered on for whatever a dark system presents these controls against.
+    PageText.ParentBackground := True;
+    RemoveSettingsCheckbox.ParentBackground := True;
+    UninstallProgressForm.PageNameLabel.ParentBackground := True;
+    UninstallProgressForm.PageDescriptionLabel.ParentBackground := True;
+    UninstallProgressForm.StatusLabel.ParentBackground := True;
+    UninstallProgressForm.BeveledLabel.ParentBackground := True;
+    UninstallUninstallButton.ParentBackground := True;
+    UninstallProgressForm.CancelButton.ParentBackground := True;
+
+    // Catch-all for the first frames: WS_EX_COMPOSITED makes Windows paint the
+    // whole window tree into one buffer, so no child can briefly show its own
+    // white erase. Set once, before the form is ever shown.
+    SetWindowLongW(UninstallProgressForm.Handle, GWL_EXSTYLE,
+      GetWindowLongW(UninstallProgressForm.Handle, GWL_EXSTYLE) or
+      WS_EX_COMPOSITED);
+
+    // Hide the dotted focus ring form-wide: BUTTON-classed controls draw the
+    // ring while focused and re-assert it whenever focus arrives, so the
+    // checkbox's own click handler (RemoveSettingsClick) re-sends this state.
+    // UISF_HIDEFOCUS keeps the ring for keyboard navigation, as in system
+    // dialogs; DefWindowProc carries the state to every child.
+    SendMessageW(UninstallProgressForm.Handle, WM_CHANGEUISTATE,
+      UIS_SET or (UISF_HIDEFOCUS shl 16), 0);
+
+    // Park initial focus on the Uninstall button: left to VCL it lands on the
+    // checkbox, whose BUTTON class re-asserts visible focus (the dotted ring).
+    UninstallProgressForm.ActiveControl := UninstallUninstallButton;
+
     // Temporarily modify Cancel button behavior
     CancelButtonEnabled := UninstallProgressForm.CancelButton.Enabled;
     CancelButtonModalResult := UninstallProgressForm.CancelButton.ModalResult;
     UninstallProgressForm.CancelButton.Enabled := True;
     UninstallProgressForm.CancelButton.ModalResult := mrCancel;
     
-    // Show the form (Uninstall or Cancel)
-    if UninstallProgressForm.ShowModal = mrCancel then Abort;
+    // Show the form. Uninstall, Cancel and the scripted Close all end the
+    // modal here; only a flag-less mrCancel is a verdict to abort on.
+    ModalOutcome := UninstallProgressForm.ShowModal;
+    if (ModalOutcome = mrCancel) and (not KillSucceeded) then
+      Abort;
     
     // Restore Cancel button
     UninstallProgressForm.CancelButton.Enabled := CancelButtonEnabled;
@@ -255,6 +384,10 @@ begin
     UninstallProgressForm.PageNameLabel.Caption := PageNameLabel;
     UninstallProgressForm.PageDescriptionLabel.Caption := PageDescriptionLabel;
     UninstallProgressForm.InnerNotebook.ActivePage := UninstallProgressForm.InstallingPage;
+    // The engine re-Shows this hidden form for the progress phase; without
+    // this the ask page's Uninstall button would stay next to Cancel above
+    // the progress bar.
+    UninstallUninstallButton.Visible := False;
   end;
 end;
 
