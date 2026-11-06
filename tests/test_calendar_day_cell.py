@@ -3,7 +3,7 @@ custom tooltip lifecycle and the add/remove-event context menu."""
 import jdatetime
 import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt
-from PyQt6.QtGui import QAction, QColor, QContextMenuEvent, QCursor, QFontMetrics, QImage
+from PyQt6.QtGui import QAction, QColor, QContextMenuEvent, QCursor, QFontMetrics, QImage, QPainter
 from PyQt6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
@@ -13,7 +13,8 @@ from ui.widgets.calendar_day_cell import (ClickableLabel, CopyDateMenu,
 from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
                                      MENU_ITEM_PADDING_TRAIL,
                                      MENU_ITEM_PADDING_V,
-                                     centered_menu_stylesheet)
+                                     centered_menu_stylesheet,
+                                     paint_copied_row_ground)
 from ui.widgets.tooltip import TOOLTIP_DELAY_MS, TONE_MIN_CONTRAST, CustomTooltip
 from utils.ui_helpers import copied_pill_ground, legible_on
 
@@ -769,6 +770,64 @@ def test_copied_row_paints_the_accent_pill(qtbot, dark_palette):
     # greyed out while the hold runs - that is "the other copy rows grey out"
     assert _close(_lightest_pixel(img, ink2), QColor(palette["GREY_COLOR"]))
     m._finish_copy()
+
+
+def test_the_copied_row_wipes_the_selected_hover_wash_under_the_pill(qtbot, dark_palette):
+    """(Bug 1) Rows are painted by the stylesheet first, and the QSS hover
+    wash spans the FULL row while the pill is inset 2px: on themes whose
+    hover contrasts with the pill wash, that band read as an outline ring
+    around «✓ کپی شد». Putting the copied row under the selected state is the
+    on-screen repro; the ring must be wiped to flat menu background."""
+    palette = dark_palette
+    parent = QMenu()
+    qtbot.addWidget(parent)
+    m = CopyDateMenu(parent)
+    m.setStyleSheet(centered_menu_stylesheet(palette))
+    m.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+    copied = m.add_copy_action("تاریخ شمسی", "jalali")
+    m.addSeparator()
+    m.add_copy_action("هر دو", "both")
+    qtbot.addWidget(m)
+
+    m.show_copied_row(copied)
+    m.setActiveAction(copied)  # the QSS :selected wash over the morphed row
+    img = _grab(m)
+    geo = m.actionGeometry(copied)
+    # The 2px band between the row's edge and the pill's own inset: flat
+    # background, never the hover round - on either side of the row.
+    for probe_x in (geo.left() + 1, geo.right() - 1):
+        probe = img.pixelColor(probe_x, geo.center().y())
+        assert _close(probe, QColor(palette["BACKGROUND_COLOR"]), tol=4), \
+            f"the selected-row wash still reads as a ring at x={probe_x}: {probe.name()}"
+    # The pill itself is intact under the wash: the shared blend.
+    pill_probe = img.pixelColor(geo.left() + 8, geo.center().y())
+    assert _close(pill_probe, QColor(copied_pill_ground(palette)), tol=4)
+    m._finish_copy()
+
+
+def test_copied_row_ground_helper_wipes_then_insets_the_pill():
+    """(Bug 1) The ground helper at painter level, with colors a stylesheet
+    cannot be around: a loud hover tone already on the row must end wiped to
+    the menu background in the band, while the pill wash covers exactly the
+    inset area - and the caption color comes back floored on that wash."""
+    palette = {"BACKGROUND_COLOR": "#101010", "ACCENT_COLOR": "#FF0000"}
+    img = QImage(24, 24, QImage.Format.Format_ARGB32)
+    img.fill(QColor("#FF00FF"))  # pretend the QSS hover wash painted the row
+    painter = QPainter(img)
+    caption = paint_copied_row_ground(painter, QRect(0, 0, 24, 24), palette)
+    painter.end()
+
+    ground = QColor(copied_pill_ground(palette))
+    # Pill territory: the shared opaque blend, hover tone gone.
+    assert _close(img.pixelColor(12, 12), ground, tol=4)
+    assert _close(img.pixelColor(12, 21), ground, tol=4)
+    # The band the selection wash would have owned: menu background.
+    assert _close(img.pixelColor(12, 1), QColor(palette["BACKGROUND_COLOR"]), tol=4)
+    assert _close(img.pixelColor(12, 22), QColor(palette["BACKGROUND_COLOR"]), tol=4)
+    # The two surfaces of one confirmation cannot drift apart: same floored
+    # caption color the floating flash resolves.
+    assert caption == QColor(legible_on(palette["ACCENT_COLOR"], ground.name(),
+                                        TONE_MIN_CONTRAST["success"]))
 
 
 def test_copy_submenu_uses_the_shared_menu_styling(qtbot, cell, open_menu):

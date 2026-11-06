@@ -238,6 +238,37 @@ def centered_menu_stylesheet(palette: dict) -> str:
         "QMenu::left-arrow, QMenu::right-arrow { image: none; width: 0px; height: 0px; }")
 
 
+# The copied-row wipe must cover exactly the rect QSS's hover rule paints:
+# the same full-row geometry rounded at the stylesheet's border-radius.
+COPIED_ROW_RADIUS = 6
+
+
+def paint_copied_row_ground(painter: QPainter, row: QRect,
+                            palette: dict) -> QColor:
+    """Paint one morphed row's whole ground and return its caption color.
+
+    The stylesheet still owns this row's box: its rounded ``item:selected``
+    hover wash spans the FULL row, while the pill below is inset 2px - on
+    themes whose hover wash contrasts with the pill's wash, that band reads
+    as an outline ring around the pill. So the full-row shape (the same
+    geometry and radius the hover rule paints) is first wiped back to the
+    menu's background, then the shared ``copied_pill_ground`` pill is inset
+    onto it - hover or not, the band stays flat ground. The returned caption
+    color is the pill's own ``legible_on`` floor, so the painted ground and
+    the morphed caption cannot drift apart.
+    """
+    row_shape = QPainterPath()
+    row_shape.addRoundedRect(QRectF(row), COPIED_ROW_RADIUS, COPIED_ROW_RADIUS)
+    painter.fillPath(row_shape, QColor(palette["BACKGROUND_COLOR"]))
+    ground = copied_pill_ground(palette)
+    pill = QPainterPath()
+    pill.addRoundedRect(QRectF(row.adjusted(2, 2, -2, -2)),
+                        COPIED_ROW_RADIUS, COPIED_ROW_RADIUS)
+    painter.fillPath(pill, QColor(ground))
+    return QColor(legible_on(palette["ACCENT_COLOR"], ground,
+                             TONE_MIN_CONTRAST["success"]))
+
+
 def attach_centered_submenu(parent_menu: QMenu, submenu: QMenu, title: str) -> QMenu:
     """Attach a ``CenteredTextMenu`` popup under a day menu with the shared
     chrome: take the centered stylesheet (so a submenu never falls back to the
@@ -318,13 +349,10 @@ class CenteredTextMenu(QMenu):
                 # behind the whole row, caption floored to the success tone on
                 # that wash - the shared copied_pill_ground blend, so the two
                 # surfaces of one confirmation (this row and the floating
-                # flash) cannot drift apart.
-                ground = copied_pill_ground(palette)
-                color = QColor(legible_on(palette["ACCENT_COLOR"], ground,
-                                          TONE_MIN_CONTRAST["success"]))
-                shape = QPainterPath()
-                shape.addRoundedRect(QRectF(geo.adjusted(2, 2, -2, -2)), 6, 6)
-                painter.fillPath(shape, QColor(ground))
+                # flash) cannot drift apart. The ground helper wipes the row's
+                # QSS hover wash first: its full-row shape must never read as
+                # an outline ring around the inset pill (see its docstring).
+                color = paint_copied_row_ground(painter, geo, palette)
             else:
                 color = QColor(
                     palette["TEXT_COLOR"] if action.isEnabled() else
