@@ -98,6 +98,22 @@ def nudge_popup_inside_work_area(popup, *, margin: int = MENU_EDGE_MARGIN) -> No
     if (x, y) != (frame.x(), frame.y()):
         popup.move(x, y)
 
+def center_on_screen(widget) -> None:
+    """Center a never-shown top-level widget over the primary work area.
+
+    The tray-owned dialog family (update popup, progress card, their notices)
+    has no owner window: Qt's Dialog placement is only meaningful against a
+    parent, so these surfaces decide their own geometry the way
+    ``ConfirmDialog.center_over_parent(None)`` does for the themed cards.
+    Call before ``show()`` with the widget already at its final size.
+    """
+    screen = QApplication.primaryScreen()
+    if screen is None:
+        return
+    geo = screen.availableGeometry()
+    widget.move(geo.center().x() - widget.width() // 2,
+                geo.center().y() - widget.height() // 2)
+
 def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius: float) -> QPainterPath:
     """Paint the app's rounded-card background (antialiased fill + 1px border).
 

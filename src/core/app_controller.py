@@ -57,8 +57,8 @@ from utils.logger import setup_logging
 from utils.native_events import TimeChangeEventFilter
 from utils.startup_registry import RUN_KEY_PATH, StartupRegistry
 from utils.windows_theme import WindowsThemeBackend
-from utils.ui_helpers import (create_tray_pixmap, global_scrollbar_stylesheet,
-                              legible_on)
+from utils.ui_helpers import (center_on_screen, create_tray_pixmap,
+                              global_scrollbar_stylesheet, legible_on)
 
 if TYPE_CHECKING:
     from ui.windows.tutorial_window import TutorialWindow
@@ -577,8 +577,12 @@ class SystemTrayIcon(QSystemTrayIcon):
                       else "")
             # Built directly (not via ConfirmDialog.choose) so the reference is
             # retained and a manual arrival can raise the open popup.
+            # Parent AND center anchor are deliberately None: this is a
+            # tray-owned surface with no owner window - centering it over the
+            # active window would, whenever that window is the calendar popup,
+            # drop the ask inside the 305px calendar (its own reported bug).
             dialog = ConfirmDialog(
-                QApplication.activeWindow(), "بروزرسانی جدید",
+                None, "بروزرسانی جدید",
                 f"نسخه جدید {APP_CONFIG.APP_NAME} ({version}) موجود است.",
                 detail=detail, glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
                 actions=[("دانلود", "accent"),
@@ -587,7 +591,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._active_update_popup = dialog
             # The shared present-tail; the reference above is what lets a
             # manual arrival raise the open popup while it runs.
-            dialog.exec_centered(QApplication.activeWindow())
+            dialog.exec_centered(None)
             choice = dialog.choice
         finally:
             self._update_dialog_open = False
@@ -617,7 +621,14 @@ class SystemTrayIcon(QSystemTrayIcon):
                 logger.info(f"Installer for {version} already downloaded and verified: {destination}")
                 self._on_installer_downloaded(str(destination))
                 return
-        dialog = DownloadUpdateDialog(version, QApplication.activeWindow())
+        # Same ruler as the popup above: no owner window, so the progress card
+        # decides its own geometry - centered on the screen, never inside the
+        # active popup. adjustSize first: the fixed width is set at
+        # construction, but the layout's real height only exists afterwards,
+        # and centering on the default 100px card would park it too high.
+        dialog = DownloadUpdateDialog(version)
+        dialog.adjustSize()
+        center_on_screen(dialog)
         dialog.canceled.connect(self.update_checker.cancel_download)
         self._download_dialog = dialog
         dialog.show()
@@ -646,7 +657,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._close_download_dialog()
         # The installer is never run unless the user asks for it here.
         run_requested = ConfirmDialog.ask(
-            QApplication.activeWindow(), "دانلود کامل شد", "نصب‌کننده اجرا شود؟",
+            None, "دانلود کامل شد", "نصب‌کننده اجرا شود؟",
             glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE, danger=False,
             confirm_text="اجرا", cancel_text="بعداً")
         if run_requested:
@@ -664,7 +675,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # No automatic redirect: a checksum failure deserves the user's attention
         # instead of a browser window quietly opening on the releases page.
         ConfirmDialog.notify(
-            QApplication.activeWindow(), "دانلود بروزرسانی",
+            None, "دانلود بروزرسانی",
             "دانلود بروزرسانی ناموفق بود.",
             detail="می‌توانید نصب‌کننده را به‌صورت دستی از صفحه Releases دریافت کنید.",
             danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
@@ -746,6 +757,9 @@ class SystemTrayIcon(QSystemTrayIcon):
                 self._active_update_popup.raise_()
                 self._active_update_popup.activateWindow()
             return
+        # Every notice below is a tray-owned surface (same ruler as the update
+        # popup): parent and center anchor stay None so a query can never
+        # center inside an open tool window.
         if app_state == APP_STATE_UNAVAILABLE:
             # A newer release EXISTS but cannot be offered safely (no installer
             # asset, no valid sha256 digest, untrusted URL). Answering «بروز
@@ -753,7 +767,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             # clean "last checked" is stamped so it is re-checked instead of
             # waiting out the 24h gate.
             ConfirmDialog.notify(
-                QApplication.activeWindow(), "بررسی بروزرسانی",
+                None, "بررسی بروزرسانی",
                 "نسخه جدید موجود است اما دانلود امن آن ممکن نیست.",
                 danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION,
                 key=UPDATE_CHECK_NOTICE_KEY)
@@ -761,32 +775,32 @@ class SystemTrayIcon(QSystemTrayIcon):
         if app_state == APP_STATE_CURRENT:
             if holidays_state == HOLIDAYS_STATE_UPDATED:
                 ConfirmDialog.notify(
-                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    None, "بررسی بروزرسانی",
                     "فایل تعطیلات به‌روزرسانی شد.",
                     glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
                     key=UPDATE_CHECK_NOTICE_KEY)
             elif holidays_state == HOLIDAYS_STATE_CURRENT:
                 ConfirmDialog.notify(
-                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    None, "بررسی بروزرسانی",
                     "برنامه و فایل تعطیلات بروز است.",
                     glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
                     key=UPDATE_CHECK_NOTICE_KEY)
             else:
                 ConfirmDialog.notify(
-                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    None, "بررسی بروزرسانی",
                     "برنامه بروز است؛ بررسی فایل تعطیلات ناموفق بود.",
                     glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
                     key=UPDATE_CHECK_NOTICE_KEY)
         elif app_state == APP_STATE_FAILED:
             if holidays_state == HOLIDAYS_STATE_UPDATED:
                 ConfirmDialog.notify(
-                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    None, "بررسی بروزرسانی",
                     "فایل تعطیلات به‌روزرسانی شد، اما بررسی برنامه ناموفق بود.",
                     danger=True, glyph=APP_CONFIG.FAS.FA_WIFI,
                     key=UPDATE_CHECK_NOTICE_KEY)
             else:
                 ConfirmDialog.notify(
-                    QApplication.activeWindow(), "بررسی بروزرسانی",
+                    None, "بررسی بروزرسانی",
                     "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
                     danger=True, glyph=APP_CONFIG.FAS.FA_WIFI,
                     key=UPDATE_CHECK_NOTICE_KEY)
