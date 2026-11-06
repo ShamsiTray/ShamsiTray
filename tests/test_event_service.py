@@ -526,8 +526,8 @@ def test_apply_import_rolls_back_completely_on_save_failure(service, failing_sav
 
 
 def test_plan_import_reports_replaced_existing(service):
-    service.events["1405-08-01"] = _entry("existing one-time")
-    imported = {"0000-08-01": _entry("imported yearly", RECURRENCE_YEARLY)}
+    service.events["1405-08-01"] = _entry("existing event")
+    imported = {"0000-08-01": _entry("existing event", RECURRENCE_YEARLY)}
     plan = service.plan_import(imported)
     # Nothing has been mutated by planning:
     assert set(service.events) == {"1405-08-01"}
@@ -536,13 +536,41 @@ def test_plan_import_reports_replaced_existing(service):
 
 
 def test_apply_import_removes_shadowed_existing(service, monkeypatch):
-    """The import replaces the same-date existing event (exact overwrite or
-    cross-representation alike) - the confirm dialog's promise is kept."""
+    """The replace promise is kept only for same-event takeovers: the same
+    words under another key shape (a yearly file key over a one-time store
+    key) - the shapes the store folds - and exact-key overwrites. A different
+    text on the same visible date applies beside the event it shares a day
+    with (see the independence test below)."""
     monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
-    service.events["1405-08-01"] = _entry("existing one-time")
-    imported = {"0000-08-01": _entry("imported yearly", RECURRENCE_YEARLY)}
+    service.events["1405-08-01"] = _entry("existing event")
+    imported = {"0000-08-01": _entry("existing event", RECURRENCE_YEARLY)}
     assert service.apply_import(service.plan_import(imported)) is True
-    assert service.events == {"0000-08-01": _entry("imported yearly", RECURRENCE_YEARLY)}
+    assert service.events == {"0000-08-01": _entry("existing event", RECURRENCE_YEARLY)}
+
+
+def test_apply_import_keeps_same_date_other_text_events_independent(service, monkeypatch):
+    """Regression (the Himeta import): the store legally holds a one-time and
+    a yearly event on the same visible date. Re-importing a file that carries
+    both - while the store's one-time was deleted since - must import the
+    deleted event and never name the survivor as replaced: different texts on
+    one date are independent events, in either file order."""
+    monkeypatch.setattr("core.event_service.save_user_events", lambda events: True)
+    service.events["0000-08-05"] = _entry("Himeta's Birthday", RECURRENCE_YEARLY)
+    imported_orders = (
+        {"1405-08-05": _entry("test"),
+         "0000-08-05": _entry("Himeta's Birthday", RECURRENCE_YEARLY)},
+        {"0000-08-05": _entry("Himeta's Birthday", RECURRENCE_YEARLY),
+         "1405-08-05": _entry("test")},
+    )
+    for imported in imported_orders:
+        plan = service.plan_import(imported)
+        assert plan.replaced_existing == {}
+        assert plan.unchanged == {"0000-08-05": _entry("Himeta's Birthday", RECURRENCE_YEARLY)}
+        assert plan.applied == {"1405-08-05": _entry("test")}
+        assert service.apply_import(plan) is True
+        assert set(service.events) == {"1405-08-05", "0000-08-05"}
+        # Reset for the next order.
+        del service.events["1405-08-05"]
 
 
 # --- service-level recurrence validation ---------------------------------------

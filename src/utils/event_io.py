@@ -704,13 +704,16 @@ def import_events_from_file(path) -> Optional[Tuple[Dict[str, dict], int]]:
 
 # --- Import reconciliation (EVT-5) -------------------------------------------
 #
-# An import is reconciled by VISIBLE DATE, deliberately stricter than the
-# interactive add path, which is keyed. Different store keys can land on the same
-# date: a one-time ``1405-08-01`` and a yearly ``0000-08-01`` are distinct keys
-# that both fire on 1405/08/01. A flat ``dict.update`` would deduplicate exact keys
-# only, so everything below folds by date: importing a file that touches a busy
-# day replaces that day after the user has been shown what it would lose, rather
-# than quietly adding a second event beside the first.
+# The store may legally hold several events per visible date - one per
+# recurrence mode (``AGENTS`` says a date's events are told apart by key). An
+# import therefore never treats a busy day as one slot: an imported entry takes
+# an existing one over only when they are recognizably THE SAME EVENT - the
+# same canonical key (the slot itself; dict.update's last write wins) or the
+# same text under another key shape (a representation upgrade, e.g. a yearly
+# key over a one-time one). Same-date entries with different texts are
+# strangers: they are imported side by side without an ask, so re-importing a
+# file can neither evict the event it merely shares a day with nor lose its
+# own copy to file order.
 
 # Years sampled for recurring-vs-recurring collision checks: one leap and one
 # non-leap Jalali year. Recurring keys carry no year of their own, so every date
@@ -768,17 +771,36 @@ def keys_share_visible_date(key_a: str, key_b: str) -> bool:
     return _recurring_keys_share_date(key_a, key_b)
 
 
-def dedupe_events_by_visible_date(events: Dict[str, dict]) -> Tuple[Dict[str, dict], int]:
-    """Fold an events mapping so no two entries share a visible date.
+def entries_claim_the_same_event(key_a: str, entry_a: dict,
+                                 key_b: str, entry_b: dict) -> bool:
+    """True when one entry takes the other over in an import.
 
-    Later entries replace earlier ones landing on the same date — the same
-    "last write wins" rule ``dict.update`` applies to exact keys, extended to
-    same-date cross-representation collisions. Returns (deduped, replaced).
+    Both conditions must hold: the two keys land on at least one shared
+    visible date (``keys_share_visible_date``), and they are recognizably the
+    same event - the same canonical key (one store slot) or the same text
+    (the same words under another key shape). A different text on a shared
+    date is an independent event; the fold and the replace accounting both
+    load the definition from here so neither can gain a second vocabulary.
+    """
+    if not keys_share_visible_date(key_a, key_b):
+        return False
+    return key_a == key_b or entry_a.get("text", "") == entry_b.get("text", "")
+
+
+def dedupe_events_by_visible_date(events: Dict[str, dict]) -> Tuple[Dict[str, dict], int]:
+    """Fold an events mapping so no two entries claim the same event.
+
+    Later entries shadow earlier ones that land on the same visible date and
+    are the same event (same key, or same text under another key shape).
+    Different-text same-date entries are independent and both survive the
+    fold - the store's one-event-per-recurrence-per-date invariant never
+    makes them competitors. Returns (folded, replaced).
     """
     result: Dict[str, dict] = {}
     replaced = 0
     for key, entry in events.items():
-        shadowed = [k for k in result if keys_share_visible_date(k, key)]
+        shadowed = [k for k, old_entry in result.items()
+                    if entries_claim_the_same_event(k, old_entry, key, entry)]
         for old_key in shadowed:
             del result[old_key]
             replaced += 1
@@ -791,12 +813,12 @@ class ImportPlan(NamedTuple):
     mutation so the UI can confirm it (EVT-5).
 
     ``applied``            entries that will enter the store (already folded so
-                           no two of them share a visible date; later entries
+                           no two of them claim the same event; later entries
                            won internal collisions)
     ``replaced_existing``  existing entries that will be removed because an
-                           imported event takes over their date (exact-key
-                           overwrites and same-date collisions alike)
-    ``internal_replaced``  import-internal same-date duplicates folded into
+                           imported event takes them over (exact-key overwrites
+                           and same-text same-date representation upgrades)
+    ``internal_replaced``  import-internal same-event duplicates folded into
                            ``applied`` (later entry won)
     ``unchanged``          entries skipped as exact copies of what the store
                            already holds: they never reach the confirmation,
@@ -822,7 +844,9 @@ def build_import_plan(existing: Dict[str, dict],
     the same text under a DIFFERENT key shape (e.g. a yearly file key over a
     one-time store key) stays a confirmed replace. The fold covers the whole
     file first, so the skips take part in it: an identical entry folds the
-    same-date strays that arrived before it, keeping the user's own copy.
+    same-text strays that arrived before it, keeping the user's own copy -
+    and every other-text same-date entry rides through the fold untouched,
+    because a shared date alone claims nothing.
     """
     applied, internal_replaced = dedupe_events_by_visible_date(imported)
     unchanged: Dict[str, dict] = {}
@@ -831,8 +855,10 @@ def build_import_plan(existing: Dict[str, dict],
             unchanged[key] = applied.pop(key)
     replaced_existing: Dict[str, dict] = {}
     for new_key in applied:
+        new_entry = applied[new_key]
         for existing_key, entry in existing.items():
-            if keys_share_visible_date(existing_key, new_key):
+            if entries_claim_the_same_event(existing_key, entry,
+                                            new_key, new_entry):
                 replaced_existing[existing_key] = entry
     return ImportPlan(applied=applied,
                       replaced_existing=replaced_existing,
