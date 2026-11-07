@@ -5,7 +5,7 @@ import pytest
 from config import APP_CONFIG
 from ui.widgets.go_to_date import GoToDateWindow
 from utils.date_utils import to_persian_digits
-from utils.ui_helpers import DigitsFirstCombo
+from utils.ui_helpers import DigitsFirstCombo, error_color
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -131,7 +131,7 @@ def test_year_error_state_restyling(popup):
     assert popup._year_is_out_of_range() is True
     assert popup._year_error is True
     style = popup.year_input.styleSheet()
-    assert palette["HOLIDAY_COLOR"] in style  # error style is holiday-red
+    assert error_color(palette) in style  # error style is the shared error red
     popup.year_input.setText("1400")
     assert popup._year_error is False
 

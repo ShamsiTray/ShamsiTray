@@ -28,7 +28,7 @@ from utils.date_utils import (describe_date_distance, distance_status_word,
 from utils.logger import setup_logging
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, combo_stylesheet,
-                              set_popup_pixel_scroll)
+                              error_color, set_popup_pixel_scroll)
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
 from .base_window import BaseFramelessWindow
 from ui.widgets.tooltip import CustomTooltip
@@ -385,7 +385,8 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
                               self.elapsed_direction):
             elapsed_label.setFont(QFont(APP_CONFIG.FONT_FAMILY, 14))
         self.leap_year_status.setFont(QFont(APP_CONFIG.FONT_FAMILY, 12))
-        self.status_message.setStyleSheet("color: red; font-weight: bold; font-size: 18px;")
+        self.status_message.setStyleSheet(
+            f"color: {error_color(APP_CONFIG.get_current_palette())}; font-weight: bold; font-size: 18px;")
 
     def _connect_signals(self):
         self.calendar_switch.calendar_changed.connect(self._on_calendar_changed)
