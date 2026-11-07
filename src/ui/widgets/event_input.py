@@ -36,8 +36,8 @@ from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE, RECURRENCE_YEAR
 from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
                               accent_button_stylesheet, center_combo_items,
                               combo_stylesheet, danger_button_stylesheet,
-                              fit_combo_width, palette_on_accent_text,
-                              set_popup_pixel_scroll)
+                              error_color, fit_combo_width,
+                              palette_on_accent_text, set_popup_pixel_scroll)
 from .checkbox import CustomCheckbox
 
 # Combo index <-> recurrence mode mapping (kept explicit for signal safety).
@@ -525,7 +525,7 @@ class EventInputWidget(QWidget):
 
         self.date_row.update_styles()
         self.year_hint_label.setStyleSheet(
-            f"color: {palette['HOLIDAY_COLOR']}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
+            f"color: {error_color(palette)}; font-family: '{APP_CONFIG.FONT_FAMILY}'; "
             f"font-size: 12px; font-weight: bold; background: transparent; border: none;")
 
         self.remove_after_finish_checkbox.update_visuals()

@@ -877,13 +877,14 @@ def line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bo
 
 
 def error_line_edit_stylesheet(palette: dict, *, padding: str = "8px", center_text: bool = False) -> str:
-    """The shared line-edit style with the invalid-input (holiday-red) look.
+    """The shared line-edit style with the invalid-input look: the error red
+    from ``error_color`` on border and text, staying red on hover/focus.
 
-    Appended over ``line_edit_stylesheet`` so the border and text turn holiday
-    red - and stay red on hover/focus. Revert to a normal year input by
-    applying the plain ``line_edit_stylesheet`` again.
+    Appended over ``line_edit_stylesheet`` so every date-error field carries
+    the one shared voice - revert to a normal year input by applying the
+    plain ``line_edit_stylesheet`` again.
     """
-    red = palette['HOLIDAY_COLOR']
+    red = error_color(palette)
     return (line_edit_stylesheet(palette, padding=padding, center_text=center_text)
             + f"QLineEdit {{ border: 1px solid {red}; color: {red}; }}"
               f"QLineEdit:hover, QLineEdit:focus {{ border: 1px solid {red}; }}")
@@ -900,6 +901,38 @@ def window_title_button_stylesheets(palette: dict) -> tuple[str, str]:
         f"QPushButton:hover {{ background-color: {palette['HOVER_BG']}; }}"
         f"QPushButton:pressed {{ background-color: {palette['HOVER_BG']}; }}")
     return close_style, minimize_style
+
+
+ERROR_RED_DARK = "#E5484D"    # mid-weight red: firmer than a pastel, calmer than #ff0000
+ERROR_RED_LIGHT = "#C92A2A"   # the same voice for light input fills
+# A tuned 3:1 floor, deliberately under the WCAG normal-text 4.5:1 (same dial
+# philosophy as _ON_ACCENT_MIN_RATIO): at 4.5 the dark grounds push any red to
+# pastel salmon - a contrast-driven artefact of WCAG math, not a design. Every
+# error surface rides bold ink next to a same-coloured border, so 3:1 keeps
+# the voice firm; per-theme outliers still get nudged to the floor.
+ERROR_RED_MIN_CONTRAST = 3.0
+
+
+def error_color(palette: dict) -> str:
+    """The one invalid-input red, floored to ``ERROR_RED_MIN_CONTRAST`` on the
+    theme's input fill.
+
+    Deliberately neither ``#ff0000`` (harsh, and near-invisible as text on
+    dark fills) nor the palette's ``HOLIDAY_COLOR`` (which is not red on every
+    theme), so an out-of-range year reads as an error under a theme whose
+    holiday tone never drifted true red. Every date-error surface resolves
+    through this so the borders and the message labels cannot disagree."""
+    ground = QColor(palette["INPUT_BG_COLOR"])
+    dark_ground = _luminance(ground) < 0.5
+    color = QColor(ERROR_RED_DARK if dark_ground else ERROR_RED_LIGHT)
+    toward = QColor("#ffffff") if dark_ground else QColor("#000000")
+    for _ in range(12):
+        if contrast_ratio(color, ground) >= ERROR_RED_MIN_CONTRAST:
+            break
+        # mix, not HSV lighter(): saturated reds sit at max value, where
+        # lighter() is a no-op and the floor would be returned unmet
+        color = QColor(mix_colors(color.name(), toward.name(), 0.15))
+    return color.name()
 
 
 def rgba_string(color_hex: str, alpha: float, *, channel_max: int = 255) -> str:

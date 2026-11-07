@@ -8,17 +8,19 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QWidget)
 
 from config import APP_CONFIG
+from themes import THEMES
 from tests.qt_mousing import press, release
 from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
-                              DigitsFirstCombo, FramelessDragMixin,
-                              ReservedRailScrollArea, accent_button_stylesheet,
-                              center_combo_items, center_on_screen,
-                              clamp_popup_to_work_area,
-                              combo_stylesheet, copied_pill_ground,
-                              create_tray_pixmap, danger_button_stylesheet,
+                              DigitsFirstCombo, ERROR_RED_MIN_CONTRAST,
+                              FramelessDragMixin, ReservedRailScrollArea,
+                              accent_button_stylesheet, center_combo_items,
+                              center_on_screen, clamp_popup_to_work_area,
+                              combo_stylesheet, contrast_ratio,
+                              copied_pill_ground, create_tray_pixmap,
+                              danger_button_stylesheet, error_color,
                               error_line_edit_stylesheet, fit_combo_width,
-                              ghost_button_stylesheet, line_edit_stylesheet,
-                              mix_colors, nudge_popup_inside_work_area,
+                              ghost_button_stylesheet, line_edit_stylesheet, mix_colors,
+                              nudge_popup_inside_work_area,
                               on_accent_text_color, paint_rounded_card,
                               palette_on_accent_text, rgba_string,
                               scrollbar_stylesheet, set_popup_pixel_scroll,
@@ -451,9 +453,56 @@ def test_error_line_edit_stylesheet_extends_plain_with_red(palette):
     plain = line_edit_stylesheet(palette)
     error = error_line_edit_stylesheet(palette)
     assert plain in error  # appended over the shared style
-    # The red override is embedded verbatim from the palette (raw case).
-    assert palette["HOLIDAY_COLOR"] in error
+    # The red override is the shared error voice from error_color, not the
+    # palette's holiday colour.
+    assert error_color(palette) in error
     assert "QLineEdit:hover, QLineEdit:focus" in error  # stays red on hover/focus
+
+
+def test_error_color_floors_on_each_polarity():
+    """One voice per background polarity, always clearing the tuned floor."""
+    for key in ("dark", "catppuccin_latte"):
+        pal = THEMES[key]
+        red = error_color(pal)
+        ratio = contrast_ratio(QColor(red), QColor(pal["INPUT_BG_COLOR"]))
+        assert ratio >= ERROR_RED_MIN_CONTRAST, key
+
+
+def test_error_color_mixes_only_when_the_floor_needs_it():
+    """Firm on the darkest grounds, softened only on grounds the raw base
+    cannot clear - never a blanket lightening."""
+    assert error_color(THEMES["github_dark"]) == "#e5484d"  # already clears raw
+    # stock dark sits just under the floor, so a mix must have happened
+    assert error_color(THEMES["dark"]) != "#e5484d"
+
+
+def test_error_color_distinct_from_pure_red_and_holiday():
+    """Neither #ff0000 nor the holiday colour: pastel-holiday packs still
+    present a red error, and the pure red never rides a border verbatim."""
+    pal = THEMES["dark"]
+    red = error_color(pal).upper()
+    assert red != "#FF0000"
+    assert red != pal["HOLIDAY_COLOR"].upper()
+
+
+def test_blend_hover_composites_the_wash_over_the_base():
+    """An rgba hover wash folds into ONE opaque colour over the resting fill:
+    alpha 0 is the base untouched, a full wash is the wash colour itself, and
+    the stock row fill under the dark pack's 8% white sits between them."""
+    base, wash = "#3a3a3a", "rgba(255, 255, 255, 0.08)"
+    assert blend_hover(base, "rgba(255, 255, 255, 0)") == base
+    assert blend_hover(base, "rgba(10, 20, 30, 1)") == "#0a141e"
+    blended = blend_hover(base, wash)
+    assert "#" in blended and blended not in (base, "#3a3a3a")
+    stock = blend_hover(THEMES["dark"]["INPUT_BG_COLOR"], THEMES["dark"]["HOVER_BG"])
+    assert int(stock[1:], 16) > int("3a3a3a", 16)  # 8% white over #3a3a3a brightens
+
+
+def test_blend_hover_passes_opaque_hover_colours_through():
+    """The light packs' plain hex hover needs no folding: it already is an
+    opaque background, so it rides the clause unchanged."""
+    pal = THEMES["catppuccin_latte"]
+    assert blend_hover(pal["INPUT_BG_COLOR"], pal["HOVER_BG"]) == pal["HOVER_BG"]
 
 
 def test_window_title_button_stylesheets_pair(palette):

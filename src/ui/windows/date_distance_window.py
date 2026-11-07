@@ -54,7 +54,7 @@ from utils.date_utils import (describe_date_distance, describe_gregorian_distanc
                               format_distance_weeks, from_persian_digits,
                               to_persian_digits, year_range_hint)
 from utils.logger import setup_logging
-from utils.ui_helpers import legible_on, mix_colors
+from utils.ui_helpers import error_color, legible_on, mix_colors
 from .base_window import BaseFramelessWindow
 
 logger = setup_logging(__name__)
@@ -390,7 +390,7 @@ class DateDistanceWindow(BaseFramelessWindow):
             f"QFrame#DistanceCard {{ background-color: {card_bg}; "
             f"border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 18px; }}")
         self.year_hint_label.setStyleSheet(
-            f"color: {palette['HOLIDAY_COLOR']}; {font} font-size: 16px; font-weight: bold; {plain}")
+            f"color: {error_color(palette)}; {font} font-size: 16px; font-weight: bold; {plain}")
         self.result_days.setStyleSheet(
             f"color: {legible_on(palette['ACCENT_COLOR'], card_bg)}; {font} "
             f"font-size: 58px; font-weight: bold; {plain}")
