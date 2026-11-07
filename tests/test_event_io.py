@@ -5,6 +5,7 @@ import jdatetime
 import pytest
 
 from config import APP_CONFIG
+from html import escape
 from utils import event_io
 
 
@@ -535,6 +536,38 @@ def test_build_import_plan_folds_a_same_text_stray_around_a_later_store_identica
     assert plan.applied == {}
     assert plan.replaced_existing == {}
     assert plan.internal_replaced == 1
+
+
+def test_breakable_chunks_a_long_unbreakable_run():
+    """A pasted URL is one token: word wrap breaks between words but never
+    inside one, so the display form re-chunks runs over 25 chars with
+    zero-width spaces, losing nothing - the chunk join re-reads the token,
+    and no run of 25+ survives the chunking."""
+    token = "x" * 400
+    shown = event_io.breakable(token)
+    chunks = shown.split("\u200b")
+    assert all(len(chunk) <= 20 for chunk in chunks)
+    assert "".join(chunks) == token
+    assert "x" * 25 not in shown
+
+
+def test_breakable_leaves_ordinary_text_byte_for_byte():
+    """A zero-width space between Persian letters would break their joining,
+    so only absurd runs of 25+ are ever touched - ordinary words, however
+    many, come back exactly as they went in."""
+    text = "word " * 80
+    assert event_io.breakable(text) == text
+    short = "یک رویداد کوتاه"
+    assert event_io.breakable(short) == short
+
+
+def test_breakable_before_escape_cannot_cut_an_entity():
+    """The day tooltip composes escape(breakable(text)): the chunking must
+    run on the raw text, because splitting AFTER escaping could land a chunk
+    boundary inside an &amp; and break the markup. With 30 raw ampersands the
+    chunk lands between the two halves and every entity stays whole."""
+    html = escape(event_io.breakable("&" * 30))
+    assert html == "&amp;" * 20 + "\u200b" + "&amp;" * 10
 
 
 def test_build_import_plan_same_text_other_key_shape_still_replaces():

@@ -47,6 +47,7 @@ store already reflects neither replaces events nor asks about them.
 import json
 import logging
 import os
+import re
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 
 import jdatetime
@@ -273,6 +274,33 @@ def truncate_preview(text: str, limit: int = EVENT_TEXT_PREVIEW_CHARS) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + "…"
+
+
+# Word wrap breaks BETWEEN words but never inside one, so a single long token
+# (a pasted URL) sets any label carrying event text to that token's width.
+# The run threshold keeps ordinary words out of this: a zero-width space
+# between Persian letters would break their joining, so only absurdly long
+# runs are ever touched.
+_BREAKABLE_RUN_CHARS = 25
+_BREAKABLE_CHUNK_CHARS = 20
+_UNBREAKABLE_RUN = re.compile(r"\S{%d,}" % _BREAKABLE_RUN_CHARS)
+
+
+def breakable(text: str) -> str:
+    """The one display form for event text in wrap-constrained surfaces (the
+    event row title): long unbroken runs are re-chunked and joined with
+    zero-width spaces so word wrap can break them, keeping the surface
+    narrow. Call it on the RAW text, before any HTML escaping - splitting
+    after escaping can cut an &amp; in half. The stored text is never
+    touched; the reader still gets the whole content, hence no cap and no
+    tooltip."""
+    def join_chunks(match: "re.Match") -> str:
+        token = match.group()
+        chunks = (token[i:i + _BREAKABLE_CHUNK_CHARS]
+                  for i in range(0, len(token), _BREAKABLE_CHUNK_CHARS))
+        return "\u200b".join(chunks)
+
+    return _UNBREAKABLE_RUN.sub(join_chunks, text)
 
 
 def ask_is_stale(live_facts: dict, shown_facts: dict) -> bool:
