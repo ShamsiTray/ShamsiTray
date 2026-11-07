@@ -36,7 +36,8 @@ from ui.windows.converter_window import DateConverterWindow
 from utils.date_utils import to_persian_digits
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
                             RECURRENCE_YEARLY, make_event_key)
-from utils.ui_helpers import SCROLL_BOTTOM_PAD_PX, error_line_edit_stylesheet
+from utils.ui_helpers import (SCROLL_BOTTOM_PAD_PX, error_line_edit_stylesheet,
+                              hover_border_color)
 
 
 @pytest.fixture(autouse=True)
@@ -289,6 +290,27 @@ def test_manager_row_leaves_ordinary_text_untouched(manager):
     row = manager.rows_layout.itemAt(0).widget()
     assert row.text_label.text() == text
     assert "\u200b" not in row.text_label.text()
+
+
+def test_manager_row_hover_changes_only_the_border(manager):
+    """The row's hover is a border-only verdict painted from the pack's own
+    colours: the stock hover colour was the scrollbar handle, which IS the
+    idle border colour on some packs (Gruvbox), and a background wash was
+    turned down - the fill never changes."""
+    manager.controller.user_events["1404-05-05"] = {
+        "text": "روی این ردیف", "recurrence": "none", "remove_after_finish": False}
+    manager.refresh_list()
+    row = manager.rows_layout.itemAt(0).widget()
+    sheet = row.styleSheet()
+    start = sheet.find(":hover")
+    assert start != -1
+    clause = sheet[start:sheet.find("}", start)]
+    assert "background-color" not in clause
+    palette = APP_CONFIG.get_current_palette()
+    hover = hover_border_color(palette)
+    assert hover in clause
+    # The anti-merge pin: hover must read as a different border than idle.
+    assert QColor(hover).name() != QColor(palette["CALENDAR_BORDER_COLOR"]).name()
 
 
 def test_manager_delete_requires_confirmation(manager, qtbot, monkeypatch):
