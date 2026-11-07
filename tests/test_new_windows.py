@@ -261,6 +261,36 @@ def test_manager_filters_by_month(manager):
     assert "شهریور" not in labels
 
 
+def test_manager_row_breaks_a_long_unbreakable_token(manager):
+    """Word wrap breaks between words but never inside one, so a single long
+    token (a pasted URL, 400 characters of 'aaaa') used to set the row's
+    minimum width to that token. The display text is now chunked with
+    zero-width spaces, so the row wraps it - and the store keeps the token
+    untouched. The user reads the whole text right in the row."""
+    token = "x" * 400
+    manager.controller.user_events["1404-05-05"] = {
+        "text": token, "recurrence": "none", "remove_after_finish": False}
+    manager.refresh_list()
+    row = manager.rows_layout.itemAt(0).widget()
+    shown = row.text_label.text()
+    assert "\u200b" in shown
+    assert all(len(chunk) <= 20 for chunk in shown.split("\u200b"))
+    assert manager.controller.user_events["1404-05-05"]["text"] == token
+
+
+def test_manager_row_leaves_ordinary_text_untouched(manager):
+    """Only absurdly long runs are ever chunked: a zero-width space between
+    Persian letters would break their joining, so normal words - however
+    many - must reach the label byte for byte."""
+    text = "word " * 80
+    manager.controller.user_events["1404-05-05"] = {
+        "text": text, "recurrence": "none", "remove_after_finish": False}
+    manager.refresh_list()
+    row = manager.rows_layout.itemAt(0).widget()
+    assert row.text_label.text() == text
+    assert "\u200b" not in row.text_label.text()
+
+
 def test_manager_delete_requires_confirmation(manager, qtbot, monkeypatch):
     today = jdatetime.date.today()
     manager.controller.add_user_event(today, "برای حذف", "none", False)
