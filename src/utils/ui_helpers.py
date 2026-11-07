@@ -1038,6 +1038,28 @@ def mix_colors(first_hex: str, second_hex: str, weight: float = 0.5) -> str:
                   round(a.blue() + (b.blue() - a.blue()) * weight)).name()
 
 
+# Weights the hover-border walk tries (first distinct candidate wins): per
+# channel the blend is rounded, so near a pack's own border/text pair a small
+# weight can round straight back onto the idle colour - the walk is what
+# guarantees a visible hover on the closest pair.
+_HOVER_BORDER_WEIGHTS = (0.2, 0.3, 0.4, 0.5)
+
+
+def hover_border_color(palette: dict) -> str:
+    """The event row's hover border: the pack's own idle border blended toward
+    its text colour, so the hover verdict is derived from the pack itself and
+    can never hand back the idle border (the scrollbar-handle colour it
+    replaced IS the border colour on some packs, like Gruvbox, which merged
+    the hover into the idle state)."""
+    idle = QColor(palette["CALENDAR_BORDER_COLOR"]).name()
+    candidate = idle
+    for weight in _HOVER_BORDER_WEIGHTS:
+        candidate = mix_colors(idle, palette["TEXT_COLOR"], weight)
+        if candidate != idle:
+            return candidate
+    return candidate  # totality floor: only a pack whose border IS its text
+
+
 # The copy confirmation's accent fraction: the calendar copy menu's morphed row
 # was tuned with accent at alpha 36/255 over its box ground, and the floating
 # flash needs an opaque surface (it hovers over anything), so both blend the

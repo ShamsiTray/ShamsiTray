@@ -19,7 +19,8 @@ from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
                               copied_pill_ground, create_tray_pixmap,
                               danger_button_stylesheet, error_color,
                               error_line_edit_stylesheet, fit_combo_width,
-                              ghost_button_stylesheet, line_edit_stylesheet, mix_colors,
+                              ghost_button_stylesheet, hover_border_color,
+                              line_edit_stylesheet, mix_colors,
                               nudge_popup_inside_work_area,
                               on_accent_text_color, paint_rounded_card,
                               palette_on_accent_text, rgba_string,
@@ -485,26 +486,6 @@ def test_error_color_distinct_from_pure_red_and_holiday():
     assert red != pal["HOLIDAY_COLOR"].upper()
 
 
-def test_blend_hover_composites_the_wash_over_the_base():
-    """An rgba hover wash folds into ONE opaque colour over the resting fill:
-    alpha 0 is the base untouched, a full wash is the wash colour itself, and
-    the stock row fill under the dark pack's 8% white sits between them."""
-    base, wash = "#3a3a3a", "rgba(255, 255, 255, 0.08)"
-    assert blend_hover(base, "rgba(255, 255, 255, 0)") == base
-    assert blend_hover(base, "rgba(10, 20, 30, 1)") == "#0a141e"
-    blended = blend_hover(base, wash)
-    assert "#" in blended and blended not in (base, "#3a3a3a")
-    stock = blend_hover(THEMES["dark"]["INPUT_BG_COLOR"], THEMES["dark"]["HOVER_BG"])
-    assert int(stock[1:], 16) > int("3a3a3a", 16)  # 8% white over #3a3a3a brightens
-
-
-def test_blend_hover_passes_opaque_hover_colours_through():
-    """The light packs' plain hex hover needs no folding: it already is an
-    opaque background, so it rides the clause unchanged."""
-    pal = THEMES["catppuccin_latte"]
-    assert blend_hover(pal["INPUT_BG_COLOR"], pal["HOVER_BG"]) == pal["HOVER_BG"]
-
-
 def test_window_title_button_stylesheets_pair(palette):
     close_style, minimize_style = window_title_button_stylesheets(palette)
     assert "#E81123" in close_style  # Windows-red close hover
@@ -841,3 +822,14 @@ def test_copied_pill_ground_blends_the_menu_pill_wash():
     expected = mix_colors(palette["BACKGROUND_COLOR"], palette["ACCENT_COLOR"],
                           COPIED_WASH_ALPHA / 255)
     assert copied_pill_ground(palette) == expected != palette["BACKGROUND_COLOR"]
+
+
+def test_hover_border_color_never_hands_back_the_idle_border():
+    """The event row's hover border is derived from each pack's own border
+    blended toward its text colour, so the hover verdict must read as
+    different from the idle border in every registered pack - the
+    scrollbar-handle colour it replaced IS the border colour on packs like
+    Gruvbox, which merged the hover into the idle state."""
+    for key, pack in THEMES.items():
+        hover = hover_border_color(pack)
+        assert QColor(hover).name() != QColor(pack["CALENDAR_BORDER_COLOR"]).name(), key

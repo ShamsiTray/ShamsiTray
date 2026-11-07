@@ -51,6 +51,7 @@ from ui.widgets.event_input import (EventInputWidget, delete_confirmation_messag
 from ui.widgets.overlay_blocker import OverlayBlocker
 from ui.widgets.tooltip import CustomTooltip, TooltipButton, TooltipLabel
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles
+from utils.ui_helpers import hover_border_color
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
@@ -221,7 +222,7 @@ class EventRow(QFrame):
         font = APP_CONFIG.FONT_FAMILY
         self.setStyleSheet(
             f"QFrame#EventRow {{ background-color: {palette['INPUT_BG_COLOR']}; border: 1px solid {palette['CALENDAR_BORDER_COLOR']}; border-radius: 10px; }}"
-            f"QFrame#EventRow:hover {{ border-color: {palette['SCROLLBAR_HANDLE_COLOR']}; }}"
+            f"QFrame#EventRow:hover {{ border-color: {hover_border_color(palette)}; }}"
             f"QFrame#EventRow QLabel {{ border: none; background: transparent; }}")
 
         self.text_label.setStyleSheet(
