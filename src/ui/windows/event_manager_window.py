@@ -36,7 +36,6 @@ from typing import Dict, Optional
 
 import jdatetime
 from pathlib import Path
-import re
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
@@ -55,7 +54,7 @@ from utils.ui_helpers import hover_border_color
 from utils.date_utils import (days_in_jalali_month, normalize_search_text,
                               persian_month_name, to_persian_digits)
 from utils.event_io import (RECURRENCE_MONTHLY, RECURRENCE_NONE,
-                            RECURRENCE_YEARLY, ask_is_stale,
+                            RECURRENCE_YEARLY, ask_is_stale, breakable,
                             events_sorted_by_next_occurrence,
                             export_events_to_file, import_events_from_file,
                             is_expired_one_time, keys_share_visible_date,
@@ -117,30 +116,6 @@ def _event_anchor_month(key: str) -> Optional[int]:
     return parsed[1]  # None for monthly events -> they match any month filter
 
 
-# Word wrap breaks BETWEEN words but never inside one, so a single long token
-# (a pasted URL) would set the row's minimum width to that token's width. The
-# run threshold keeps ordinary words out of this: a zero-width space between
-# Persian letters would break their joining, so only absurdly long runs are
-# ever touched.
-_BREAKABLE_RUN_CHARS = 25
-_BREAKABLE_CHUNK_CHARS = 20
-_UNBREAKABLE_RUN = re.compile(r"\S{%d,}" % _BREAKABLE_RUN_CHARS)
-
-
-def _breakable(text: str) -> str:
-    """The display-only form of event text for the row title: long unbroken
-    runs are re-chunked and joined with zero-width spaces so the wrap can
-    break them, keeping the row narrow. The stored text is untouched - the
-    whole text stays readable right in the row, hence no tooltip."""
-    def join_chunks(match: re.Match) -> str:
-        token = match.group()
-        chunks = (token[i:i + _BREAKABLE_CHUNK_CHARS]
-                  for i in range(0, len(token), _BREAKABLE_CHUNK_CHARS))
-        return "\u200b".join(chunks)
-
-    return _UNBREAKABLE_RUN.sub(join_chunks, text)
-
-
 class EventRow(QFrame):
     """One event inside the manager list: title, date line, icon actions."""
     edit_requested = pyqtSignal(str)
@@ -168,7 +143,7 @@ class EventRow(QFrame):
 
         text_box = QVBoxLayout()
         text_box.setSpacing(2)
-        self.text_label = QLabel(_breakable(str(entry.get("text", ""))))
+        self.text_label = QLabel(breakable(str(entry.get("text", ""))))
         self.text_label.setWordWrap(True)
         self.text_label.setObjectName("EventTextLabel")
         self.text_label.setAlignment(right)
