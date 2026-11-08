@@ -7,6 +7,7 @@ such as fonts and data files. It helps ensure that the application has all
 its required resources before starting up.
 """
 from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG
 from .logger import setup_logging
@@ -14,7 +15,16 @@ from .logger import setup_logging
 logger = setup_logging(__name__)
 
 def load_fonts() -> None:
-    """Load all .ttf and .otf fonts from the resources directory."""
+    """Load all .ttf and .otf fonts from the resources directory.
+
+    Requires a live QApplication: a QFontDatabase call must not run before
+    app initialization, where it access-violates the process instead of
+    raising.
+    """
+    if QApplication.instance() is None:
+        raise RuntimeError(
+            "load_fonts() requires a live QApplication; QFontDatabase "
+            "access-violates instead of raising without one.")
     font_dir = APP_CONFIG.FONT_DIR
     if not font_dir.is_dir():
         raise FileNotFoundError(f"Font directory not found: {font_dir}")

@@ -2,6 +2,7 @@
 import pytest
 
 from config import APP_CONFIG
+from utils import asset_loader as asset_loader_module
 from utils.asset_loader import load_fonts, verify_assets
 
 
@@ -11,6 +12,20 @@ def test_load_fonts_succeeds_on_real_assets(qapp):
     QFontDatabase needs a QApplication instance (qapp) before any call.
     """
     load_fonts()  # must not raise
+
+
+def test_load_fonts_requires_a_live_application(monkeypatch):
+    """Without a QApplication the guard must raise instead of reaching
+    QFontDatabase, whose pre-app call access-violates the process."""
+
+    class _NoApplication:
+        @staticmethod
+        def instance():
+            return None
+
+    monkeypatch.setattr(asset_loader_module, "QApplication", _NoApplication)
+    with pytest.raises(RuntimeError, match="requires a live QApplication"):
+        load_fonts()
 
 
 def test_load_fonts_missing_dir_raises(tmp_path, monkeypatch):

@@ -53,6 +53,10 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
 
     def __init__(self):
         super().__init__()
+        # 220 sits below the initial layout's measured minimum (~230) on
+        # purpose: the difference lands in spacing slack, nothing clips, and
+        # the tighter look is the owner decision - don't fix it blindly. The
+        # results state does re-measure (_display_results).
         self._initial_height = 220
         self.setWindowTitle("تبدیل تاریخ")
         self.setFixedSize(self.WINDOW_WIDTH, self._initial_height)
