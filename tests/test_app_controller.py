@@ -18,6 +18,7 @@ from core.app_controller import (AUTO_CHECK_MAX_RETRIES, AUTO_CHECK_RETRY_DELAY_
                                  HOLIDAY_RETRY_MAX_ATTEMPTS, SystemTrayIcon,
                                  TIME_CHANGE_COALESCE_MS)
 from ui.widgets.checkbox import IconCheckboxActionWidget
+from ui.widgets.menu_widgets import MenuActionWidget
 from ui.windows.event_manager_window import EventManagerWindow
 
 
@@ -1720,6 +1721,42 @@ def test_menu_deferral_dies_with_the_tray(tray, qtbot):
     tray.deleteLater()
     qtbot.wait(100)              # long past the 50ms deferral window
     assert marker == []
+
+
+def _tray_menu_row_texts(menu):
+    """The row captions in display order, dividers skipped. A caption is
+    where its row keeps it: MenuActionWidget.label on opener rows,
+    IconCheckboxActionWidget.text_label on the checkbox rows."""
+    texts = []
+    for action in menu.actions():
+        if action.isSeparator():
+            continue
+        widget = action.defaultWidget()
+        if isinstance(widget, MenuActionWidget):
+            texts.append(widget.label.text())
+        else:
+            texts.append(widget.text_label.text())
+    return texts
+
+
+def test_tray_menu_rows_read_actions_before_settings(tray):
+    """The menu reads top-to-bottom as one opener run - converter, distance,
+    events, holidays, themes - then the settings block with the auto-check
+    row still right above the manual check it complements, exit last. The
+    order is deliberate and pinned verbatim so a later edit cannot shuffle
+    it."""
+    assert _tray_menu_row_texts(tray.contextMenu()) == [
+        "تبدیل تاریخ",
+        "فاصله دو تاریخ",
+        "مدیریت رویدادها",
+        "مشاهده تعطیلات",
+        "تم‌ها",
+        "راه اندازی همراه با سیستم",
+        "تقویم همیشه در بالا",
+        "بررسی خودکار بروزرسانی",
+        "بررسی بروزرسانی",
+        "خروج",
+    ]
 
 
 # --- always-on-top toggle -------------------------------------------------------------------

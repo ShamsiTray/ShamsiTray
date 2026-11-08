@@ -96,7 +96,9 @@ def add_auto_check_action(tray, menu):
 
 
 def build_tray_menu(tray):
-    """Compose the tray context menu; row order and separators live here."""
+    """Compose the tray context menu; row order and separators live here.
+    The reading order is deliberate - opener rows, then the settings block
+    with exit last - and pinned verbatim by test_app_controller."""
     menu = TrayMenu()
     # Separator rows only provide spacing; TrayMenu paints the actual divider
     # lines with the same thickness everywhere: ceil(scale) full device rows,
@@ -109,17 +111,17 @@ def build_tray_menu(tray):
     add_menu_action(tray, menu, "فاصله دو تاریخ",
                     lambda: close_menu_then(tray, tray._open_date_distance))
     menu.add_divider()
-    add_theme_gallery_action(tray, menu)
-    menu.add_divider()
-    add_startup_action(tray, menu)
-    menu.add_divider()
-    add_always_on_top_action(tray, menu)
-    menu.add_divider()
     add_menu_action(tray, menu, "مدیریت رویدادها",
                     lambda: close_menu_then(tray, tray._open_event_manager))
     menu.add_divider()
     add_menu_action(tray, menu, "مشاهده تعطیلات",
                     lambda: close_menu_then(tray, tray._open_holiday_viewer))
+    menu.add_divider()
+    add_theme_gallery_action(tray, menu)
+    menu.add_divider()
+    add_startup_action(tray, menu)
+    menu.add_divider()
+    add_always_on_top_action(tray, menu)
     menu.add_divider()
     add_auto_check_action(tray, menu)
     menu.add_divider()
