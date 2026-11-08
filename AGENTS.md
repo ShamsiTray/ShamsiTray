@@ -213,7 +213,7 @@ pytest
 
 ### `src/utils/`
 - `date_utils.py`: `to_persian_digits()`, `from_persian_digits()`, month/weekday name helpers, leap-year + days-in-month for both calendars, `validate_year_range()` (the converter's completed two-calendar sentences) plus `year_range_hint()` — the one short range template the year pickers share (event editor + go-to-date; the converter's Jalali max reads `APP_CONFIG.SUPPORTED_MAX_YEAR`, its min stays 1 by design so the converter stays open to years the calendar UI never shows), and the date-distance layer — `DateDistance` (frozen dataclass: `years`/`months`/`days` + signed `total_days`, with `is_today` and `has_calendar_units` derived - the latter False exactly when the breakdown would restate the total; both formatters are undefined for today and every caller branches on `is_today` first), `describe_date_distance()`, `format_distance_total()`, `format_distance_breakdown()`, `distance_status_word()` (the «مانده/گذشته» word any distance renderer needs), plus the Gregorian twin `describe_gregorian_distance()` (one shared walk, `_describe_distance`, with each calendar's clamping shifts) and the direction-free `format_distance_units()` / `format_distance_total_months()` / `format_distance_weeks()` (fixed 7-day conversion) with `DateDistance.has_month_total` / `has_full_weeks`, which the distance window reads. `year_range_hint(..., persian_digits=False)` words the range for Gregorian surfaces. The decomposition is largest-unit-first with per-step day clamping, so it is order-dependent and deliberately **not** a fixed conversion of the units into days
-- `asset_loader.py`: `verify_assets()`, `load_fonts()`
+- `asset_loader.py`: `verify_assets()`, `load_fonts()` (requires a live QApplication, guarded: a pre-app `QFontDatabase.addApplicationFont` access-violates instead of raising)
 - `logger.py`: `setup_logging()` — RotatingFileHandler (1MB × 3 backups) + console, millisecond timestamps. `install_qt_message_handler()` mirrors Qt's own diagnostics into that log under `qt.<category>` loggers, drops the benign warnings in `_QT_BENIGN_WARNINGS` by severity (never by text alone), and lets a fatal terminate the process like Qt's default handler
 - `native_events.py`: `TimeChangeEventFilter(QAbstractNativeEventFilter)` — handles Windows `WM_TIMECHANGE` (0x001E) as a pure detector (the controller coalesces bursts via `TIME_CHANGE_COALESCE_MS`, so a burst costs one refresh; the raw per-message trace is DEBUG-only) and `WM_SETTINGCHANGE` (0x001A), filtered to the `ImmersiveColorSet` section — which is what lets the app follow the Windows light/dark setting live. The settings-change lParam string is read as a wchar walk capped at 32 chars, so a malformed payload cannot be walked arbitrarily far
 - `startup_registry.py`: `StartupRegistry` — autostart `Run`-key access (`read()` / `write()` / `delete()`) plus `RUN_KEY_PATH`. The controller's autostart policy goes through this seam so tests can drive it against an in-memory backend
@@ -304,6 +304,11 @@ Conventions worth keeping when adding tests:
   `no_stray_network_checks`) so no test can ever touch the real network.
 - Offscreen Qt has no real cursor: `tests/qt_mousing.py` synthesizes mouse
   events; child-widget visibility checks need the parent actually `show()`n.
+- Scripted UI probes must boot with `QT_QPA_PLATFORM=windows` (not set) before
+  anything imports PyQt6: calling `load_fonts()` with no QApplication yet
+  access-violates instead of raising — observed on both the `offscreen` and
+  `windows` platforms. `load_fonts()` is guarded to raise instead; `main.py`
+  boots the QApplication first, and the suite never calls it.
 - `utils.logger` sets `propagate = False`, so `caplog` stays empty — attach a
   capture handler to the specific module logger instead.
 - `tests/` is a package-free folder but imported as `tests.xxx` by the suite
