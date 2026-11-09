@@ -1783,18 +1783,32 @@ def test_tray_menu_rows_read_actions_before_settings(tray):
     row still right above the manual check it complements, exit last. The
     order is deliberate and pinned verbatim so a later edit cannot shuffle
     it."""
+    # The autostart row exists only where the app adds it (tray_menu.py gates
+    # the Run key on Windows), so the verbatim pin carries the same gate.
+    autostart_row = (["راه اندازی همراه با سیستم"]
+                     if sys.platform.startswith("win") else [])
     assert _tray_menu_row_texts(tray.contextMenu()) == [
         "تبدیل تاریخ",
         "فاصله دو تاریخ",
         "مدیریت رویدادها",
         "مشاهده تعطیلات",
         "تم‌ها",
-        "راه اندازی همراه با سیستم",
+        *autostart_row,
         "تقویم همیشه در بالا",
         "بررسی خودکار بروزرسانی",
         "بررسی بروزرسانی",
         "خروج",
-    ]
+    ] if sys.platform.startswith("win") else [
+        "تبدیل تاریخ",
+        "فاصله دو تاریخ",
+        "مدیریت رویدادها",
+        "مشاهده تعطیلات",
+        "تم‌ها",
+        "تقویم همیشه در بالا",
+        "بررسی خودکار بروزرسانی",
+        "بررسی بروزرسانی",
+        "خروج",
+    ]  # the autostart row exists only where the app adds it (tray_menu.py)
 
 
 # --- always-on-top toggle -------------------------------------------------------------------
