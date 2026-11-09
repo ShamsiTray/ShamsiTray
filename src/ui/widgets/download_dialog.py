@@ -63,6 +63,12 @@ class DownloadUpdateDialog(HoverDriverMixin, FramelessDragMixin, QDialog):
         return max(1, min(DownloadUpdateDialog.CARD_WIDTH, available - 40))
 
     def __init__(self, version: str, parent=None, screen=None):
+        """Build the frameless, topmost, ApplicationModal download card whose
+        fixed width is decided from ``screen`` (the tray's screen): the
+        designed 340px, narrowed inside a narrower work area. The progress
+        bar starts busy - the content length arrives in the first reply, so
+        there is nothing to measure against yet - and ``canceled`` is what
+        the controller wires to abort the transfer."""
         super().__init__(parent)
         # ApplicationModal: the download usually starts with no other window
         # open (tray flow), where WindowModal would guard nothing. The

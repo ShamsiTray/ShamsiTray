@@ -17,6 +17,10 @@ def test_mb_str_persian_digits_one_decimal():
 
 
 def test_dialog_initial_state_is_busy(qtbot):
+    """A fresh card is the designed 340px wide, tray-owned modal (Application-
+    Modal, topmost so the pinned calendar can never cover it), RTL, measuring
+    nothing (busy) until the first reply total arrives, and naming the
+    version."""
     dialog = DownloadUpdateDialog("1.4.0")
     qtbot.addWidget(dialog)
     assert dialog.width() == 340  # fixed card width

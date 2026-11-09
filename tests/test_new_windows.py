@@ -2205,6 +2205,9 @@ def test_keyed_notify_updates_open_notice_instead_of_stacking(monkeypatch):
     raised, activated = [], []
 
     def fake_exec_centered(self, parent=None, screen=None):
+        """The modal wait, faked: the first notice experiences the newer
+        keyed result arriving mid-exec (the popup's race), which must raise
+        the already-open notice rather than build a second window."""
         if len(built) == 1:  # a newer result lands while this notice is up
             monkeypatch.setattr(self, "raise_", lambda: raised.append(True))
             monkeypatch.setattr(self, "activateWindow", lambda: activated.append(True))
@@ -2295,6 +2298,9 @@ def test_dismissed_notice_exec_finishes_without_stale_state(monkeypatch):
     finished = []
 
     def fake_exec_centered(self, parent=None, screen=None):
+        """The modal wait, faked: the notice is dismissed while it owns the
+        loop (as the update popup dismisses it), and a dismissal must still
+        let exec_centered return cleanly and clear the tracked state."""
         # The popup takes over while this notice is up.
         assert ConfirmDialog.dismiss_active_notice("update-check") is True
         finished.append(True)

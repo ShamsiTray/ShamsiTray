@@ -498,6 +498,11 @@ class EventInputWidget(QWidget):
         self.save_button.setEnabled(bool(self.text_edit.toPlainText().strip()))
 
     def update_styles(self):
+        """Re-theme the editor from the current palette: the panel, the text
+        box and its input fill, the recurrence combo (re-measured for the
+        applied font) and its disabled modes re-stamped in this theme's grey
+        rather than the build-time one, the date row, the error hint and both
+        footer buttons."""
         palette = APP_CONFIG.get_current_palette()
         self.setStyleSheet(f"EventInputWidget {{background-color: {palette['BACKGROUND_COLOR']}; border: 1px solid {palette['MENU_BORDER_COLOR']}; border-radius: 15px;}}")
 
