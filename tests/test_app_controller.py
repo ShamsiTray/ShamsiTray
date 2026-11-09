@@ -1798,17 +1798,7 @@ def test_tray_menu_rows_read_actions_before_settings(tray):
         "بررسی خودکار بروزرسانی",
         "بررسی بروزرسانی",
         "خروج",
-    ] if sys.platform.startswith("win") else [
-        "تبدیل تاریخ",
-        "فاصله دو تاریخ",
-        "مدیریت رویدادها",
-        "مشاهده تعطیلات",
-        "تم‌ها",
-        "تقویم همیشه در بالا",
-        "بررسی خودکار بروزرسانی",
-        "بررسی بروزرسانی",
-        "خروج",
-    ]  # the autostart row exists only where the app adds it (tray_menu.py)
+    ]
 
 
 # --- always-on-top toggle -------------------------------------------------------------------
