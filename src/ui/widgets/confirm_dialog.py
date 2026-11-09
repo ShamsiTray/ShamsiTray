@@ -31,7 +31,7 @@ Design notes:
 from typing import List, Optional, Tuple
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QScreen
 from PyQt6.QtWidgets import QApplication, QDialog
 
 from config import APP_CONFIG
@@ -89,9 +89,12 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
     # FramelessDragMixin supplies the mouse-event routing: blank-card presses
     # start a drag, buttons consume their own events.
 
-    def center_over_parent(self, parent):
-        """Center over ``parent`` (or the screen when there is no visible one),
-        clamped to the screen so a dialog near an edge stays fully on it."""
+    def center_over_parent(self, parent, screen=None):
+        """Center over ``parent`` - or, without a visible parent, over
+        ``screen`` (the tray's screen for the tray-owned family), falling back
+        to the primary work area when neither - clamped so a dialog near an
+        edge stays fully on it. A parented dialog ignores ``screen``: the work
+        area it shares with its parent is the meaningful one."""
         if parent is not None and parent.isVisible():
             # mapToGlobal, not geometry(): geometry() is parent-relative for a
             # child widget, so a dialog centered over one would land at that
@@ -101,13 +104,18 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
                       center.y() - self.height() // 2)
         else:
             # Tray-only flows (update popup, download results) have no visible
-            # parent; centering over the screen beats Qt's default corner-ish
-            # placement for a parentless dialog.
-            screen = QApplication.primaryScreen()
+            # parent; centering over the tray's screen beats Qt's default
+            # corner-ish placement for a parentless dialog.
+            if screen is None:
+                screen = QApplication.primaryScreen()
             if screen is not None:
                 geo = screen.availableGeometry()
-                self.move(geo.center().x() - self.width() // 2,
-                          geo.center().y() - self.height() // 2)
+                self.move(max(geo.left(),
+                              min(geo.center().x() - self.width() // 2,
+                                  geo.right() - self.width())),
+                          max(geo.top(),
+                              min(geo.center().y() - self.height() // 2,
+                                  geo.bottom() - self.height())))
             return
         # Centering over a parent parked near a screen edge (the 305px calendar
         # sits bottom-right) can push a 340px dialog partly off-screen; the drag
@@ -124,35 +132,39 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
 
     # --- ready-made flows -------------------------------------------------------
 
-    def exec_centered(self, parent=None):
+    def exec_centered(self, parent=None, screen=None):
         """The shared tail of every dialog flow: size, center, run modally.
 
         Callers that must keep a reference to the dialog itself (the update
         popup raises it when a manual check lands while it is up) build it by
         hand and end with this method instead of duplicating the tail; the
         ready-made flows below go through it too, so a change to how dialogs
-        are presented cannot diverge between them. Returns the QDialog exec()
-        result code.
+        are presented cannot diverge between them. ``screen`` names the work
+        area for a parentless run (the tray's screen, for the tray-owned
+        family). Returns the QDialog exec() result code.
         """
         self._refit()
-        self.center_over_parent(parent)
+        self.center_over_parent(parent, screen)
         return self.exec()
 
     @staticmethod
     def ask(parent, title: str, message: str, *, detail: str = "",
             confirm_text: str = "تایید", cancel_text: str = "انصراف", danger: bool = True,
-            glyph: Optional[str] = None, width: int = 340) -> bool:
-        """Build, center over ``parent`` and run the dialog; True on confirm."""
+            glyph: Optional[str] = None, width: int = 340,
+            screen: Optional[QScreen] = None) -> bool:
+        """Build, center over ``parent`` (or ``screen`` when parentless) and run
+        the dialog; True on confirm."""
         dialog = ConfirmDialog(parent, title, message, detail=detail,
                                confirm_text=confirm_text, cancel_text=cancel_text,
                                danger=danger, glyph=glyph, width=width)
-        return dialog.exec_centered(parent) == QDialog.DialogCode.Accepted
+        return dialog.exec_centered(parent, screen) == QDialog.DialogCode.Accepted
 
     @staticmethod
     def choose(parent, title: str, message: str, *,
                actions: List[Tuple[str, str]], danger: bool = False,
                detail: str = "", glyph: Optional[str] = None,
-               width: int = 340) -> Optional[str]:
+               width: int = 340,
+               screen: Optional[QScreen] = None) -> Optional[str]:
         """Run an N-way ask and return the clicked action's text (None = dismissed).
 
         The caption IS the answer's address: callers branch on the exact text
@@ -162,14 +174,15 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         """
         dialog = ConfirmDialog(parent, title, message, danger=danger, detail=detail,
                                glyph=glyph, actions=actions, width=width)
-        dialog.exec_centered(parent)
+        dialog.exec_centered(parent, screen)
         return dialog.choice
 
     @staticmethod
     def notify(parent, title: str, message: str, *, detail: str = "",
                danger: bool = False,
                glyph: Optional[str] = None, button_text: str = "باشه",
-               width: int = 340, key: Optional[str] = None) -> None:
+               width: int = 340, key: Optional[str] = None,
+               screen: Optional[QScreen] = None) -> None:
         """Single-button themed notice (replaces the stock informational boxes).
 
         Takes the same ``detail`` line as ``ask``/``choose`` so a notice can show
@@ -187,7 +200,8 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         if key is None:
             ConfirmDialog.choose(parent, title, message,
                                  actions=[(button_text, "danger" if danger else "accent")],
-                                 danger=danger, detail=detail, glyph=glyph, width=width)
+                                 danger=danger, detail=detail, glyph=glyph, width=width,
+                                 screen=screen)
             return
         existing = ConfirmDialog._active_notice
         if existing is not None and ConfirmDialog._active_notice_key == key:
@@ -203,7 +217,7 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         ConfirmDialog._active_notice = dialog
         ConfirmDialog._active_notice_key = key
         try:
-            dialog.exec_centered(parent)
+            dialog.exec_centered(parent, screen)
         finally:
             ConfirmDialog._clear_active_notice(dialog)
 
