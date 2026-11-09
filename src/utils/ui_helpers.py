@@ -923,6 +923,20 @@ ERROR_RED_LIGHT = "#C92A2A"   # the same voice for light input fills
 ERROR_RED_MIN_CONTRAST = 3.0
 
 
+def _error_floor_walk(base: QColor, toward: QColor, ground: QColor) -> QColor:
+    """Step ``base`` toward ``toward`` until the error-red floor is reached.
+
+    mix, not HSV lighter(): saturated reds sit at max value, where lighter()
+    is a no-op and the floor would be returned unmet.
+    """
+    color = QColor(base)
+    for _ in range(12):
+        if contrast_ratio(color, ground) >= ERROR_RED_MIN_CONTRAST:
+            break
+        color = QColor(mix_colors(color.name(), toward.name(), 0.15))
+    return color
+
+
 def error_color(palette: dict) -> str:
     """The one invalid-input red, floored to ``ERROR_RED_MIN_CONTRAST`` on the
     theme's input fill.
@@ -931,18 +945,31 @@ def error_color(palette: dict) -> str:
     dark fills) nor the palette's ``HOLIDAY_COLOR`` (which is not red on every
     theme), so an out-of-range year reads as an error under a theme whose
     holiday tone never drifted true red. Every date-error surface resolves
-    through this so the borders and the message labels cannot disagree."""
+    through this so the borders and the message labels cannot disagree.
+
+    Only the ground's own polarity is probed first - the direction the input
+    fill's lightness implies. Should that walk never reach the floor (a
+    mid-tone fill sits exactly between the two bases; no shipped theme does,
+    so real themes never take this), the opposite polarity gets one fallback
+    walk, and failing both the closer candidate wins - the answer never
+    undershoots silently.
+    """
     ground = QColor(palette["INPUT_BG_COLOR"])
     dark_ground = _luminance(ground) < 0.5
-    color = QColor(ERROR_RED_DARK if dark_ground else ERROR_RED_LIGHT)
-    toward = QColor("#ffffff") if dark_ground else QColor("#000000")
-    for _ in range(12):
-        if contrast_ratio(color, ground) >= ERROR_RED_MIN_CONTRAST:
-            break
-        # mix, not HSV lighter(): saturated reds sit at max value, where
-        # lighter() is a no-op and the floor would be returned unmet
-        color = QColor(mix_colors(color.name(), toward.name(), 0.15))
-    return color.name()
+    primary, secondary = (
+        ((QColor(ERROR_RED_DARK), QColor("#ffffff")),
+         (QColor(ERROR_RED_LIGHT), QColor("#000000"))) if dark_ground
+        else ((QColor(ERROR_RED_LIGHT), QColor("#000000")),
+              (QColor(ERROR_RED_DARK), QColor("#ffffff"))))
+    color = _error_floor_walk(*primary, ground)
+    if contrast_ratio(color, ground) >= ERROR_RED_MIN_CONTRAST:
+        return color.name()
+    opposite = _error_floor_walk(*secondary, ground)
+    if contrast_ratio(opposite, ground) >= ERROR_RED_MIN_CONTRAST:
+        return opposite.name()
+    best = color if contrast_ratio(color, ground) >= contrast_ratio(
+        opposite, ground) else opposite
+    return best.name()
 
 
 def rgba_string(color_hex: str, alpha: float, *, channel_max: int = 255) -> str:

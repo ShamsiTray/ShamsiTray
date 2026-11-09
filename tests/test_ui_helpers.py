@@ -10,9 +10,10 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
 from config import APP_CONFIG
 from themes import THEMES
 from tests.qt_mousing import press, release
-from utils.ui_helpers import (COPIED_WASH_ALPHA, MENU_EDGE_MARGIN,
-                              DigitsFirstCombo, ERROR_RED_MIN_CONTRAST,
-                              FramelessDragMixin, ReservedRailScrollArea,
+from utils.ui_helpers import (COPIED_WASH_ALPHA, ERROR_RED_DARK,
+                              ERROR_RED_MIN_CONTRAST, MENU_EDGE_MARGIN,
+                              DigitsFirstCombo, FramelessDragMixin,
+                              ReservedRailScrollArea, _error_floor_walk,
                               accent_button_stylesheet, center_combo_items,
                               center_on_screen, clamp_popup_to_work_area,
                               combo_stylesheet, contrast_ratio,
@@ -475,6 +476,32 @@ def test_error_color_mixes_only_when_the_floor_needs_it():
     assert error_color(THEMES["github_dark"]) == "#e5484d"  # already clears raw
     # stock dark sits just under the floor, so a mix must have happened
     assert error_color(THEMES["dark"]) != "#e5484d"
+
+
+def test_error_color_meets_the_floor_on_every_theme():
+    """The floor is a real guarantee across the shipped catalogue, not a
+    dark-theme-only property: every pack's input fill gets an error red
+    that clears it - and the two-direction fallback must not change a
+    real theme's answer, since every shipped ground sits far from the
+    polarity boundary (low-40s to 0.15 dark, 0.76+ light)."""
+    for name, pal in THEMES.items():
+        ratio = contrast_ratio(QColor(error_color(pal)),
+                               QColor(pal["INPUT_BG_COLOR"]))
+        assert ratio >= ERROR_RED_MIN_CONTRAST, name
+
+
+def test_error_color_probes_the_opposite_polarity_when_the_walk_stalls():
+    """A mid-tone fill classifies dark, but its toward-white walk ends far
+    under the floor - the answer used to undershoot silently there. The
+    opposite polarity gets one fallback walk, which clears the floor on
+    this ground, so the fallback result is what comes back."""
+    palette = {"INPUT_BG_COLOR": "#B4B4B4"}  # luminance ~0.46, so classified dark
+    ground = QColor("#B4B4B4")
+    stalled = _error_floor_walk(QColor(ERROR_RED_DARK), QColor("#ffffff"), ground)
+    assert contrast_ratio(stalled, ground) < ERROR_RED_MIN_CONTRAST  # stall proven
+    red = error_color(palette)
+    assert QColor(red) != stalled  # the fallback walk took over
+    assert contrast_ratio(QColor(red), ground) >= ERROR_RED_MIN_CONTRAST
 
 
 def test_error_color_distinct_from_pure_red_and_holiday():
