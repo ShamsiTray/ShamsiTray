@@ -239,6 +239,7 @@ pytest
 
 **Inno Setup** (`build/SetupScript.iss`):
 - Modern wizard, x64 only, Windows 10 1809+ (`MinVersion=10.0.17763`, the oldest build PyQt6 6.x / Python 3.12 run on)
+- `PrivilegesRequiredOverridesAllowed=dialog`: fresh installs get Inno's stock install-scope ask - the one path a standard (non-admin) account can pass through (the dialog implies the `/ALLUSERS`-/`/CURRENTUSER` switches, so silent runs keep picking a scope; an existing install is detected and skipped via `UsePreviousPrivileges`)
 - **Does NOT write the autostart `Run` key** (the app manages autostart itself)
 - Seeds `%LOCALAPPDATA%\ShamsiTray\holidays.json` with `onlyifdoesntexist` / `uninsneveruninstall`
 - Uninstaller: the custom page's Uninstall button closes a running app first with a re-probe-verified `taskkill /F` (no graceful path exists: `WM_CLOSE` is absorbed by the tray app by design) before it ends the wizard; a process that survives stays on screen with one error box and the page left up for a retry, and a `/VERYSILENT` run closes the app automatically in `InitializeUninstall` and only logs a survivor. The page also carries the "remove user settings" checkbox clearing `%LOCALAPPDATA%\ShamsiTray` + legacy `HKCU\Software\ShamsiTray`; at post-uninstall the install directory loses only the empty subdirectories Inno left behind, and goes itself only if that left it empty - files the uninstaller does not own are never force-deleted

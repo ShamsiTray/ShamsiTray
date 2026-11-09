@@ -57,7 +57,11 @@ DisableProgramGroupPage=yes
 ; would never match it.
 CloseApplications=yes
 RestartApplications=no
-PrivilegesRequiredOverridesAllowed=commandline
+; The stock install-scope dialog is the one ask a standard (non-admin) account
+; can pass through. It implies the /ALLUSERS-/CURRENTUSER switches, so silent
+; runs keep picking a scope explicitly, and an existing install is detected
+; rather than re-asked (UsePreviousPrivileges).
+PrivilegesRequiredOverridesAllowed=dialog
 AllowNoIcons=yes
 
 [Languages]
