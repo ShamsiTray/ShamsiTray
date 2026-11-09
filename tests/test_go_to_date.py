@@ -132,6 +132,8 @@ def test_year_error_state_restyling(popup):
     assert popup._year_error is True
     style = popup.year_input.styleSheet()
     assert error_color(palette) in style  # error style is the shared error red
+    # The error message label rides the same red, not a second voice.
+    assert error_color(palette) in popup.error_label.styleSheet()
     popup.year_input.setText("1400")
     assert popup._year_error is False
 
