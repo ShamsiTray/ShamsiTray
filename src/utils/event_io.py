@@ -307,6 +307,12 @@ def breakable(text: str) -> str:
     is never touched; the reader still gets the whole content - the label's
     accessible name carries the raw text - hence no cap and no tooltip."""
     def join_chunks(match: "re.Match") -> str:
+        """One matched run, broken into pieces joined by zero-width spaces at
+        small enough strides. A stride boundary that would cut glued
+        characters apart walks back to a clean cut (the piece running
+        slightly under the cap); a glued cluster wider than the whole walk
+        has no clean cut in range, so the piece stays whole and runs past
+        the cap rather than strand the accent on a separate piece."""
         token = match.group()
         pieces = []
         start = 0

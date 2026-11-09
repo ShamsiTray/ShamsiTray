@@ -317,6 +317,12 @@ class CenteredTextMenu(QMenu):
     """
 
     def paintEvent(self, event):
+        """Paint what the stylesheet deliberately cannot: after the QSS pass
+        (frame, boxes, hover, blank rows), the centered captions, the device-
+        pixel-grid separator hairlines, the leading submenu triangles, and the
+        copied row's accent-pill ground with its success-toned caption. A
+        QWidgetAction row paints itself and is never touched here - its
+        geometry would consult a possibly-freed row widget."""
         super().paintEvent(event)  # QSS paints frame, boxes, hover, separators
         painter = QPainter(self)
         painter.setFont(self.font())  # the QSS-applied menu font

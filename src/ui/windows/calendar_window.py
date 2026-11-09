@@ -328,6 +328,10 @@ class PersianCalendarWidget(BaseFramelessWindow):
                     cell.update()
 
     def update_styles(self):
+        """Re-theme the popup for the current palette - chrome, nav and today
+        buttons, header labels, weekday headers (Friday in the holiday red),
+        the three persistent confirm overlays - and refill the grid so the
+        freshly styled cells carry this month's holidays and events."""
         palette = APP_CONFIG.get_current_palette()
         text_color, accent_color = palette['TEXT_COLOR'], palette['ACCENT_COLOR']
         nav_button_font = QFont(APP_CONFIG.FONT_FAMILY, 12, QFont.Weight.Bold)

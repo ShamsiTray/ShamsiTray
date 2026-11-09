@@ -61,6 +61,14 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
                  danger: bool = True, width: int = 340,
                  glyph: Optional[str] = None,
                  actions: Optional[List[Tuple[str, str]]] = None):
+        """Build the themed ask as a frameless QDialog whose modality and
+        stacking follow its parentage: a parentless (tray-owned) ask is
+        ApplicationModal and topmost, because WindowModal without a parent
+        blocks nothing and an app-wide blocker must stay visible above the
+        pinned always-on-top calendar it freezes; a parented prompt keeps
+        WindowModal (one tool-window ask must not freeze the whole app) and
+        takes no hint, its parent raising it.
+        """
         # The mixin's cooperative __init__ builds the card and its fixed width;
         # the window flags below are what make it a dialog, and re-asserting
         # them after is harmless because Qt only evaluates native flags on show.

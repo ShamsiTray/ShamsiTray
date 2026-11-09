@@ -452,6 +452,9 @@ def test_line_edit_placeholder_rule_actually_recolors_the_glyphs(qtbot, palette)
 
 
 def test_error_line_edit_stylesheet_extends_plain_with_red(palette):
+    """The error sheet is the plain sheet extended, overriding the border
+    with the shared error red (never the palette's holiday colour) that
+    survives hover and focus."""
     plain = line_edit_stylesheet(palette)
     error = error_line_edit_stylesheet(palette)
     assert plain in error  # appended over the shared style

@@ -302,6 +302,13 @@ class DateConverterWindow(YearRangeValidationMixin, BaseFramelessWindow):
         return divider
 
     def update_styles(self):
+        """Re-theme the window from the current palette: the caption bar and
+        the calendar-switch pill, the input row's combos and year field, both
+        result cards with their numeric/long rows and weekday footnotes, and
+        the copy rows' hover wash - the four date rows wearing a full-card
+        band, the elapsed span a standalone pill whose inset shapes its width.
+        Named rows are skipped by the generic label loop and styled here, as
+        their one source of truth."""
         widget_palette = self.palette()
         palette = APP_CONFIG.get_current_palette()
         widget_palette.setColor(QPalette.ColorRole.WindowText, QColor(palette['TEXT_COLOR']))

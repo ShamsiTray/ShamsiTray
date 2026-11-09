@@ -526,6 +526,9 @@ def test_apply_import_rolls_back_completely_on_save_failure(service, failing_sav
 
 
 def test_plan_import_reports_replaced_existing(service):
+    """Planning is pure: the same words under a yearly file key over a
+    one-time store key report the existing key as replaced and the imported
+    key as applied, without touching the store."""
     service.events["1405-08-01"] = _entry("existing event")
     imported = {"0000-08-01": _entry("existing event", RECURRENCE_YEARLY)}
     plan = service.plan_import(imported)

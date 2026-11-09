@@ -570,6 +570,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._show_update_popup(version, installer_url, sha256)
 
     def _show_update_popup(self, version: str, installer_url: str, sha256: str):
+        """Present the release as a tray-owned three-way ask (download /
+        ignore / remind later), built by hand so a manual round landing
+        mid-popup can raise it instead of stacking a second window.
+
+        The popup outranks the round notices: an open update-check notice is
+        dismissed before the ask appears, and the re-entrancy guard answers
+        any second arrival while one is up. The chosen download begins the
+        verified installer download; the chose-ignore persists the version so
+        automatic checks stop announcing it; remind-later only closes.
+        """
         self._update_popup_pending = False
         # The popup outranks the round notices: any open update-check notice is
         # answered by the popup now, so it must not sit underneath it.
@@ -616,6 +626,17 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info(f"Update to {version} will no longer be announced automatically.")
 
     def _download_update(self, version: str, installer_url: str, sha256: str):
+        """Start the verified installer download for a release, or land on an
+        existing copy of it.
+
+        A request arriving while another download runs is refused before any
+        dialog is built: the live card owns the real progress and a second
+        one would sit frozen. A previous installer in Downloads whose digest
+        still matches the release is reused as-is; otherwise the progress
+        card (narrowed and centered from one screen decision on the tray's
+        screen) opens and the download streams to Downloads - falling back to
+        the app data dir when Downloads is absent.
+        """
         # A download request arriving while ANOTHER download runs must not build
         # a second progress card: the live dialog owns the real progress, and a
         # second one would sit frozen forever (its request rejected). Check
@@ -673,6 +694,12 @@ class SystemTrayIcon(QSystemTrayIcon):
             dialog.dismiss()
 
     def _on_installer_downloaded(self, path: str):
+        """Close the progress card and ask whether to run the installer now.
+
+        The downloaded file is never executed without the user's consent;
+        declining leaves the verified installer where it stands (logged), so
+        a later run is still possible.
+        """
         self._close_download_dialog()
         # The installer is never run unless the user asks for it here.
         run_requested = ConfirmDialog.ask(
@@ -687,6 +714,13 @@ class SystemTrayIcon(QSystemTrayIcon):
             logger.info(f"Installer saved to {path}")
 
     def _on_download_failed(self, reason: str):
+        """Close the progress card and report a failed download - silently
+        for a user cancel, as a themed notice otherwise.
+
+        The checksum-failure case deliberately gets no automatic redirect to
+        the releases page: a tampered download deserves the user's attention,
+        not a browser window quietly opening.
+        """
         self._close_download_dialog()
         if reason == "canceled":
             logger.info("Update download canceled.")

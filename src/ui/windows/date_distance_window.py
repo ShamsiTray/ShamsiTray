@@ -364,6 +364,11 @@ class DateDistanceWindow(BaseFramelessWindow):
         return self.from_row, self.to_row
 
     def update_styles(self):
+        """Re-theme the window from the current palette: both calendar pages'
+        date rows (their field widths re-equalized after the fonts land), the
+        result card and its hero/breakdown/months/weeks copy lines riding the
+        converter's hover-wash recipe plus the keyboard focus ring, the
+        message/year hint/error colours, and the footer button."""
         palette = APP_CONFIG.get_current_palette()
         self.title_bar.update_styles()
         self.calendar_switch.update_styles()

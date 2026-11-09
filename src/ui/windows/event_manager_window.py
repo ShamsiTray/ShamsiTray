@@ -122,6 +122,13 @@ class EventRow(QFrame):
     delete_requested = pyqtSignal(str)
 
     def __init__(self, key: str, entry: dict, is_expired_one_time: bool, parent=None):
+        """Build one manager row from a store entry: the text raw (Plain
+        format, long tokens made breakable, whole content kept in the
+        accessible name), the date line spelled from the key - carrying the
+        auto-delete marker only when a one-time event is flagged, since a
+        silently self-deleting row must say so - and the FontAwesome edit /
+        delete glyphs, named for screen readers with the trash toned danger
+        as the row's one destructive action."""
         super().__init__(parent)
         self.key = key
         self._expired = is_expired_one_time
@@ -200,6 +207,11 @@ class EventRow(QFrame):
             widget.cancel_pending_tooltip()
 
     def update_styles(self):
+        """Re-theme the row for the current palette: an expired row greys both
+        lines, a live one keeps the date span accented (plus the auto-delete
+        marker in the holiday tone), the hover border derives from this
+        pack's own colours, and the delete glyph rides its matching red wash
+        while the edit glyph stays neutral."""
         palette = APP_CONFIG.get_current_palette()
         font = APP_CONFIG.FONT_FAMILY
         self.setStyleSheet(

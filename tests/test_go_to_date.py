@@ -126,6 +126,9 @@ def test_typing_clears_error_and_restores_size(popup):
 
 
 def test_year_error_state_restyling(popup):
+    """An out-of-range year marks the error state and paints both the input
+    and the message label in the shared error red - one voice, not a second;
+    a valid year clears the flag."""
     palette = APP_CONFIG.get_current_palette()
     popup.year_input.setText("1700")
     assert popup._year_is_out_of_range() is True
