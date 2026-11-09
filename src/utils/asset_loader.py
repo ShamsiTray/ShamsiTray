@@ -19,9 +19,11 @@ def load_fonts() -> None:
 
     Requires a live QApplication: a QFontDatabase call must not run before
     app initialization, where it access-violates the process instead of
-    raising.
+    raising. A bare QCoreApplication also fails - ``QApplication.instance``
+    happily returns the core object - so the guard is an isinstance check,
+    not a null check.
     """
-    if QApplication.instance() is None:
+    if not isinstance(QApplication.instance(), QApplication):
         raise RuntimeError(
             "load_fonts() requires a live QApplication; QFontDatabase "
             "access-violates instead of raising without one.")
