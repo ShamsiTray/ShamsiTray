@@ -136,9 +136,11 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
                 screen = QApplication.primaryScreen()
             if screen is not None:
                 geo = screen.availableGeometry()
-                # right()/bottom() are inclusive; the innermost legal edge is
-                # right()+1-size, the half-open bound clamp_popup_to_work_area
-                # adds - without the +1 an exact-fit card parks a pixel out.
+                # The half-open right()+1-size bound is the one rule
+                # clamp_popup_to_work_area computes (there it is load-bearing:
+                # the outer clamp is left+margin). Here the outer left/top max
+                # is the exact-fit clamp - any width the inner bound would
+                # drop under left is re-floored by it either way.
                 self.move(max(geo.left(),
                               min(geo.center().x() - self.width() // 2,
                                   geo.right() + 1 - self.width())),

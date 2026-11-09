@@ -119,9 +119,11 @@ def center_on_screen(widget, screen=None) -> None:
     if screen is None:
         return
     geo = screen.availableGeometry()
-    # right()/bottom() are inclusive, so the innermost legal left edge is
-    # right()+1-width - the same half-open bound clamp_popup_to_work_area
-    # adds; an exact-fit card would otherwise land one pixel outside.
+    # The half-open right()+1-width bound is the rule clamp_popup_to_work_area
+    # already computes (its outer clamp is left+margin, so there the +1 is
+    # load-bearing). Here the outer left/top max is the load-bearing clamp:
+    # any width the inner bound would floor below left is floored by the max
+    # with or without the +1 - the bound is kept for the one shared rule.
     widget.move(max(geo.left(), min(geo.center().x() - widget.width() // 2,
                                     geo.right() + 1 - widget.width())),
                 max(geo.top(), min(geo.center().y() - widget.height() // 2,
