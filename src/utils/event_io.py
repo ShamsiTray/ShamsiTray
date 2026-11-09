@@ -48,6 +48,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 
 import jdatetime
@@ -284,6 +285,17 @@ def truncate_preview(text: str, limit: int = EVENT_TEXT_PREVIEW_CHARS) -> str:
 _BREAKABLE_RUN_CHARS = 25
 _BREAKABLE_CHUNK_CHARS = 20
 _UNBREAKABLE_RUN = re.compile(r"\S{%d,}" % _BREAKABLE_RUN_CHARS)
+_COMBINING_CATEGORIES = ("Mn", "Mc", "Me")
+
+
+def _cut_inside_glue(token: str, cut: int) -> bool:
+    """Whether cutting before ``token[cut]`` would separate characters that
+    render as one: a combining mark is drawn on the base character before
+    it (a mark cut off its base renders standalone), and a ZWJ joins the
+    pair around it."""
+    return (unicodedata.category(token[cut]) in _COMBINING_CATEGORIES
+            or token[cut] == "\u200d"
+            or token[cut - 1] == "\u200d")
 
 
 def breakable(text: str) -> str:
@@ -296,9 +308,26 @@ def breakable(text: str) -> str:
     accessible name carries the raw text - hence no cap and no tooltip."""
     def join_chunks(match: "re.Match") -> str:
         token = match.group()
-        chunks = (token[i:i + _BREAKABLE_CHUNK_CHARS]
-                  for i in range(0, len(token), _BREAKABLE_CHUNK_CHARS))
-        return "\u200b".join(chunks)
+        pieces = []
+        start = 0
+        while len(token) - start > _BREAKABLE_CHUNK_CHARS:
+            cut = start + _BREAKABLE_CHUNK_CHARS
+            # The stride boundary lands wherever 20 chars fall; when that cut
+            # is inside glued characters the boundary walks back to a clean
+            # one, the chunk running a little under the cap. A glued cluster
+            # wider than the whole walk (a base under a very long mark run)
+            # has no clean cut in range, so it stays whole and runs past it.
+            while cut > start and _cut_inside_glue(token, cut):
+                cut -= 1
+            if cut == start:
+                cut = start + 1
+                while cut < len(token) and _cut_inside_glue(token, cut):
+                    cut += 1
+            pieces.append(token[start:cut])
+            start = cut
+        if start < len(token):
+            pieces.append(token[start:])
+        return "\u200b".join(pieces)
 
     return _UNBREAKABLE_RUN.sub(join_chunks, text)
 
