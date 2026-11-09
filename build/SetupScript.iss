@@ -161,7 +161,8 @@ end;
 // instead of sleeping out a fixed window along the way. Each probe already
 // blocks for the ~half second cmd.exe + tasklist need, so 300 ms between
 // polls is as tight as this check can get, and the caller moves the moment
-// the tray is verifiably dead.
+// the tray is verifiably dead. The final Sleep ends with one closing probe,
+// so an app killed during that window still reports success.
 function PollUntilClosed(): Boolean;
 var
   Poll: Integer;
@@ -175,7 +176,7 @@ begin
     end;
     Sleep(300);
   end;
-  Result := False;
+  Result := not IsAppRunning();
 end;
 
 // There is no graceful close to attempt: taskkill without /F posts WM_CLOSE,
