@@ -49,7 +49,7 @@ DisableWelcomePage=no
 ; The start-menu group is fixed in [Icons], so this page could only ever be
 ; answered "create" - one more click for a tray app.
 DisableProgramGroupPage=yes
-; Upgrading over a running tray instance is the one path the tasklist check in
+; Upgrading over a running tray instance is the one path the process check in
 ; InitializeUninstall cannot see, because that runs on uninstall only.
 ; Restart Manager finds ShamsiTray.exe on its own; RestartApplications=no stops
 ; it relaunching the app behind the tray after the upgrade. No AppMutex: the
@@ -121,6 +121,10 @@ const
   UIS_SET = 1;
   UISF_HIDEFOCUS = 1;
   VK_SPACE = $20;
+  // AppProcessProbe's answer base: a find reads as this value plus the
+  // count, so no incidental exit code of powershell.exe itself (1 on a
+  // script error) can ever land in the found range and lie "running".
+  APPPROC_BASE = 100;
 
 function GetWindowLongW(Wnd: Longint; Index: Integer): Longint;
   external 'GetWindowLongW@user32.dll stdcall';
@@ -146,73 +150,125 @@ begin
     UIS_SET or (UISF_HIDEFOCUS shl 16), 0);
 end;
 
-function IsAppRunning(): Boolean;
+// The app creates no named mutex or window class we can rely on, so detect a
+// running instance via process enumeration. tasklist cannot do it honestly
+// from here: IMAGENAME matches any user's ShamsiTray.exe, so a per-user
+// uninstaller would see - and then fail to kill - another session's tray,
+// and the piped find only ever reported find's own exit code, so a failed
+// probe was indistinguishable from an empty one. The probe instead runs
+// PowerShell and answers in its exit code (stdout of a decoupled console
+// tool would arrive with another encoding puzzle on non-ASCII install
+// paths, and Inno has no pipe to read through anyway):
+//   0                nothing of THIS {app} copy runs
+//   >= APPPROC_BASE  that many of its instances run
+//   anything else    the probe itself failed - there is no verdict here
+// $p is the exe file the install passes in and the filter compares each
+// process .Path against - case-insensitive, like Windows paths. A process
+// from another session reports .Path only to its own user, so it cannot
+// match this install's directory: another user's tray of the same name is
+// therefore reported absent, which is also the one this uninstaller could
+// never have closed.
+function AppProcessProbe(KillToo: Boolean): Integer;
 var
-  ErrorCode: Integer;
+  KillRule: String;
+  Spawned: Boolean;
+  ResultCode: Integer;
 begin
-  // The app creates no named mutex or window class we can rely on, so detect a
-  // running instance via tasklist. The pipe needs a shell, hence cmd.exe /C.
-  // find exits 0 only when it actually matched a row.
-  Result := Exec('cmd.exe', '/C tasklist /FI "IMAGENAME eq {#MyAppExeName}" /FO CSV | find /I "{#MyAppExeName}"', '',
-                 SW_HIDE, ewWaitUntilTerminated, ErrorCode) and (ErrorCode = 0);
+  // The target path rides as a trailing $p argument, not embedded in the
+  // -Command text: a user-chosen install directory turns every quote and
+  // backslash of an inline path into an escape puzzle, while a literal
+  // final argument reads through unchanged.
+  if KillToo then
+    KillRule := '; foreach ($x in $a) { try { $x.Kill() } catch { } }'
+  else
+    KillRule := '';
+  Spawned := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "& {param($p) $a = ' +
+    '@(Get-Process -Name ''{#MyAppName}'' -ErrorAction SilentlyContinue | ' +
+    'Where-Object { $_.Path -eq $p })' + KillRule +
+    '; if ($a.Count -eq 0) { exit 0 }; exit ' + IntToStr(APPPROC_BASE) +
+    ' + $a.Count }" "' + ExpandConstant('{app}\{#MyAppExeName}') + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := -1;
+  if not Spawned then Exit;
+  if ResultCode = 0 then
+    Result := 0
+  else if ResultCode >= APPPROC_BASE then
+    Result := ResultCode - APPPROC_BASE;
 end;
 
-// A kill needs verification: poll until the process is verifiably gone
-// instead of sleeping out a fixed window along the way. Each probe already
-// blocks for the ~half second cmd.exe + tasklist need, so 300 ms between
-// polls is as tight as this check can get, and the caller moves the moment
-// the tray is verifiably dead. The final Sleep ends with one closing probe,
-// so an app killed during that window still reports success.
+// A kill needs verification: poll until the probe counts zero instead of
+// sleeping out a fixed window along the way. Each probe already blocks for
+// the ~half second PowerShell needs, so 300 ms between polls is as tight as
+// this check can get, and the caller moves the moment the tray is verifiably
+// dead. The final Sleep ends with one closing probe, so an app killed during
+// that window still reports success. An inconclusive probe is not absence:
+// there is nothing verifiable to report, so the poll keeps saying open.
 function PollUntilClosed(): Boolean;
 var
   Poll: Integer;
 begin
+  Result := False;
   for Poll := 1 to 3 do
   begin
-    if not IsAppRunning() then
+    if AppProcessProbe(False) = 0 then
     begin
       Result := True;
       Exit;
     end;
     Sleep(300);
   end;
-  Result := not IsAppRunning();
+  Result := (AppProcessProbe(False) = 0);
 end;
 
-// There is no graceful close to attempt: taskkill without /F posts WM_CLOSE,
-// which this app deliberately absorbs (setQuitOnLastWindowClosed(False) in
-// src/main.py - dismissing every window leaves the tray process running), so
-// the tray can never answer that knock, and waiting for it is pure delay.
-// The forced kill is the close; the process probe - not taskkill's exit
-// code, which is 0 along with everything else - is the proof it worked.
-// The Uninstall button runs this synchronously on every click, so the whole
-// dance only starts behind a live tray: an idle tray costs one tasklist and
-// returns immediately.
+// There is no graceful close to attempt: WM_CLOSE, what a gentle kill
+// posts, is absorbed by this app by design (setQuitOnLastWindowClosed(False)
+// in src/main.py - dismissing every window leaves the tray process running),
+// so the close is TerminateProcess ($x.Kill()) and the probe afterwards -
+// not the kill itself - is the proof it worked. The Uninstall button runs
+// this synchronously on every click, so the dance only starts behind a live
+// tray: an idle tray costs one probe and returns immediately, and a probe
+// that cannot be read may not bless the close either - its answer is a
+// failed round, which costs the caller's retry and nothing on disk.
 function TryCloseApp(): Boolean;
 var
-  ErrorCode: Integer;
+  Seen: Integer;
 begin
-  if not IsAppRunning() then
+  Seen := AppProcessProbe(True);
+  if Seen = 0 then
   begin
     Result := True;
     Exit;
   end;
-  Exec('taskkill', '/F /IM "{#MyAppExeName}" /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+  if Seen < 0 then
+  begin
+    Result := False;
+    Exit;
+  end;
   Result := PollUntilClosed();
 end;
 
 function InitializeUninstall(): Boolean;
+var
+  Seen: Integer;
 begin
   Result := True;
-  // The interactive flow closes the app from the Uninstall button (below), so
-  // a user who cancels on that page never loses the running tray. Silent mode
-  // shows no page and closes the app here instead, because no prompt is
-  // possible there (/VERYSILENT would block forever, and Inno does not suppress
-  // a plain MsgBox for /SUPPRESSMSGBOXES either); on a process that survives
-  // the kill it logs and continues, removing what the file lock allows.
+  // The interactive flow closes the app from the Uninstall button (below),
+  // so a user who cancels on that page never loses the running tray. Silent
+  // mode shows no page and closes the app here instead, because no prompt is
+  // possible there (/VERYSILENT would block forever, and Inno does not
+  // suppress a plain MsgBox for /SUPPRESSMSGBOXES either); on a probe that
+  // cannot be read at all - or a process that survives the kill - it logs
+  // and continues, removing what the file lock allows.
   if not UninstallSilent then
     Exit;
-  if not IsAppRunning() then
+  Seen := AppProcessProbe(False);
+  if Seen < 0 then
+  begin
+    Log('{#MyAppName} process probe failed; continuing the silent uninstall.');
+    Exit;
+  end;
+  if Seen = 0 then
     Exit;
   if not TryCloseApp() then
     Log('{#MyAppName} could not be closed; continuing the silent uninstall.');
