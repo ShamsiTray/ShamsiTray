@@ -1331,9 +1331,10 @@ def test_confirm_dialog_centers_over_a_nested_child_widget(qtbot):
 
 
 def test_confirm_dialog_tray_centering_treats_the_bounds_as_half_open(qtbot):
-    """QRect.right()/bottom() are inclusive, so a card exactly as wide as its
-    work area must park at geo.left() - the raw right()-width bound put an
-    exact-fit card one pixel outside, on a negative-coordinate screen."""
+    """A card exactly as wide as its work area parks at geo.left() even on a
+    negative-coordinate screen - the outer left max is the exact-fit clamp
+    (the inner half-open bound and the raw right()-width bound both fall
+    under left there)."""
     dialog = ConfirmDialog(None, "ت", "م")  # ConfirmCard's fixed 340px width
     qtbot.addWidget(dialog)
 

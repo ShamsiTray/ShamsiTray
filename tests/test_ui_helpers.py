@@ -607,9 +607,10 @@ def test_center_on_screen_clamps_inside_a_tiny_work_area(qtbot):
 
 
 def test_center_on_screen_treats_the_work_area_bounds_as_half_open(qtbot):
-    """QRect.right()/bottom() are inclusive, so a card exactly the size of
-    its work area must land at (left, top) - the raw right()-width bound put
-    it one pixel outside on a negative-coordinate screen."""
+    """A card exactly the size of its work area lands flush at (left, top) -
+    the outer left/top max clamps it there even on negative-coordinate
+    screens, where the half-open right()+1-size inner bound and the raw
+    right()-size bound would both drop under left."""
     widget = QWidget()
     widget.resize(340, 120)
     qtbot.addWidget(widget)
