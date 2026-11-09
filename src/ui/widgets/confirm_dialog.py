@@ -119,12 +119,15 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
                 screen = QApplication.primaryScreen()
             if screen is not None:
                 geo = screen.availableGeometry()
+                # right()/bottom() are inclusive; the innermost legal edge is
+                # right()+1-size, the half-open bound clamp_popup_to_work_area
+                # adds - without the +1 an exact-fit card parks a pixel out.
                 self.move(max(geo.left(),
                               min(geo.center().x() - self.width() // 2,
-                                  geo.right() - self.width())),
+                                  geo.right() + 1 - self.width())),
                           max(geo.top(),
                               min(geo.center().y() - self.height() // 2,
-                                  geo.bottom() - self.height())))
+                                  geo.bottom() + 1 - self.height())))
             return
         # Centering over a parent parked near a screen edge (the 305px calendar
         # sits bottom-right) can push a 340px dialog partly off-screen; the drag

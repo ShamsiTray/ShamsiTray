@@ -119,10 +119,13 @@ def center_on_screen(widget, screen=None) -> None:
     if screen is None:
         return
     geo = screen.availableGeometry()
+    # right()/bottom() are inclusive, so the innermost legal left edge is
+    # right()+1-width - the same half-open bound clamp_popup_to_work_area
+    # adds; an exact-fit card would otherwise land one pixel outside.
     widget.move(max(geo.left(), min(geo.center().x() - widget.width() // 2,
-                                    geo.right() - widget.width())),
+                                    geo.right() + 1 - widget.width())),
                 max(geo.top(), min(geo.center().y() - widget.height() // 2,
-                                   geo.bottom() - widget.height())))
+                                   geo.bottom() + 1 - widget.height())))
 
 def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius: float) -> QPainterPath:
     """Paint the app's rounded-card background (antialiased fill + 1px border).

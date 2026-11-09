@@ -4,7 +4,7 @@ import re
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
+from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt
 from PyQt6.QtGui import QColor, QCursor
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
@@ -1324,6 +1324,22 @@ def test_confirm_dialog_centers_over_a_nested_child_widget(qtbot):
     expected = child.mapToGlobal(child.rect().center())
     assert abs(dialog.x() + dialog.width() // 2 - expected.x()) <= 1
     assert abs(dialog.y() + dialog.height() // 2 - expected.y()) <= 1
+
+
+def test_confirm_dialog_tray_centering_treats_the_bounds_as_half_open(qtbot):
+    """QRect.right()/bottom() are inclusive, so a card exactly as wide as its
+    work area must park at geo.left() - the raw right()-width bound put an
+    exact-fit card one pixel outside, on a negative-coordinate screen."""
+    dialog = ConfirmDialog(None, "ت", "م")  # ConfirmCard's fixed 340px width
+    qtbot.addWidget(dialog)
+
+    class FakeScreen:
+        def availableGeometry(self):
+            return QRect(-10, 240, 340, 500)
+
+    dialog.center_over_parent(None, FakeScreen())
+
+    assert dialog.x() == -10
 
 
 def test_confirm_dialog_shows_detail_box_and_centers_content():

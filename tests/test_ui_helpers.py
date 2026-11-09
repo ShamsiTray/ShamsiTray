@@ -603,6 +603,24 @@ def test_center_on_screen_clamps_inside_a_tiny_work_area(qtbot):
     assert widget.y() == geo.top()
 
 
+def test_center_on_screen_treats_the_work_area_bounds_as_half_open(qtbot):
+    """QRect.right()/bottom() are inclusive, so a card exactly the size of
+    its work area must land at (left, top) - the raw right()-width bound put
+    it one pixel outside on a negative-coordinate screen."""
+    widget = QWidget()
+    widget.resize(340, 120)
+    qtbot.addWidget(widget)
+
+    class FakeScreen:
+        def availableGeometry(self):
+            return QRect(-10, 40, 340, 120)
+
+    center_on_screen(widget, FakeScreen())
+
+    assert widget.x() == -10
+    assert widget.y() == 40
+
+
 # --- mouse-event routing lives on the mixin itself (REF-7) -------------------------
 
 
