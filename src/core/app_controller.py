@@ -640,9 +640,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         # (its 340px design width cannot fit a narrower work area), and
         # adjustSize runs after: the layout's real height only exists then,
         # and centering on the default 100px card would park it too high.
-        dialog = DownloadUpdateDialog(version, screen=self._tray_screen())
+        # One screen decision feeds both the card's narrowing and its
+        # centering: a tray that moved screens between the two lines would
+        # otherwise pair a width fixed for one work area with a centering on
+        # another - the exact overflow the narrowing exists to avoid.
+        screen = self._tray_screen()
+        dialog = DownloadUpdateDialog(version, screen=screen)
         dialog.adjustSize()
-        center_on_screen(dialog, self._tray_screen())
+        center_on_screen(dialog, screen)
         dialog.canceled.connect(self.update_checker.cancel_download)
         self._download_dialog = dialog
         dialog.show()

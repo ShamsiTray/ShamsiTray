@@ -519,7 +519,13 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     monkeypatch.setattr(controller_module, "DownloadUpdateDialog", FakeDialog)
     fake_geo = QRect(2000, 0, 1920, 1040)
     fake_screen = _FakeScreen(fake_geo)
-    monkeypatch.setattr(tray, "_tray_screen", lambda: fake_screen)
+    screen_calls = []
+
+    def _counted_screen():
+        screen_calls.append(1)
+        return fake_screen
+
+    monkeypatch.setattr(tray, "_tray_screen", _counted_screen)
     download_calls = []
     monkeypatch.setattr(tray.update_checker, "download_installer",
                         lambda url, dest, sha: download_calls.append((url, dest, sha)) or True)
@@ -541,8 +547,11 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     assert tray._download_dialog.last_move == (fake_geo.center().x() - 340 // 2,
                                                fake_geo.center().y() - 120 // 2)
     assert tray._download_dialog is not None  # dialog kept for progress updates
-    # The card received the tray's screen so it can narrow itself to it.
-    assert tray._download_dialog.screen == tray._tray_screen()
+    # The card received the tray's screen so it can narrow itself to it -
+    # and one round makes one screen decision, so narrowing and centering
+    # can never disagree about which work area they serve.
+    assert screen_calls == [1]
+    assert tray._download_dialog.screen == fake_screen
     tray._close_download_dialog()
     assert tray._download_dialog is None
 
