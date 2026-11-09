@@ -162,32 +162,37 @@ end;
 //   0                nothing of THIS {app} copy runs
 //   >= APPPROC_BASE  that many of its instances run
 //   anything else    the probe itself failed - there is no verdict here
-// $p is the exe file the install passes in and the filter compares each
-// process .Path against - case-insensitive, like Windows paths. A process
-// from another session reports .Path only to its own user, so it cannot
-// match this install's directory: another user's tray of the same name is
-// therefore reported absent, which is also the one this uninstaller could
-// never have closed.
+// The install path rides INSIDE the -Command text, as one single-quoted
+// literal the filter compares each process .Path against (case-insensitive,
+// like Windows paths): PowerShell re-joins every native argument after
+// -Command with a space and keeps none of the OS-level quoting, so a quoted
+// path argument would arrive split at its first space and silently compare
+// against the wrong half. A process whose .Path is unreadable (another
+// session's tray) cannot match this install's directory either, so it is
+// reported absent - which is also the one this uninstaller could never have
+// closed.
 function AppProcessProbe(KillToo: Boolean): Integer;
 var
+  Literal: String;
   KillRule: String;
   Spawned: Boolean;
   ResultCode: Integer;
 begin
-  // The target path rides as a trailing $p argument, not embedded in the
-  // -Command text: a user-chosen install directory turns every quote and
-  // backslash of an inline path into an escape puzzle, while a literal
-  // final argument reads through unchanged.
+  // PS string escaping needs no backslash work, only doubled apostrophes;
+  // a target with an apostrophe is a legal install directory, so the path
+  // is regenerated runtime from {app} rather than assuming one spelling.
+  Literal := '''' + StringChange(ExpandConstant('{app}\{#MyAppExeName}'),
+                                 '''', '''''') + '''';
   if KillToo then
     KillRule := '; foreach ($x in $a) { try { $x.Kill() } catch { } }'
   else
     KillRule := '';
   Spawned := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    '-NoProfile -NonInteractive -Command "& {param($p) $a = ' +
-    '@(Get-Process -Name ''{#MyAppName}'' -ErrorAction SilentlyContinue | ' +
-    'Where-Object { $_.Path -eq $p })' + KillRule +
+    '-NoProfile -NonInteractive -Command "& { $a = @(Get-Process -Name ' +
+    '''{#MyAppName}'' -ErrorAction SilentlyContinue | Where-Object { ' +
+    '$_.Path -eq ' + Literal + ' })' + KillRule +
     '; if ($a.Count -eq 0) { exit 0 }; exit ' + IntToStr(APPPROC_BASE) +
-    ' + $a.Count }" "' + ExpandConstant('{app}\{#MyAppExeName}') + '"',
+    ' + $a.Count }"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := -1;
   if not Spawned then Exit;
