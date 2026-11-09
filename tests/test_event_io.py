@@ -1,5 +1,6 @@
 import json
 import logging
+import unicodedata
 
 import jdatetime
 import pytest
@@ -558,6 +559,29 @@ def test_breakable_leaves_ordinary_text_byte_for_byte():
     assert event_io.breakable(text) == text
     short = "یک رویداد کوتاه"
     assert event_io.breakable(short) == short
+
+
+def test_breakable_keeps_marks_glued_to_their_base():
+    """A combining mark renders attached to the base character before it, so
+    a chunk boundary landing between them strands the accent: the stride's
+    boundary walks back off the mark instead, and no ZERO WIDTH SPACE sits
+    beside one."""
+    token = "x" * 19 + "e\u0301" + "y" * 30  # naive cut would fall at the accent
+    shown = event_io.breakable(token)
+    chunks = shown.split("\u200b")
+    assert "".join(chunks) == token  # the chunk join re-reads the token
+    for chunk in chunks:
+        assert unicodedata.category(chunk[0]) not in ("Mn", "Mc", "Me")
+    # the accented pair itself survives whole, in one chunk
+    assert "e\u0301" in shown
+
+
+def test_breakable_keeps_a_zwj_pair_whole():
+    """A ZWJ glues the characters around it, so the boundary must never sit
+    beside one - breaking inside an emoji join would render two faces."""
+    token = "b" * 19 + "👨\u200d👩" + "c" * 10  # naive cut would fall at the ZWJ
+    shown = event_io.breakable(token)
+    assert "👨\u200d👩" in shown
 
 
 def test_build_import_plan_same_text_other_key_shape_still_replaces():
