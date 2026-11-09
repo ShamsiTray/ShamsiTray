@@ -1221,6 +1221,10 @@ def test_confirm_dialog_modality_follows_the_parent(qtbot):
     qtbot.addWidget(parented)
     assert parentless.windowModality() == Qt.WindowModality.ApplicationModal
     assert parented.windowModality() == Qt.WindowModality.WindowModal
+    # The parentless ask is the only app-wide blocker of the two, so it -
+    # alone - stays above the pinned calendar popup it might cover.
+    assert bool(parentless.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+    assert not bool(parented.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
 
 
 def test_confirm_dialog_exec_centered_sizes_and_centers_then_runs(qtbot, monkeypatch):

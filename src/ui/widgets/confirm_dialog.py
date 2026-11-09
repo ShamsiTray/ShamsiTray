@@ -73,6 +73,15 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         # window at all; two rounds could stack competing prompts. Parentless
         # asks are therefore ApplicationModal, while a parented prompt keeps
         # WindowModal so one tool-window ask cannot freeze the whole app.
+        # An app-wide blocker must stay visible while it blocks: without the
+        # topmost hint it execs BELOW the always-on-top calendar popup when
+        # the two overlap, and the app reads as frozen behind an inert
+        # calendar. A parented ask is raised by its parent instead, and this
+        # dialog is gone by the time exec() returns, so the hint cannot leak.
+        if parent is None:
+            self.setWindowFlags(Qt.WindowType.Dialog
+                                | Qt.WindowType.FramelessWindowHint
+                                | Qt.WindowType.WindowStaysOnTopHint)
         self.setWindowModality(
             Qt.WindowModality.ApplicationModal if parent is None
             else Qt.WindowModality.WindowModal)

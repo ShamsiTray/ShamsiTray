@@ -49,10 +49,15 @@ class DownloadUpdateDialog(HoverDriverMixin, FramelessDragMixin, QDialog):
 
     def __init__(self, version: str, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # ApplicationModal: the download usually starts with no other window
-        # open (tray flow), where WindowModal would guard nothing.
+        # open (tray flow), where WindowModal would guard nothing. The
+        # always-on-top hint rides the modality: the pinned calendar popup
+        # execs above normal windows, and a card it covers would read the app
+        # as frozen while the download runs behind it.
+        self.setWindowFlags(Qt.WindowType.Dialog
+                            | Qt.WindowType.FramelessWindowHint
+                            | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.setWindowTitle("دانلود بروزرسانی")
