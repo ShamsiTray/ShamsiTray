@@ -1191,6 +1191,22 @@ def test_confirm_dialog_static_flows_go_through_the_shared_tail(qtbot, monkeypat
     assert calls == [None, None]
 
 
+def test_confirm_dialog_modality_follows_the_parent(qtbot):
+    """A parentless WindowModal dialog blocks nothing - modality rides the
+    parent chain, and a tray-owned ask has no parent window at all. The
+    update round's prompt would therefore never block anything, so its
+    parentless asks get ApplicationModal; a parented prompt keeps
+    WindowModal so one tool-window ask cannot freeze the whole app."""
+    parentless = ConfirmDialog(None, "ت", "م")
+    qtbot.addWidget(parentless)
+    host = QWidget()
+    qtbot.addWidget(host)
+    parented = ConfirmDialog(host, "ت", "م")
+    qtbot.addWidget(parented)
+    assert parentless.windowModality() == Qt.WindowModality.ApplicationModal
+    assert parented.windowModality() == Qt.WindowModality.WindowModal
+
+
 def test_confirm_dialog_exec_centered_sizes_and_centers_then_runs(qtbot, monkeypatch):
     dialog = ConfirmDialog(None, "ت", "م")
     qtbot.addWidget(dialog)

@@ -17,8 +17,10 @@ of that, so the two share the mixin rather than a QWidget base - see
 Design notes:
 - It is a real ``QDialog`` (``exec()`` works) but painted like every other
   frameless window of the app: rounded card, Vazirmatn, palette colors.
-- ``WindowModal`` blocks only the parent window, so a prompt cannot freeze the
-  whole application.
+- A parentless ``WindowModal`` dialog blocks nothing - modality rides the
+  parent chain, and a tray-owned ask has no parent window. Parentless asks
+  are ``ApplicationModal``; parented prompts stay ``WindowModal`` so a
+  tool-window ask cannot freeze the whole application.
 - The card is draggable from any of its blank surfaces (labels and stretches
   pass mouse events through to the dialog; buttons consume their own), with
   the same screen clamping the frameless windows use - a centered dialog is
@@ -66,7 +68,14 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
                          confirm_text=confirm_text, cancel_text=cancel_text,
                          danger=danger, glyph=glyph, width=width, actions=actions)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-        self.setWindowModality(Qt.WindowModality.WindowModal)
+        # A parentless WindowModal dialog blocks nothing - the modality rides
+        # the parent chain, and the tray-owned update family has no parent
+        # window at all; two rounds could stack competing prompts. Parentless
+        # asks are therefore ApplicationModal, while a parented prompt keeps
+        # WindowModal so one tool-window ask cannot freeze the whole app.
+        self.setWindowModality(
+            Qt.WindowModality.ApplicationModal if parent is None
+            else Qt.WindowModality.WindowModal)
         # Frameless cards still carry a native title for Alt-Tab / taskbar
         # previews: give every dialog the ACTION's name, not the generic app
         # name, so each surface reads as its own thing.
