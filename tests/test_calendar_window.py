@@ -386,17 +386,23 @@ def test_the_confirm_overlays_follow_the_theme(calendar):
     """(Bug 5) The three confirm overlays are persistent children built once at
     construction and styled in palette colors; update_styles() used to skip
     them, so a theme switch under an open calendar left the delete/merge cards
-    dressed in the old palette until the whole popup was rebuilt."""
-    APP_CONFIG.set_theme(Config.Theme.DARK)
-    calendar.update_styles()  # must cascade to the overlays like its siblings
-    dark = calendar._remove_overlay.detail_label.styleSheet()
+    dressed in the old palette until the whole popup was rebuilt. All three
+    are swept in both directions - a one-way, one-card check could hide a
+    card that only drifts when leaving light."""
+    overlays = (calendar._notice_overlay, calendar._remove_overlay,
+                calendar._merge_overlay)
 
     APP_CONFIG.set_theme("catppuccin_latte")
-    calendar.update_styles()
-    light = calendar._notice_overlay.detail_label.styleSheet()
+    calendar.update_styles()  # must cascade to the overlays like its siblings
+    light_fill = APP_CONFIG._theme_map["catppuccin_latte"]["INPUT_BG_COLOR"]
+    for overlay in overlays:
+        assert light_fill in overlay.detail_label.styleSheet()
 
-    assert Config.DARK_PALETTE["INPUT_BG_COLOR"] in dark
-    assert APP_CONFIG._theme_map["catppuccin_latte"]["INPUT_BG_COLOR"] in light
+    APP_CONFIG.set_theme(Config.Theme.DARK)
+    calendar.update_styles()
+    dark_fill = Config.DARK_PALETTE["INPUT_BG_COLOR"]
+    for overlay in overlays:
+        assert dark_fill in overlay.detail_label.styleSheet()
 
 
 @pytest.mark.parametrize("taken,expected", [
