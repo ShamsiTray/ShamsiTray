@@ -98,21 +98,31 @@ def nudge_popup_inside_work_area(popup, *, margin: int = MENU_EDGE_MARGIN) -> No
     if (x, y) != (frame.x(), frame.y()):
         popup.move(x, y)
 
-def center_on_screen(widget) -> None:
-    """Center a never-shown top-level widget over the primary work area.
+def center_on_screen(widget, screen=None) -> None:
+    """Center a never-shown top-level widget over a work area.
 
     The tray-owned dialog family (update popup, progress card, their notices)
     has no owner window: Qt's Dialog placement is only meaningful against a
     parent, so these surfaces decide their own geometry the way
     ``ConfirmDialog.center_over_parent(None)`` does for the themed cards.
-    Call before ``show()`` with the widget already at its final size.
+    ``screen`` names the surface's own screen - the tray's, for the update
+    family - so a tray on a secondary monitor presents there; None falls back
+    to the primary work area. Call before ``show()`` with the widget already
+    at its final size.
+
+    The move is clamped inside the work area: a card wider or taller than it
+    (a narrow work area) would otherwise park half outside, and the download
+    card's progress bar is exactly the part that must stay visible there.
     """
-    screen = QApplication.primaryScreen()
+    if screen is None:
+        screen = QApplication.primaryScreen()
     if screen is None:
         return
     geo = screen.availableGeometry()
-    widget.move(geo.center().x() - widget.width() // 2,
-                geo.center().y() - widget.height() // 2)
+    widget.move(max(geo.left(), min(geo.center().x() - widget.width() // 2,
+                                    geo.right() - widget.width())),
+                max(geo.top(), min(geo.center().y() - widget.height() // 2,
+                                   geo.bottom() - widget.height())))
 
 def paint_rounded_card(painter: QPainter, rect, fill_color, border_color, radius: float) -> QPainterPath:
     """Paint the app's rounded-card background (antialiased fill + 1px border).

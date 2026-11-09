@@ -38,6 +38,17 @@ def _spy(obj, name):
     return calls, original
 
 
+class _FakeScreen:
+    """Stand-in for a QScreen: the update family's centering reads exactly one
+    call off it (availableGeometry), so a fabricated work area can prove a
+    dialog centered inside it."""
+    def __init__(self, geometry):
+        self._geometry = geometry
+
+    def availableGeometry(self):
+        return self._geometry
+
+
 # --- boot & settings ---------------------------------------------------------------
 
 
@@ -330,7 +341,7 @@ def test_update_popup_dismisses_open_round_notice(tray, monkeypatch):
 def _answer_update_popup(tray, monkeypatch, choice):
     """Build the popup's dialog path without a modal loop: exec_centered is the
     shared present-tail the popup ends with."""
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         self.choice = choice
         return 0
 
@@ -364,7 +375,7 @@ def test_update_popup_keeps_a_reference_while_it_runs(tray, monkeypatch):
     of dropping the result silently; it is cleared in the finally block."""
     captured = {}
 
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         captured["dialog"] = tray._active_update_popup
         self.choice = None
         return 0
@@ -403,10 +414,14 @@ def test_manual_offer_while_popup_open_raises_it(tray):
 
 
 def _capture_popup_dialog(tray, monkeypatch):
-    """Build the popup without a modal loop; returns the dialog it constructed."""
+    """Build the popup without a modal loop; returns the dialog it constructed.
+    The exec call args ride the dialog (_exec_anchor / _exec_screen) so the
+    tray-owned geometry pins can assert both."""
     captured = {}
 
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
+        self._exec_anchor = parent
+        self._exec_screen = screen
         captured["dialog"] = self
         self.choice = None
         return 0
@@ -427,8 +442,21 @@ def test_update_popup_is_tray_owned_not_parked_in_an_active_window(tray, monkeyp
     try:
         dialog = _capture_popup_dialog(tray, monkeypatch)
         assert dialog.parent() is None
+        assert dialog._exec_anchor is None
+        assert dialog._exec_screen == tray._tray_screen()
     finally:
         foreign.close()
+
+
+def test_update_popup_centers_on_the_tray_screen(tray, monkeypatch):
+    """Multi-monitor: the “screen” handed to the present-tail is whatever the
+    tray icon's own geometry resolves to, so the ask presents on the monitor
+    the taskbar actually occupies - not always the primary."""
+    fake = _FakeScreen(QRect(2000, 0, 1920, 1040))
+    monkeypatch.setattr(tray, "_tray_screen", lambda: fake)
+    dialog = _capture_popup_dialog(tray, monkeypatch)
+    assert dialog._exec_anchor is None
+    assert dialog._exec_screen is fake
 
 
 def test_manual_popup_with_holiday_refresh_carries_extra_line(tray, monkeypatch):
@@ -475,14 +503,19 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
 
         def move(self, x, y):
             self.geometry_calls.append("move")
+            self.last_move = (x, y)
 
         def show(self):
             self.shown = True
+            # Recorded so an edit cannot slide show() past the centering move.
+            self.geometry_calls.append("show")
 
         def dismiss(self):
             self.dismissed = True
 
     monkeypatch.setattr(controller_module, "DownloadUpdateDialog", FakeDialog)
+    fake_geo = QRect(2000, 0, 1920, 1040)
+    monkeypatch.setattr(tray, "_tray_screen", lambda: _FakeScreen(fake_geo))
     download_calls = []
     monkeypatch.setattr(tray.update_checker, "download_installer",
                         lambda url, dest, sha: download_calls.append((url, dest, sha)) or True)
@@ -499,7 +532,10 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     fallback = dest.parent == Path.home() / "Downloads" or dest.parent == APP_CONFIG.USER_DATA_DIR
     assert fallback
     assert canceled_slots == [tray.update_checker.cancel_download]
-    assert tray._download_dialog.geometry_calls == ["adjustSize", "move"]  # centered pre-show
+    # size-truth first: adjustSize, then centered on the tray's screen, shown last.
+    assert tray._download_dialog.geometry_calls == ["adjustSize", "move", "show"]
+    assert tray._download_dialog.last_move == (fake_geo.center().x() - 340 // 2,
+                                               fake_geo.center().y() - 120 // 2)
     assert tray._download_dialog is not None  # dialog kept for progress updates
     tray._close_download_dialog()
     assert tray._download_dialog is None
@@ -2341,8 +2377,8 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
             return self.size[1]
 
         def move(self, x, y):
-            # The tray-owned card now centers itself on the screen (no parent):
-            # the recorded move must sit on the primary work area's center.
+            # The tray-owned card centers itself with no parent: the recorded
+            # move must sit on the work area of the screen the tray hands over.
             self.pos = (x, y)
 
         def show(self):
@@ -2352,12 +2388,18 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
             self.dismissed = True
 
     dialog = FakeDialog("1.4.1")
+    fake_geo = QRect(2000, 0, 1920, 1040)
     monkeypatch.setattr(controller_module, "DownloadUpdateDialog",
                         lambda version, parent=None: dialog)
+    monkeypatch.setattr(tray, "_tray_screen", lambda: _FakeScreen(fake_geo))
     monkeypatch.setattr(tray.update_checker, "is_downloading", lambda: False)
     monkeypatch.setattr(tray.update_checker, "download_installer", lambda *a, **k: False)
 
     tray._download_update("1.4.1", "http://x/installer.exe", "a" * 64)
 
+    # The recorded move is the real centering: on the work area of the screen
+    # the tray hands over.
+    assert dialog.pos == (fake_geo.center().x() - 340 // 2,
+                          fake_geo.center().y() - 120 // 2)
     assert dialog.shown and dialog.dismissed
     assert tray._download_dialog is None

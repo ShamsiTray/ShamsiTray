@@ -553,6 +553,17 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._popup_timer.timeout.connect(self._show_deferred_update_popup)
         self._popup_timer.start()
 
+    def _tray_screen(self):
+        """The tray icon's screen: ``QSystemTrayIcon.geometry`` reports the
+        icon's own bounds, so the tray-owned update family presents on the
+        taskbar's monitor instead of always the primary. Empty geometry (no
+        tray arranged yet - the offscreen test boot) answers None, and every
+        caller falls back to the primary work area."""
+        geometry = self.geometry()
+        if geometry.isEmpty():
+            return None
+        return QApplication.screenAt(geometry.center())
+
     def _show_deferred_update_popup(self):
         version, installer_url, sha256 = self._popup_payload
         self._popup_payload = None
@@ -581,6 +592,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             # tray-owned surface with no owner window - centering it over the
             # active window would, whenever that window is the calendar popup,
             # drop the ask inside the 305px calendar (its own reported bug).
+            # The work area is the tray icon's screen, so a tray on a secondary
+            # monitor presents there too.
             dialog = ConfirmDialog(
                 None, "بروزرسانی جدید",
                 f"نسخه جدید {APP_CONFIG.APP_NAME} ({version}) موجود است.",
@@ -591,7 +604,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._active_update_popup = dialog
             # The shared present-tail; the reference above is what lets a
             # manual arrival raise the open popup while it runs.
-            dialog.exec_centered(None)
+            dialog.exec_centered(None, screen=self._tray_screen())
             choice = dialog.choice
         finally:
             self._update_dialog_open = False
@@ -622,13 +635,13 @@ class SystemTrayIcon(QSystemTrayIcon):
                 self._on_installer_downloaded(str(destination))
                 return
         # Same ruler as the popup above: no owner window, so the progress card
-        # decides its own geometry - centered on the screen, never inside the
-        # active popup. adjustSize first: the fixed width is set at
+        # decides its own geometry - centered on the tray's screen, never
+        # inside the active popup. adjustSize first: the fixed width is set at
         # construction, but the layout's real height only exists afterwards,
         # and centering on the default 100px card would park it too high.
         dialog = DownloadUpdateDialog(version)
         dialog.adjustSize()
-        center_on_screen(dialog)
+        center_on_screen(dialog, self._tray_screen())
         dialog.canceled.connect(self.update_checker.cancel_download)
         self._download_dialog = dialog
         dialog.show()
@@ -659,7 +672,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         run_requested = ConfirmDialog.ask(
             None, "دانلود کامل شد", "نصب‌کننده اجرا شود؟",
             glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE, danger=False,
-            confirm_text="اجرا", cancel_text="بعداً")
+            confirm_text="اجرا", cancel_text="بعداً",
+            screen=self._tray_screen())
         if run_requested:
             logger.info(f"Launching installer {path}")
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
@@ -678,7 +692,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             None, "دانلود بروزرسانی",
             "دانلود بروزرسانی ناموفق بود.",
             detail="می‌توانید نصب‌کننده را به‌صورت دستی از صفحه Releases دریافت کنید.",
-            danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION)
+            danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION,
+            screen=self._tray_screen())
 
     def _on_holidays_updated(self):
         logger.info("Holiday data updated; refreshing calendar and tray icon.")
@@ -770,7 +785,8 @@ class SystemTrayIcon(QSystemTrayIcon):
                 None, "بررسی بروزرسانی",
                 "نسخه جدید موجود است اما دانلود امن آن ممکن نیست.",
                 danger=True, glyph=APP_CONFIG.FAS.FA_CIRCLE_EXCLAMATION,
-                key=UPDATE_CHECK_NOTICE_KEY)
+                key=UPDATE_CHECK_NOTICE_KEY,
+                screen=self._tray_screen())
             return
         if app_state == APP_STATE_CURRENT:
             if holidays_state == HOLIDAYS_STATE_UPDATED:
@@ -778,32 +794,37 @@ class SystemTrayIcon(QSystemTrayIcon):
                     None, "بررسی بروزرسانی",
                     "فایل تعطیلات به‌روزرسانی شد.",
                     glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
-                    key=UPDATE_CHECK_NOTICE_KEY)
+                    key=UPDATE_CHECK_NOTICE_KEY,
+                    screen=self._tray_screen())
             elif holidays_state == HOLIDAYS_STATE_CURRENT:
                 ConfirmDialog.notify(
                     None, "بررسی بروزرسانی",
                     "برنامه و فایل تعطیلات بروز است.",
                     glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
-                    key=UPDATE_CHECK_NOTICE_KEY)
+                    key=UPDATE_CHECK_NOTICE_KEY,
+                    screen=self._tray_screen())
             else:
                 ConfirmDialog.notify(
                     None, "بررسی بروزرسانی",
                     "برنامه بروز است؛ بررسی فایل تعطیلات ناموفق بود.",
                     glyph=APP_CONFIG.FAS.FA_ARROWS_ROTATE,
-                    key=UPDATE_CHECK_NOTICE_KEY)
+                    key=UPDATE_CHECK_NOTICE_KEY,
+                    screen=self._tray_screen())
         elif app_state == APP_STATE_FAILED:
             if holidays_state == HOLIDAYS_STATE_UPDATED:
                 ConfirmDialog.notify(
                     None, "بررسی بروزرسانی",
                     "فایل تعطیلات به‌روزرسانی شد، اما بررسی برنامه ناموفق بود.",
                     danger=True, glyph=APP_CONFIG.FAS.FA_WIFI,
-                    key=UPDATE_CHECK_NOTICE_KEY)
+                    key=UPDATE_CHECK_NOTICE_KEY,
+                    screen=self._tray_screen())
             else:
                 ConfirmDialog.notify(
                     None, "بررسی بروزرسانی",
                     "بررسی بروزرسانی ناموفق بود. اتصال اینترنت را بررسی کنید.",
                     danger=True, glyph=APP_CONFIG.FAS.FA_WIFI,
-                    key=UPDATE_CHECK_NOTICE_KEY)
+                    key=UPDATE_CHECK_NOTICE_KEY,
+                    screen=self._tray_screen())
 
     def _handle_holidays_round_bookkeeping(self, holidays_state: str):
         """Retry bookkeeping for the quiet holiday fetch.

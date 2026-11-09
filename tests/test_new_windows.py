@@ -1181,7 +1181,7 @@ def test_confirm_dialog_static_flows_go_through_the_shared_tail(qtbot, monkeypat
     popup). exec_centered() is that single tail."""
     calls = []
 
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         calls.append(parent)
         return int(QDialog.DialogCode.Accepted)
 
@@ -2152,7 +2152,7 @@ def test_keyed_notify_updates_open_notice_instead_of_stacking(monkeypatch):
     monkeypatch.setattr(ConfirmDialog, "__init__", capturing_init)
     raised, activated = [], []
 
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         if len(built) == 1:  # a newer result lands while this notice is up
             monkeypatch.setattr(self, "raise_", lambda: raised.append(True))
             monkeypatch.setattr(self, "activateWindow", lambda: activated.append(True))
@@ -2179,7 +2179,7 @@ def test_keyed_notify_builds_fresh_notice_after_first_closes(monkeypatch):
         built.append(self)
 
     monkeypatch.setattr(ConfirmDialog, "__init__", capturing_init)
-    monkeypatch.setattr(ConfirmDialog, "exec_centered", lambda self, parent=None: 0)
+    monkeypatch.setattr(ConfirmDialog, "exec_centered", lambda self, parent=None, screen=None: 0)
     ConfirmDialog.notify(None, "t", "first", key="update-check")
     assert ConfirmDialog._active_notice is None  # cleared by the finally
     ConfirmDialog.notify(None, "t", "second", key="update-check")
@@ -2192,7 +2192,7 @@ def test_unrelated_notify_does_not_overwrite_active_keyed_notice(monkeypatch):
     """An ordinary (unkeyed) notice must not touch the open keyed notice."""
     keyed = {}
 
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         keyed["dialog"] = self
         ConfirmDialog.notify(None, "ذخیره رویدادها", "ذخیره رویدادها ناموفق بود.")
         return 0
@@ -2242,7 +2242,7 @@ def test_dismissed_notice_exec_finishes_without_stale_state(monkeypatch):
     leaves no tracked reference behind."""
     finished = []
 
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         # The popup takes over while this notice is up.
         assert ConfirmDialog.dismiss_active_notice("update-check") is True
         finished.append(True)
@@ -2265,7 +2265,7 @@ def _answer_update_popup(monkeypatch, choice):
     that real modal unowned and block the test forever, so the seam is the
     present-tail itself.
     """
-    def fake_exec_centered(self, parent=None):
+    def fake_exec_centered(self, parent=None, screen=None):
         self.choice = choice
         return 0
 

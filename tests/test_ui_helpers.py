@@ -2,7 +2,7 @@
 mixin (shared by every frameless surface), tray pixmaps, combo fitting and
 the shared stylesheet builders."""
 import pytest
-from PyQt6.QtCore import QPoint, QPointF, Qt
+from PyQt6.QtCore import QPoint, QPointF, QRect, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPixmap
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QWidget)
@@ -537,6 +537,43 @@ def test_center_on_screen_centers_on_the_primary_work_area(qtbot):
     geo = QApplication.primaryScreen().availableGeometry()
     assert widget.x() == geo.center().x() - widget.width() // 2
     assert widget.y() == geo.center().y() - widget.height() // 2
+
+
+def test_center_on_screen_accepts_a_named_screen(qtbot):
+    """The tray-owned surfaces name their screen (the tray's) when the tray
+    icon lives on a secondary monitor; centering runs inside that work area."""
+    widget = QWidget()
+    widget.resize(100, 40)
+    qtbot.addWidget(widget)
+
+    class FakeScreen:
+        def availableGeometry(self):
+            return QRect(2000, 0, 1920, 1040)
+
+    center_on_screen(widget, FakeScreen())
+
+    geo = QRect(2000, 0, 1920, 1040)
+    assert widget.x() == geo.center().x() - widget.width() // 2
+    assert widget.y() == geo.center().y() - widget.height() // 2
+
+
+def test_center_on_screen_clamps_inside_a_tiny_work_area(qtbot):
+    """A card wider or taller than its work area parks at the edge instead of
+    centering half of itself off-screen - the download card's progress bar
+    must stay visible even there."""
+    widget = QWidget()
+    widget.resize(100, 40)
+    qtbot.addWidget(widget)
+
+    class FakeScreen:
+        def availableGeometry(self):
+            return QRect(2000, 0, 50, 30)
+
+    center_on_screen(widget, FakeScreen())
+
+    geo = QRect(2000, 0, 50, 30)
+    assert widget.x() == geo.left()
+    assert widget.y() == geo.top()
 
 
 # --- mouse-event routing lives on the mixin itself (REF-7) -------------------------
