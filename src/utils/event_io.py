@@ -290,10 +290,10 @@ def breakable(text: str) -> str:
     """The one display form for event text in wrap-constrained surfaces (the
     event row title): long unbroken runs are re-chunked and joined with
     zero-width spaces so word wrap can break them, keeping the surface
-    narrow. Call it on the RAW text, before any HTML escaping - splitting
-    after escaping can cut an &amp; in half. The stored text is never
-    touched; the reader still gets the whole content, hence no cap and no
-    tooltip."""
+    narrow. This is display text for a label pinned to PlainText (the event
+    row does that), so text is never interpreted as markup. The stored text
+    is never touched; the reader still gets the whole content - the label's
+    accessible name carries the raw text - hence no cap and no tooltip."""
     def join_chunks(match: "re.Match") -> str:
         token = match.group()
         chunks = (token[i:i + _BREAKABLE_CHUNK_CHARS]

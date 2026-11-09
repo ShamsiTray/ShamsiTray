@@ -143,7 +143,14 @@ class EventRow(QFrame):
 
         text_box = QVBoxLayout()
         text_box.setSpacing(2)
-        self.text_label = QLabel(breakable(str(entry.get("text", ""))))
+        raw_text = str(entry.get("text", ""))
+        # Plain text: the row displays the user's stored content, so a
+        # "<b>…</b>" must read as written, never render as markup. The
+        # accessible name carries the raw text: breakable()'s zero-width
+        # spaces are a word-wrap aid, not readable content.
+        self.text_label = QLabel(breakable(raw_text))
+        self.text_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.text_label.setAccessibleName(raw_text)
         self.text_label.setWordWrap(True)
         self.text_label.setObjectName("EventTextLabel")
         self.text_label.setAlignment(right)

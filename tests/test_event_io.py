@@ -5,7 +5,6 @@ import jdatetime
 import pytest
 
 from config import APP_CONFIG
-from html import escape
 from utils import event_io
 
 
@@ -559,15 +558,6 @@ def test_breakable_leaves_ordinary_text_byte_for_byte():
     assert event_io.breakable(text) == text
     short = "یک رویداد کوتاه"
     assert event_io.breakable(short) == short
-
-
-def test_breakable_before_escape_cannot_cut_an_entity():
-    """The day tooltip composes escape(breakable(text)): the chunking must
-    run on the raw text, because splitting AFTER escaping could land a chunk
-    boundary inside an &amp; and break the markup. With 30 raw ampersands the
-    chunk lands between the two halves and every entity stays whole."""
-    html = escape(event_io.breakable("&" * 30))
-    assert html == "&amp;" * 20 + "\u200b" + "&amp;" * 10
 
 
 def test_build_import_plan_same_text_other_key_shape_still_replaces():

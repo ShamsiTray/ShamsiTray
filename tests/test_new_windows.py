@@ -292,6 +292,22 @@ def test_manager_row_leaves_ordinary_text_untouched(manager):
     assert "\u200b" not in row.text_label.text()
 
 
+def test_manager_row_renders_markup_as_plain_text(manager):
+    """The row is the user's content, not the app's markup: a stored
+    "<b>bold</b>" must show as written (the label is pinned to PlainText,
+    never to AutoText's rich rendering), and the accessible name carries
+    the raw text - breakable()'s zero-width spaces are a word-wrap aid,
+    not readable content."""
+    text = "<b>بولد</b>"
+    manager.controller.user_events["1404-05-05"] = {
+        "text": text, "recurrence": "none", "remove_after_finish": False}
+    manager.refresh_list()
+    row = manager.rows_layout.itemAt(0).widget()
+    assert row.text_label.textFormat() == Qt.TextFormat.PlainText
+    assert row.text_label.text() == text
+    assert row.text_label.accessibleName() == text
+
+
 def test_manager_row_hover_changes_only_the_border(manager):
     """The row's hover is a border-only verdict painted from the pack's own
     colours: the stock hover colour was the scrollbar handle, which IS the
