@@ -20,6 +20,9 @@ def test_dialog_initial_state_is_busy(qtbot):
     qtbot.addWidget(dialog)
     assert dialog.width() == 340  # fixed card width
     assert dialog.windowModality() == Qt.WindowModality.ApplicationModal
+    # App-wide blocker over a window that can be pinned always-on-top: the
+    # card must not exec below the pinned calendar it covers.
+    assert bool(dialog.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
     assert dialog.layoutDirection() == Qt.LayoutDirection.RightToLeft
     assert (dialog.progress.minimum(), dialog.progress.maximum()) == (0, 0)  # busy
     assert "1.4.0" in dialog.message_label.text()
