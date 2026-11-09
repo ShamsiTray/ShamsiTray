@@ -435,7 +435,8 @@ def test_update_popup_is_tray_owned_not_parked_in_an_active_window(tray, monkeyp
     """(Bug 2) Reported repro: the update ask centered on the ACTIVE window -
     with the calendar popup up, it landed inside its 305px card. The popup is
     tray-owned: parent AND center anchor are None, so whatever window happens
-    to be active decides nothing about its geometry."""
+    to be active decides nothing about its geometry - and with no parent
+    chain, only ApplicationModal modality blocks anything."""
     from PyQt6.QtWidgets import QWidget
     foreign = QWidget()
     foreign.show()
@@ -444,6 +445,7 @@ def test_update_popup_is_tray_owned_not_parked_in_an_active_window(tray, monkeyp
         assert dialog.parent() is None
         assert dialog._exec_anchor is None
         assert dialog._exec_screen == tray._tray_screen()
+        assert dialog.windowModality() == Qt.WindowModality.ApplicationModal
     finally:
         foreign.close()
 
