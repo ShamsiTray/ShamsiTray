@@ -47,7 +47,22 @@ class DownloadUpdateDialog(HoverDriverMixin, FramelessDragMixin, QDialog):
 
     canceled = pyqtSignal()
 
-    def __init__(self, version: str, parent=None):
+    # The card's designed width; the layout's horizontal margins (20 + 20) are
+    # the least a narrowed card keeps, so inner widgets never clip.
+    CARD_WIDTH = 340
+
+    @staticmethod
+    def _card_width(screen) -> int:
+        """The fixed width: the designed 340px, narrowed on a work area
+        narrower than the card so the progress bar never rides outside it.
+        The labels word-wrap and the footer is one centered button, so the
+        layout survives the squeeze; ``screen`` is the tray's screen."""
+        if screen is None:
+            return DownloadUpdateDialog.CARD_WIDTH
+        available = screen.availableGeometry().width()
+        return max(1, min(DownloadUpdateDialog.CARD_WIDTH, available - 40))
+
+    def __init__(self, version: str, parent=None, screen=None):
         super().__init__(parent)
         # ApplicationModal: the download usually starts with no other window
         # open (tray flow), where WindowModal would guard nothing. The
@@ -63,7 +78,7 @@ class DownloadUpdateDialog(HoverDriverMixin, FramelessDragMixin, QDialog):
         self.setWindowTitle("دانلود بروزرسانی")
         if APP_CONFIG.ICON_PATH.exists():
             self.setWindowIcon(QIcon(str(APP_CONFIG.ICON_PATH)))
-        self.setFixedWidth(340)
+        self.setFixedWidth(self._card_width(screen))
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 16)
