@@ -1,5 +1,6 @@
 """Tests for ui.widgets.download_dialog: the themed installer-download card."""
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtWidgets import QApplication
 
 from config import APP_CONFIG
 from tests.qt_mousing import release
@@ -27,6 +28,28 @@ def test_dialog_initial_state_is_busy(qtbot):
     assert (dialog.progress.minimum(), dialog.progress.maximum()) == (0, 0)  # busy
     assert "1.4.0" in dialog.message_label.text()
     assert dialog.progress.isTextVisible() is False
+
+
+def test_dialog_narrows_inside_a_narrow_work_area(qtbot):
+    """The 340px design width cannot fit a narrower work area: the card
+    narrows to the margins-spent remainder, its labels wrapping the squeeze,
+    so the progress bar never rides outside the screen."""
+    class _NarrowScreen:
+        def availableGeometry(self):
+            return QRect(0, 0, 260, 400)
+
+    dialog = DownloadUpdateDialog("1.4.0", screen=_NarrowScreen())
+    qtbot.addWidget(dialog)
+    assert dialog.width() == 220  # 260 - the 40 horizontal layout margins
+    # Shown children report their real laid-out widths (pre-show they would
+    # only report the default 640px QWidget width), so this is where the
+    # progress bar and the cancel button can be caught inside the narrow
+    # card: both must fit its inner 180px.
+    dialog.show()
+    QApplication.processEvents()
+    inner = 220 - 40
+    assert dialog.progress.width() <= inner
+    assert dialog.cancel_button.width() <= inner
 
 
 def test_dialog_carries_the_hover_driver(qtbot):

@@ -483,8 +483,9 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     canceled_slots = []
 
     class FakeDialog:
-        def __init__(self, version, parent=None):
+        def __init__(self, version, parent=None, screen=None):
             self.version = version
+            self.screen = screen
             self.shown = False
             self.dismissed = False
             self.size = (340, 120)  # what adjustSize() would measure on the card
@@ -517,7 +518,8 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
 
     monkeypatch.setattr(controller_module, "DownloadUpdateDialog", FakeDialog)
     fake_geo = QRect(2000, 0, 1920, 1040)
-    monkeypatch.setattr(tray, "_tray_screen", lambda: _FakeScreen(fake_geo))
+    fake_screen = _FakeScreen(fake_geo)
+    monkeypatch.setattr(tray, "_tray_screen", lambda: fake_screen)
     download_calls = []
     monkeypatch.setattr(tray.update_checker, "download_installer",
                         lambda url, dest, sha: download_calls.append((url, dest, sha)) or True)
@@ -539,6 +541,8 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     assert tray._download_dialog.last_move == (fake_geo.center().x() - 340 // 2,
                                                fake_geo.center().y() - 120 // 2)
     assert tray._download_dialog is not None  # dialog kept for progress updates
+    # The card received the tray's screen so it can narrow itself to it.
+    assert tray._download_dialog.screen == tray._tray_screen()
     tray._close_download_dialog()
     assert tray._download_dialog is None
 
@@ -2365,7 +2369,8 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
     canceled_slots = []
 
     class FakeDialog:
-        def __init__(self, version, parent=None):
+        def __init__(self, version, parent=None, screen=None):
+            self.screen = screen
             self.shown = False
             self.dismissed = False
             self.size = (340, 120)  # what adjustSize() would measure on the card
@@ -2395,9 +2400,14 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
 
     dialog = FakeDialog("1.4.1")
     fake_geo = QRect(2000, 0, 1920, 1040)
-    monkeypatch.setattr(controller_module, "DownloadUpdateDialog",
-                        lambda version, parent=None: dialog)
-    monkeypatch.setattr(tray, "_tray_screen", lambda: _FakeScreen(fake_geo))
+    fake_screen = _FakeScreen(fake_geo)
+
+    def _build_dialog(version, parent=None, screen=None):
+        dialog.screen = screen
+        return dialog
+
+    monkeypatch.setattr(controller_module, "DownloadUpdateDialog", _build_dialog)
+    monkeypatch.setattr(tray, "_tray_screen", lambda: fake_screen)
     monkeypatch.setattr(tray.update_checker, "is_downloading", lambda: False)
     monkeypatch.setattr(tray.update_checker, "download_installer", lambda *a, **k: False)
 
@@ -2408,4 +2418,5 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
     assert dialog.pos == (fake_geo.center().x() - 340 // 2,
                           fake_geo.center().y() - 120 // 2)
     assert dialog.shown and dialog.dismissed
+    assert dialog.screen == tray._tray_screen()
     assert tray._download_dialog is None

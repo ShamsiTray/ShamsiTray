@@ -636,10 +636,11 @@ class SystemTrayIcon(QSystemTrayIcon):
                 return
         # Same ruler as the popup above: no owner window, so the progress card
         # decides its own geometry - centered on the tray's screen, never
-        # inside the active popup. adjustSize first: the fixed width is set at
-        # construction, but the layout's real height only exists afterwards,
+        # inside the active popup. The card also narrows itself to that screen
+        # (its 340px design width cannot fit a narrower work area), and
+        # adjustSize runs after: the layout's real height only exists then,
         # and centering on the default 100px card would park it too high.
-        dialog = DownloadUpdateDialog(version)
+        dialog = DownloadUpdateDialog(version, screen=self._tray_screen())
         dialog.adjustSize()
         center_on_screen(dialog, self._tray_screen())
         dialog.canceled.connect(self.update_checker.cancel_download)
