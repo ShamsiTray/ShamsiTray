@@ -181,8 +181,12 @@ begin
   // PS string escaping needs no backslash work, only doubled apostrophes;
   // a target with an apostrophe is a legal install directory, so the path
   // is regenerated runtime from {app} rather than assuming one spelling.
-  Literal := '''' + StringChange(ExpandConstant('{app}\{#MyAppExeName}'),
-                                 '''', '''''') + '''';
+  // StringChangeEx edits its var parameter in place, so the path is
+  // escaped first and quoted after - and SupportDBCS=True is the docs'
+  // requirement for path strings, so double-byte filenames survive.
+  Literal := ExpandConstant('{app}\{#MyAppExeName}');
+  StringChangeEx(Literal, '''', '''''', True);
+  Literal := '''' + Literal + '''';
   if KillToo then
     KillRule := '; foreach ($x in $a) { try { $x.Kill() } catch { } }'
   else
