@@ -24,6 +24,10 @@ if str(SRC) not in sys.path:
 
 from config import APP_CONFIG, Config  # noqa: E402
 
+# Every ConfirmDialog built under a test, held by the session so no wrapper is
+# garbage-collected mid-run - see hold_static_dialogs for why.
+_HELD_DIALOGS = []
+
 
 @pytest.fixture(autouse=True)
 def restore_active_palette():
@@ -160,3 +164,66 @@ def dispose_tray_controllers(monkeypatch):
     # of the same dying tree can still dispatch into Python while Qt tears
     # its sender out from under it (the shape that access-violated the suite).
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(autouse=True)
+def hold_static_dialogs(monkeypatch):
+    """Hold every ConfirmDialog the static flows build until interpreter exit.
+
+    ask/choose/notify build parentless dialogs inside their own frame, and tests
+    reach them by monkeypatching exec instead of execing - so no qtbot.addWidget
+    ever sees the dialog and its Python wrapper dies wherever the test's own
+    references do. A wrapper dropped mid-run (function return) is a C++ deletion
+    the teardown still trips over at interpreter finalization under PySide 6.12:
+    an access violation with no Python frame, after the whole suite already
+    passed. Destroying the dialogs here instead collides with pytest-qt's own
+    teardown hook, which closes every addWidget'd widget and finds deleteLater'd
+    shells. Holding the wrapper alive (proven safe in isolation: the C++ side
+    then dies inside QApplication's own static teardown) parks it inert until
+    the very end, where the application tears it down in one piece.
+
+    addWidget'd dialogs stay out of the hold: pytest-qt closes and deleteLater's
+    them at its own teardown, and holding their wrappers turns that close into a
+    RuntimeError on a dead shell - the parent chain dies mid-run either way,
+    so there is nothing left for the interpreter to trip over.
+    """
+    from pytestqt.qtbot import QtBot
+
+    from ui.widgets.confirm_dialog import ConfirmDialog
+
+    # Identity keys, not references: pytest-qt resolves its weakrefs to close
+    # the widgets, so a reference kept here would turn that close into a
+    # RuntimeError on a dead shell for any dialog whose parent died mid-run.
+    marked_ids = set()
+    real_add_widget = QtBot.addWidget
+
+    def add_widget_if_unheld(self, widget, *args, **kwargs):
+        if isinstance(widget, ConfirmDialog):
+            marked_ids.add(id(widget))
+            # Prune immediately, because pytest-qt's close pass runs while this
+            # fixture is still only a fixture - intermediates between here and
+            # the finalizer must never keep a wrapper it wants to close.
+            _HELD_DIALOGS[:] = [dialog for dialog in _HELD_DIALOGS
+                                if id(dialog) not in marked_ids]
+        return real_add_widget(self, widget, *args, **kwargs)
+
+    real_init = ConfirmDialog.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        _HELD_DIALOGS.append(self)
+
+    monkeypatch.setattr(QtBot, "addWidget", add_widget_if_unheld)
+    monkeypatch.setattr(ConfirmDialog, "__init__", tracking_init)
+    yield
+    import shiboken6
+
+    # Drop both the wrappers pytest-qt manages (their C++ side is already gone
+    # by now, deleted mid-run, and holding them would trip its close pass) and
+    # any C++-deleted shells the rest of the session produced. What survives is
+    # exactly the static-flow set the interpreter cannot tear down safely.
+    # Two live objects cannot share an id, and a held dialog keeps its id while
+    # it is alive, so an id reissued to some new widget can never match here.
+    _HELD_DIALOGS[:] = [dialog for dialog in _HELD_DIALOGS
+                        if id(dialog) not in marked_ids
+                        and shiboken6.isValid(dialog)]
