@@ -1,4 +1,4 @@
 # Development / test dependencies (not needed at runtime)
-pytest>=8.0
-pytest-qt>=4.4
-ruff>=0.16
+pytest>=9.2
+pytest-qt>=4.5
+ruff>=0.17
