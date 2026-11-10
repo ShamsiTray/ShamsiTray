@@ -5,7 +5,7 @@ completion inside pytest (it normally ends with app.exec()).
 from types import SimpleNamespace
 
 import pytest
-from PyQt6.QtCore import QPoint
+from PySide6.QtCore import QPoint
 
 import main as main_module
 from config import APP_CONFIG

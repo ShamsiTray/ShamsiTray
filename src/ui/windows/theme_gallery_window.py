@@ -68,9 +68,9 @@ a visible instance via ``_show_or_raise``.
 from contextlib import contextmanager
 from typing import Callable, Iterable, Optional
 
-from PyQt6.QtCore import QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import (QColor, QPainter, QPen, QPixmap)
-from PyQt6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLabel,
+from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import (QColor, QPainter, QPen, QPixmap)
+from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLabel,
                              QListWidget, QListWidgetItem, QPushButton,
                              QScrollBar, QSizePolicy, QStyledItemDelegate,
                              QStyle, QVBoxLayout, QWidget)
@@ -301,8 +301,8 @@ class _PickerGrid(QListWidget):
     and real clicks keep their scroll-into-view (a keyboard walker the view
     ignores would be stranded off-screen)."""
 
-    favoriteToggleRequested = pyqtSignal(str)
-    applyRequested = pyqtSignal()
+    favoriteToggleRequested = Signal(str)
+    applyRequested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)

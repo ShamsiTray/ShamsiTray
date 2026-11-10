@@ -6,9 +6,9 @@ This module contains custom dialog-like widgets used in the application,
 such as the 'Go To Date' panel for the calendar.
 """
 import jdatetime
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QRegularExpression
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValidator, QPen
-from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout
+from PySide6.QtCore import Qt, Signal, QRectF, QRegularExpression
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QRegularExpressionValidator, QPen
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout
 
 from config import APP_CONFIG
 from utils.date_utils import (from_persian_digits, persian_month_name,
@@ -26,7 +26,7 @@ from utils.ui_helpers import (DigitsFirstCombo, YearRangeValidationMixin,
 
 class GoToDateWindow(YearRangeValidationMixin, QWidget):
     """A small, non-movable window to jump to a specific month and year."""
-    date_selected = pyqtSignal(int, int)
+    date_selected = Signal(int, int)
     # The app-wide supported Jalali range (config), kept as class aliases for
     # readability and backwards-compatible access from tests.
     MIN_YEAR = APP_CONFIG.SUPPORTED_MIN_YEAR

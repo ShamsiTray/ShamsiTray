@@ -17,7 +17,7 @@ def _seed_events_file(payload):
 
 def _menu_labels(menu):
     """Extract visible labels from the tray menu (QWidgetActions carry custom widgets)."""
-    from PyQt6.QtWidgets import QWidgetAction
+    from PySide6.QtWidgets import QWidgetAction
 
     labels = []
     for action in menu.actions():
@@ -73,7 +73,7 @@ def tray_boot(user_data):
 
 def remove_tray_event_filter(icon):
     """Remove the tray's native event filter from the application object."""
-    from PyQt6.QtCore import QCoreApplication
+    from PySide6.QtCore import QCoreApplication
     QCoreApplication.instance().removeNativeEventFilter(icon.event_filter)
 
 

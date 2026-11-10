@@ -1,8 +1,8 @@
 """Tests for ui.widgets.tooltip: the custom rounded tooltip that bypasses
 Qt6's native tooltip rendering, and the hover mixin that routes widgets to it."""
-from PyQt6.QtCore import QPoint, QPointF, Qt
-from PyQt6.QtGui import QColor, QCursor, QEnterEvent
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QColor, QCursor, QEnterEvent
+from PySide6.QtWidgets import QApplication
 
 from config import APP_CONFIG
 from tests.qt_mousing import press

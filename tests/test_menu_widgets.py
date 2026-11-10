@@ -5,9 +5,9 @@ import pytest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QMenu, QWidgetAction
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QMenu, QWidgetAction
 
 from ui.widgets.checkbox import IconCheckboxActionWidget
 from ui.widgets.menu_widgets import MenuActionWidget

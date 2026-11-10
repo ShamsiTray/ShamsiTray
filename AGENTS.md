@@ -1,13 +1,13 @@
 # AGENTS.md - ShamsiTray Development Guide
 
-ShamsiTray is a Python PyQt6 system-tray calendar app for Windows that displays the current Shamsi (Jalali) date in the system tray.
+ShamsiTray is a Python PySide6 system-tray calendar app for Windows that displays the current Shamsi (Jalali) date in the system tray.
 
 ---
 
 ## 1. Project Overview
 
 - **Purpose**: Lightweight Persian calendar in system tray with popup calendar, date converter, holiday tracking, user events, and automatic app/holiday-data updates
-- **Tech Stack**: Python 3.12+, PyQt6, jdatetime, pywin32
+- **Tech Stack**: Python 3.12+, PySide6, jdatetime, pywin32
 - **Architecture**:
   ```
   src/
@@ -85,7 +85,7 @@ pytest
 | `build/check_versions.py` | Release gate: asserts config.py / SetupScript.iss / details.txt versions agree |
 | `README.md` / `README.fa.md` | User-facing docs (English / Farsi) |
 | `pytest.ini` | Test config: `testpaths = tests`, `pythonpath = src` |
-| `requirements.txt` | Pinned runtime deps (PyQt6, jdatetime, pywin32) |
+| `requirements.txt` | Pinned runtime deps (PySide6, jdatetime, pywin32) |
 | `requirements-dev.txt` | Dev/test deps (pytest, pytest-qt, ruff) |
 
 ---
@@ -238,7 +238,7 @@ pytest
 - Pathex includes `src/`
 
 **Inno Setup** (`build/SetupScript.iss`):
-- Modern wizard, x64 only, Windows 10 1809+ (`MinVersion=10.0.17763`, the oldest build PyQt6 6.x / Python 3.12 run on)
+- Modern wizard, x64 only, Windows 10 1809+ (`MinVersion=10.0.17763`, the oldest build PySide6 6.x / Python 3.12 run on)
 - `PrivilegesRequiredOverridesAllowed=dialog`: fresh installs get Inno's stock install-scope ask - the one path a standard (non-admin) account can pass through (the dialog implies the `/ALLUSERS`-/`/CURRENTUSER` switches, so silent runs keep picking a scope; an existing install is detected and skipped via `UsePreviousPrivileges`)
 - **Does NOT write the autostart `Run` key** (the app manages autostart itself)
 - Seeds `%LOCALAPPDATA%\ShamsiTray\holidays.json` with `onlyifdoesntexist` / `uninsneveruninstall`
@@ -276,7 +276,7 @@ inside a later event loop. Every deferral — day-menu emission, tray-menu and
 go-to-date openers, the viewer's auto-scroll, the prewarm, the update popup —
 is a receiver-aware child `QTimer` that dies with its widget. A deferral's
 safety is its sender's lifetime: the slot is a bound method of that owner
-(receiver-tied — PyQt decomposes a bound-method connection and lets it die
+(receiver-tied — the binding decomposes a bound-method connection and lets it die
 with the receiver, while a plain callable stays pinned by the sender's
 connection for the sender's lifetime) and any payload rides the owner, not
 the timer.
@@ -305,8 +305,11 @@ Conventions worth keeping when adding tests:
   `no_stray_network_checks`) so no test can ever touch the real network.
 - Offscreen Qt has no real cursor: `tests/qt_mousing.py` synthesizes mouse
   events; child-widget visibility checks need the parent actually `show()`n.
+- pytest-qt resolves the binding from installed modules: a mixed venv (PyQt6
+  and PySide6 both present) pins it per run with `PYTEST_QT_API=pyside6`;
+  CI installs only the pinned binding, so auto-detection is enough there.
 - Scripted UI probes must boot with `QT_QPA_PLATFORM=windows` (not set) before
-  anything imports PyQt6: calling `load_fonts()` with no QApplication yet
+  anything imports PySide6: calling `load_fonts()` with no QApplication yet
   access-violates instead of raising — observed on both the `offscreen` and
   `windows` platforms. `load_fonts()` is guarded to raise instead; `main.py`
   boots the QApplication first, and the suite never calls it.

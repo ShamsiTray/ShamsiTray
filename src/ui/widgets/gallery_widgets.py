@@ -27,11 +27,11 @@ changes between the card, the panel and the applied app.
 import math
 from typing import Iterable, List, Optional, Tuple
 
-from PyQt6.QtCore import (QEasingCurve, QPointF, QRectF, QSize, Qt,
-                          QVariantAnimation, pyqtSignal)
-from PyQt6.QtGui import (QColor, QFont, QFontMetrics, QPainter, QPainterPath,
+from PySide6.QtCore import (QEasingCurve, QPointF, QRectF, QSize, Qt,
+                          QVariantAnimation, Signal)
+from PySide6.QtGui import (QColor, QFont, QFontMetrics, QPainter, QPainterPath,
                          QPen, QPixmap)
-from PyQt6.QtWidgets import QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QPushButton, QSizePolicy, QWidget
 
 from config import APP_CONFIG
 from utils.logger import setup_logging
@@ -501,7 +501,7 @@ class SegmentedFilter(QWidget):
     a forced stage widens every stop - the options adapt to the extra space
     instead of pocketing air at the mirror end."""
 
-    filterChanged = pyqtSignal(str)
+    filterChanged = Signal(str)
 
     HEIGHT = 40
     INSET = 4               # air between the track and the highlight

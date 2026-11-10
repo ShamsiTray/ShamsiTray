@@ -1,9 +1,9 @@
 """Tests for the copy submenu's in-place copied-row confirmation."""
 import jdatetime
 import pytest
-from PyQt6.QtCore import QEvent, QPoint, Qt
-from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
+from PySide6.QtCore import QEvent, QPoint, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
 
 from tests.qt_mousing import release
 from utils.date_utils import (

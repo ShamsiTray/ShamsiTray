@@ -8,8 +8,8 @@ card is open, the host behind it must not react to clicks) and also signals the
 modal state. The calendar popup and the event manager both host their overlays
 over one of these - this is the review's "one OverlayHost" for that cloned pair.
 """
-from PyQt6.QtCore import QRect, Qt
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtWidgets import QWidget
 
 
 class OverlayBlocker(QWidget):

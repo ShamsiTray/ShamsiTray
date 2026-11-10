@@ -9,9 +9,9 @@ import ctypes
 import sys
 from typing import Optional
 
-from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer
-from PyQt6.QtGui import QColor, QCursor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
-from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+from PySide6.QtCore import QPoint, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QScrollArea, QStyle, QStyleOptionComboBox,
                              QStylePainter)
 
@@ -419,7 +419,7 @@ class HoverDriverMixin:
         held = QApplication.mouseButtons()
         self._last_fed_cursor = None  # re-report the cursor once Qt's state is clean
         try:
-            from PyQt6.QtTest import QTest
+            from PySide6.QtTest import QTest
             handle = self.windowHandle()
             if handle is None:
                 return
@@ -442,7 +442,7 @@ class HoverDriverMixin:
             return
         self._feeding = True
         try:
-            from PyQt6.QtTest import QTest
+            from PySide6.QtTest import QTest
             QTest.mouseMove(handle, local)
         except Exception as e:
             logger.warning(f"Could not feed mouse move: {e}")

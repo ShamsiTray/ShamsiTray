@@ -8,8 +8,8 @@ import time
 
 import pytest
 
-from PyQt6.QtCore import QEvent, QPoint, QSize, Qt
-from PyQt6.QtWidgets import QApplication, QComboBox, QLabel, QWidget
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QWidget
 
 import ui.windows.base_window as base_window_module
 import utils.ui_helpers as ui_helpers_module

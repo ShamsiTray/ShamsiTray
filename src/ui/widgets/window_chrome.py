@@ -9,9 +9,9 @@ minimize/sysmenu behaviour on frameless top-level windows. Every tool window
 """
 import sys
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton
 
 from config import APP_CONFIG
 from utils.logger import setup_logging

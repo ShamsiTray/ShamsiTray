@@ -9,9 +9,9 @@ cells to handle date selection and event management.
 from typing import Optional
 
 import jdatetime
-from PyQt6.QtCore import QTimer, pyqtSignal, Qt
-from PyQt6.QtGui import QAction, QContextMenuEvent, QKeyEvent, QMouseEvent, QCursor
-from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
+from PySide6.QtCore import QTimer, Signal, Qt
+from PySide6.QtGui import QAction, QContextMenuEvent, QKeyEvent, QMouseEvent, QCursor
+from PySide6.QtWidgets import QApplication, QLabel, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from utils.date_utils import (
@@ -149,12 +149,12 @@ class CopyDateMenu(CenteredTextMenu):
 
 class ClickableLabel(QLabel):
     """A QLabel that emits signals for clicks and context menu actions."""
-    clicked = pyqtSignal(object)
-    add_event_requested = pyqtSignal(object)
-    remove_event_requested = pyqtSignal(object)
-    edit_event_requested_specific = pyqtSignal(object, str, dict)
-    remove_event_requested_specific = pyqtSignal(str)
-    distance_requested = pyqtSignal(object)
+    clicked = Signal(object)
+    add_event_requested = Signal(object)
+    remove_event_requested = Signal(object)
+    edit_event_requested_specific = Signal(object, str, dict)
+    remove_event_requested_specific = Signal(str)
+    distance_requested = Signal(object)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)

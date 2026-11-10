@@ -9,9 +9,9 @@ how to pin the application to the taskbar for easy access.
 import os
 from typing import Optional
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QMovie
-from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QMovie
+from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
 from utils.logger import setup_logging

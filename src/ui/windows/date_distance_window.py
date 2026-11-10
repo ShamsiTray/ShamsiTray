@@ -39,9 +39,9 @@ cannot answer without it, so it says why instead of going quiet.
 import datetime
 
 import jdatetime
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QColor, QCursor
-from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QColor, QCursor
+from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QStackedWidget, QVBoxLayout, QWidget)
 
 from config import APP_CONFIG

@@ -98,7 +98,7 @@ def _prebind_qt_general() -> None:
 
 
 def test_qt_message_handler_routes_and_filters(user_data, fresh_shared_handlers):
-    from PyQt6.QtCore import qInstallMessageHandler, qWarning
+    from PySide6.QtCore import qInstallMessageHandler, qWarning
 
     _prebind_qt_general()
     logger_module.install_qt_message_handler()
@@ -117,7 +117,7 @@ def test_qt_message_handler_routes_and_filters(user_data, fresh_shared_handlers)
 
 def test_qt_message_handler_survives_reinstall(user_data, fresh_shared_handlers):
     """Installing the handler twice must not break message routing."""
-    from PyQt6.QtCore import qInstallMessageHandler, qWarning
+    from PySide6.QtCore import qInstallMessageHandler, qWarning
 
     _prebind_qt_general()
     logger_module.install_qt_message_handler()
@@ -134,7 +134,7 @@ def test_qt_message_handler_survives_reinstall(user_data, fresh_shared_handlers)
 def test_qt_critical_with_benign_text_is_still_logged(user_data, fresh_shared_handlers):
     """The benign filter is a WARNING filter: a critical that happens to carry
     one of those substrings must still reach the log, at its own severity."""
-    from PyQt6.QtCore import QtMsgType
+    from PySide6.QtCore import QtMsgType
 
     _prebind_qt_general()
     logger_module._log_qt_message(
@@ -152,7 +152,7 @@ def test_qt_critical_with_benign_text_is_still_logged(user_data, fresh_shared_ha
 def test_qt_fatal_with_benign_text_still_terminates(user_data, fresh_shared_handlers):
     """The fatal path must survive the benign filter: dropping the warning with
     the same text must not drop the SystemExit a fatal relies on."""
-    from PyQt6.QtCore import QtMsgType
+    from PySide6.QtCore import QtMsgType
 
     _prebind_qt_general()
     with pytest.raises(SystemExit):

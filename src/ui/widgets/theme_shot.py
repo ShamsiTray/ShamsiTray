@@ -26,9 +26,9 @@ Correctness notes:
 
 from typing import Callable, Dict, Optional
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QPainter, QPixmap
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtWidgets import QWidget
 
 from config import APP_CONFIG
 from utils.logger import setup_logging

@@ -26,8 +26,8 @@ Design notes:
 - The host owns geometry, visibility and stacking; the overlay only reports what
   was chosen.
 """
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QWidget
 
 from ui.widgets.confirm_card import ConfirmCard
 
@@ -35,7 +35,7 @@ from ui.widgets.confirm_card import ConfirmCard
 class ConfirmOverlay(ConfirmCard, QWidget):
     """A themed card drawn inside the calendar, not draggable, reused in place."""
 
-    chosen = pyqtSignal(str)
+    chosen = Signal(str)
 
     def __init__(self, parent, title: str, *, detail: str = "",
                  confirm_text: str = "تایید", cancel_text: str = "انصراف",

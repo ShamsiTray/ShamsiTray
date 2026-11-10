@@ -26,7 +26,7 @@ DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; PyQt6 6.x and Python 3.12 need Windows 10 1809 or newer; without this the
+; PySide6 6.x and Python 3.12 need Windows 10 1809 or newer; without this the
 ; installer happily offers itself on releases that cannot run the payload. A
 ; bare "10.0" accepts pre-1809 builds of Windows 10, so pin the 1809 build.
 MinVersion=10.0.17763

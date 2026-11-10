@@ -36,9 +36,9 @@ from typing import Dict, Optional
 
 import jdatetime
 from pathlib import Path
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QStackedWidget, QVBoxLayout,
                              QWidget)
 
@@ -118,8 +118,8 @@ def _event_anchor_month(key: str) -> Optional[int]:
 
 class EventRow(QFrame):
     """One event inside the manager list: title, date line, icon actions."""
-    edit_requested = pyqtSignal(str)
-    delete_requested = pyqtSignal(str)
+    edit_requested = Signal(str)
+    delete_requested = Signal(str)
 
     def __init__(self, key: str, entry: dict, is_expired_one_time: bool, parent=None):
         """Build one manager row from a store entry: the text raw (Plain
@@ -245,7 +245,7 @@ class EventRow(QFrame):
 
 class EventManagerWindow(BaseFramelessWindow):
     """List/search/filter/edit/delete window for all stored user events."""
-    events_changed = pyqtSignal()
+    events_changed = Signal()
     TASKBAR_ICON = True  # taskbar entry so a minimized manager can be reopened
 
     WIDTH, HEIGHT = 580, 528
@@ -460,6 +460,12 @@ class EventManagerWindow(BaseFramelessWindow):
             item = self.rows_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # The same immediate-leave rule as the viewer's rebuild keeps
+                # stale rows out of the child list: PySide6 holds a
+                # deleteLater() widget parented a full loop turn longer than
+                # PyQt6.
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
         self._rows = []
 

@@ -1,6 +1,6 @@
 """Tests for ui.widgets.window_chrome: the shared caption row and the
 no-op Windows style tweak on non-Windows platforms."""
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 
 from config import APP_CONFIG
 from ui.widgets.window_chrome import WindowTitleBar, apply_windows_styles

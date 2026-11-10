@@ -8,16 +8,16 @@ and themes.
 """
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QMouseEvent
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont, QMouseEvent
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from config import APP_CONFIG
 from .menu_widgets import HoverWidget
 
 class CustomCheckbox(QWidget):
     """A custom checkbox widget using a FontAwesome icon and a label."""
-    toggled = pyqtSignal(bool)
+    toggled = Signal(bool)
 
     def __init__(self, text: str, is_checked: bool = False, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -78,7 +78,7 @@ class CustomCheckbox(QWidget):
 
 class IconCheckboxActionWidget(HoverWidget):
     """A context menu checkbox using FontAwesome icons."""
-    toggled = pyqtSignal(bool)
+    toggled = Signal(bool)
 
     def __init__(self, text: str, is_checked: bool, parent: Optional[QWidget] = None):
         super().__init__(parent)

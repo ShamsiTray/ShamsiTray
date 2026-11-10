@@ -18,9 +18,9 @@ It handles common functionality such as:
 import time
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QEvent, QRectF, Qt
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import QEvent, QRectF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath
+from PySide6.QtWidgets import QApplication, QWidget
 
 from config import APP_CONFIG
 from utils.ui_helpers import FramelessDragMixin, HoverDriverMixin

@@ -37,8 +37,8 @@ def test_load_fonts_requires_a_live_application(monkeypatch):
 _QCOREAPP_CHILD_SOURCE = """\
 import sys
 sys.path.insert(0, {src!r})
-from PyQt6.QtCore import QCoreApplication
-from PyQt6.QtGui import QFontDatabase
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtGui import QFontDatabase
 
 # A stub in place of the real call: without the guard, load_fonts reaches
 # QFontDatabase in a GUI-less process, which access-violates instead of
