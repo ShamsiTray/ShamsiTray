@@ -5,9 +5,9 @@ import sys
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt
-from PyQt6.QtGui import QCursor
-from PyQt6.QtTest import QTest
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtGui import QCursor
+from PySide6.QtTest import QTest
 
 import core.app_controller as controller_module
 import core.event_service as event_service_module
@@ -437,7 +437,7 @@ def test_update_popup_is_tray_owned_not_parked_in_an_active_window(tray, monkeyp
     tray-owned: parent AND center anchor are None, so whatever window happens
     to be active decides nothing about its geometry - and with no parent
     chain, only ApplicationModal modality blocks anything."""
-    from PyQt6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QWidget
     foreign = QWidget()
     foreign.show()
     try:
@@ -1924,7 +1924,7 @@ def test_tray_click_shows_hidden_calendar(tray, monkeypatch):
     tray.calendar_widget.hide()
     shown = []
     monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon
 
     tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
     assert shown == [1]
@@ -1932,7 +1932,7 @@ def test_tray_click_shows_hidden_calendar(tray, monkeypatch):
 
 def test_tray_click_hides_visible_calendar(tray, monkeypatch):
     tray.calendar_widget.show()
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon
 
     tray.on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
     assert not tray.calendar_widget.isVisible()
@@ -1941,7 +1941,7 @@ def test_tray_click_hides_visible_calendar(tray, monkeypatch):
 def test_tray_click_completes_a_just_dismissed_popup(tray, monkeypatch):
     """Unpinned: the press half of a tray click already dismissed the popup, so
     the release must finish the toggle instead of reopening it."""
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon
 
     cal = tray.calendar_widget
     shown = []
@@ -1963,7 +1963,7 @@ def test_dismissal_far_from_the_tray_icon_still_opens(tray, monkeypatch):
     """The overlap with the icon is judged when the dismissal is recorded: a
     popup dismissed elsewhere must still let the next tray click open it, even
     though the cursor is over the icon by the time that click arrives."""
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon
 
     shown = []
     monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))
@@ -1982,7 +1982,7 @@ def test_dismissal_far_from_the_tray_icon_still_opens(tray, monkeypatch):
 
 
 def test_other_activation_reasons_ignored(tray, monkeypatch):
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon
 
     shown = []
     monkeypatch.setattr(tray, "show_calendar", lambda: shown.append(1))

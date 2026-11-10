@@ -157,7 +157,7 @@ def test_font_awesome_free_covers_every_used_glyph(qtbot):
     honest - if a future glyph is added that Free lacks, the suite fails
     before the icon shows up as an empty box on Windows.
     """
-    from PyQt6.QtGui import QFont, QFontDatabase, QFontMetrics
+    from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 
     font_file = APP_CONFIG.FONT_DIR / "Font Awesome 7 Free-Solid-900.otf"
     assert font_file.exists(), "the FA Free Solid font must ship with the app"

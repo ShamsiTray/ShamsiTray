@@ -10,9 +10,9 @@ tray icon controller.
 import ctypes
 import sys
 
-from PyQt6.QtCore import QLockFile, Qt
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
+from PySide6.QtCore import QLockFile, Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from config import APP_CONFIG
 from utils.asset_loader import verify_assets, load_fonts

@@ -1,5 +1,5 @@
 """Tests for ui.windows.tutorial_window: the first-run welcome guide."""
-from PyQt6.QtGui import QMovie
+from PySide6.QtGui import QMovie
 
 from config import APP_CONFIG
 from ui.windows.tutorial_window import TutorialWindow

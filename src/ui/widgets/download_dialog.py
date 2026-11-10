@@ -21,9 +21,9 @@ Design notes:
   the close path go through ``reject`` so they cancel the download too.
 - Draggable from blank surfaces, like every other frameless card.
 """
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QPainter
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QProgressBar,
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon, QPainter
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QProgressBar,
                              QPushButton, QVBoxLayout)
 
 from config import APP_CONFIG
@@ -45,7 +45,7 @@ class DownloadUpdateDialog(HoverDriverMixin, FramelessDragMixin, QDialog):
     Carries the same tray-click hover repair as the other frameless surfaces
     (``HoverDriverMixin``), so its cancel button reacts before any click."""
 
-    canceled = pyqtSignal()
+    canceled = Signal()
 
     # The card's designed width; the layout's horizontal margins (20 + 20) are
     # the least a narrowed card keeps, so inner widgets never clip.

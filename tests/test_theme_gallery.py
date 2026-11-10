@@ -7,8 +7,8 @@ import gc
 import inspect
 
 import pytest
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QStyle
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QStyle
 
 from config import APP_CONFIG
 from utils.ui_helpers import contrast_ratio, on_accent_text_color, QColor
@@ -304,7 +304,7 @@ def test_preview_render_keeps_the_popups_own_direction(qtbot):
     every plain row - the forward chevron sat visually right, the gregorian
     date to the right of «امروز», the whole preview read reversed. The
     renderer must pin the popup back to the standalone window's LTR."""
-    from PyQt6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QWidget
     from ui.widgets.theme_shot import CalendarShotRenderer
 
     host = QWidget()
@@ -355,7 +355,7 @@ def test_every_day_cell_renders_into_the_capture(qtbot):
     """Regression: a capture whose painter was scaled on top of the pixmap's
     device pixel ratio silently dropped day-cell text - the preview looked
     like an empty frame. The 2x render must carry ink in all 42 grid cells."""
-    from PyQt6.QtGui import QColor, QImage
+    from PySide6.QtGui import QColor, QImage
     from ui.widgets.theme_shot import CalendarShotRenderer
 
     renderer = CalendarShotRenderer()
@@ -384,8 +384,8 @@ def test_hidden_render_matches_a_shown_window(qtbot):
     cursor legitimately carries a :hover day cell (the hidden one cannot),
     so the cursor is parked far away and the calendar's own stale-hover
     repair (normalize_day_hover) runs before either grab."""
-    from PyQt6.QtGui import QCursor
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtGui import QCursor
+    from PySide6.QtWidgets import QApplication
     from ui.windows.calendar_window import PersianCalendarWidget
 
     palette = APP_CONFIG.EXTRA_THEMES["nord"]
@@ -553,7 +553,7 @@ def test_card_long_names_wrap_to_two_balanced_lines():
     whose wider line is smallest: ink renders in each band half and stays
     inside the band's width, while a short name still centers a single line
     in the taller band."""
-    from PyQt6.QtGui import QFont, QFontMetrics
+    from PySide6.QtGui import QFont, QFontMetrics
 
     from utils.asset_loader import load_fonts
     load_fonts()
@@ -888,9 +888,9 @@ def test_gallery_clicked_card_carries_the_selection_frame(gallery):
     """A left click must visibly select the card: the solid accent frame hugs
     the clicked card's own corner curve - and nothing else rides the art (the
     retired check badge must not come back)."""
-    from PyQt6.QtCore import QRect
-    from PyQt6.QtGui import QImage, QPainter
-    from PyQt6.QtWidgets import QStyleOptionViewItem
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtWidgets import QStyleOptionViewItem
     from ui.windows.theme_gallery_window import CARD_CELL_HEIGHT, CARD_CELL_WIDTH
 
     window, _calls = gallery
@@ -1077,8 +1077,8 @@ def test_filter_names_the_active_stop_for_screen_readers(gallery):
     """The accessible name carries the active stop, refreshed through
     _choose - clicks, set_filter and the arrow keys all land there, so a
     screen reader hears which filter a focus (or an arrow) rests on."""
-    from PyQt6.QtCore import QEvent, Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
 
     from ui.widgets.gallery_widgets import (FILTER_ALL, FILTER_DARK,
                                             FILTER_FAVORITES, FILTER_LIGHT,
@@ -1134,7 +1134,7 @@ def test_gallery_divider_flanks_level_the_dead_bands(gallery):
     four-card floor, where the divider-side dead band (the flank, the
     divider's 1px, the line's remainder, the art's cell inset) levels with
     the rail side's (gutter + inset) - the parity the budget was tuned for."""
-    from PyQt6.QtCore import QPoint
+    from PySide6.QtCore import QPoint
     from ui.windows.theme_gallery_window import (CARD_CELL_WIDTH, CARD_WIDTH,
                                                  DIVIDER_GRID_GAP_PX,
                                                  DIVIDER_PANEL_GAP_PX,
@@ -1227,8 +1227,8 @@ def test_picker_scrolls_one_card_row_per_wheel_notch(gallery):
     multiplies that by three), which reads as the grid leaping under the
     wheel. Sub-notch deltas from high-resolution touchpads accumulate instead
     of dropping."""
-    from PyQt6.QtCore import QPointF, QPoint, Qt
-    from PyQt6.QtGui import QWheelEvent
+    from PySide6.QtCore import QPointF, QPoint, Qt
+    from PySide6.QtGui import QWheelEvent
 
     window, _calls = gallery
     bar = window.grid.verticalScrollBar()
@@ -1294,8 +1294,8 @@ def test_programmatic_selection_does_not_scroll_the_picker(gallery):
     # Keyboard navigation keeps its scroll-into-view: the walker is never
     # stranded outside the viewport.
     grid.setFocus()
-    from PyQt6.QtCore import QEvent, Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
     QApplication.sendEvent(grid, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Down,
                                            Qt.KeyboardModifier.NoModifier))
     assert bar.value() != 700
@@ -1409,7 +1409,7 @@ def test_picker_scrollbar_rides_the_right_edge(gallery):
     stale under the offscreen layout - and the stock bar must be out of
     the picture: the rail is the one scrollbar visible here."""
     from ui.windows.theme_gallery_window import CARD_TOP_PAD, RAIL_WIDTH
-    from PyQt6.QtGui import QColor
+    from PySide6.QtGui import QColor
 
     window, _calls = gallery
     grid = window.grid
@@ -1613,7 +1613,7 @@ def test_filter_is_one_connected_segmented_control(gallery):
     """The filter is a single widget (one connected bar), not a row of
     separate buttons: no child buttons, one accent highlight - and the
     forced caption stage is spent by the segments themselves, not pocketed."""
-    from PyQt6.QtWidgets import QPushButton
+    from PySide6.QtWidgets import QPushButton
     from ui.widgets.gallery_widgets import (FILTER_FAVORITES, FILTER_ORDER,
                                             SegmentedFilter)
 
@@ -1662,8 +1662,8 @@ def test_filter_highlight_slides_to_the_chosen_segment(gallery, qtbot):
 
 
 def test_filter_click_selects_the_segment_under_the_cursor(gallery):
-    from PyQt6.QtCore import QPoint
-    from PyQt6.QtTest import QTest
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
     from ui.widgets.gallery_widgets import FILTER_LIGHT
 
     window, _calls = gallery
@@ -1676,7 +1676,7 @@ def test_filter_click_selects_the_segment_under_the_cursor(gallery):
 
 
 def test_filter_arrow_keys_step_with_the_reading_direction(gallery):
-    from PyQt6.QtTest import QTest
+    from PySide6.QtTest import QTest
     from ui.widgets.gallery_widgets import FILTER_ALL, FILTER_LIGHT
 
     window, _calls = gallery
@@ -1794,8 +1794,8 @@ def test_unstarring_under_the_favorites_filter_keeps_the_card_until_refilter(
 
 
 def test_card_badge_click_toggles_favorite_without_previewing(favorites_gallery):
-    from PyQt6.QtCore import QPoint
-    from PyQt6.QtTest import QTest
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
     from ui.windows.theme_gallery_window import (card_art_rect,
                                                  favorite_badge_rect)
 
@@ -1816,8 +1816,8 @@ def test_space_toggles_the_current_card_without_previewing(favorites_gallery):
     """The star badge's keyboard twin: Space on the grid toggles the current
     card's favorite over the same signal the badge clicks ride - a favorite
     toggle never previews the card, and the star is takeable-back."""
-    from PyQt6.QtCore import QEvent, Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
 
     def press_space():
         QApplication.sendEvent(window.grid, QKeyEvent(
@@ -1841,8 +1841,8 @@ def test_picker_arrows_walk_with_the_reading_direction(gallery):
     flips against the reading order: Left lands on the card visually LEFT of
     the current one (the model's next card) and Right on the previous one,
     with the bounds clamping instead of wrapping."""
-    from PyQt6.QtCore import QEvent, Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
 
     def press(key):
         QApplication.sendEvent(grid, QKeyEvent(
@@ -1874,8 +1874,8 @@ def test_enter_applies_the_card_the_walk_parked_on(gallery):
     """Enter is the keyboard's «اعمال»: the walk previews what it parks on,
     so Enter commits exactly the card under the selection - the keyboard twin
     of the double-click, and never a second commit through itemActivated."""
-    from PyQt6.QtCore import QEvent, Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
 
     window, calls = gallery
     grid = window.grid
@@ -1889,8 +1889,8 @@ def test_enter_applies_the_card_the_walk_parked_on(gallery):
 
 
 def test_card_body_click_still_previews(favorites_gallery):
-    from PyQt6.QtCore import QPoint
-    from PyQt6.QtTest import QTest
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
     from ui.windows.theme_gallery_window import card_art_rect
 
     window, _store = favorites_gallery
@@ -1978,7 +1978,7 @@ def test_gallery_scrollbar_thumb_opens_level_with_the_first_card(gallery):
     """The cards start CARD_TOP_PAD under the viewport's top, so the rail's
     top inset must match: at scroll-top the thumb opens level with the first
     card instead of poking above the cards."""
-    from PyQt6.QtWidgets import QStyle, QStyleOptionSlider
+    from PySide6.QtWidgets import QStyle, QStyleOptionSlider
     from ui.windows.theme_gallery_window import CARD_TOP_PAD, card_art_rect
 
     window, _calls = gallery

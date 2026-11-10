@@ -15,8 +15,8 @@ state through ``event_service``.
 """
 import sys
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QWidgetAction
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QWidgetAction
 
 from config import APP_CONFIG
 from ui.widgets.checkbox import IconCheckboxActionWidget

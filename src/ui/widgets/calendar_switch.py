@@ -6,8 +6,8 @@ The «شمسی | میلادی» segmented control of the date tools' caption row
 converter picks which calendar its input row speaks with it, the distance
 window which calendar both of its date rows are read in.
 """
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QPushButton
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton
 
 from config import APP_CONFIG
 from utils.ui_helpers import palette_on_accent_text
@@ -18,7 +18,7 @@ CALENDAR_GREGORIAN = "gregorian"
 
 class CalendarSwitch(QFrame):
     """The شمسی | میلادی segmented control of the caption row."""
-    calendar_changed = pyqtSignal(str)  # CALENDAR_JALALI / CALENDAR_GREGORIAN
+    calendar_changed = Signal(str)  # CALENDAR_JALALI / CALENDAR_GREGORIAN
 
     def __init__(self, parent=None):
         super().__init__(parent)

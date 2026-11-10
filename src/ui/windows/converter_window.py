@@ -9,9 +9,9 @@ dynamic day/month population, and calculates elapsed time from the present.
 import datetime
 
 import jdatetime
-from PyQt6.QtCore import QPoint, Qt, QRegularExpression
-from PyQt6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
-from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
+from PySide6.QtCore import QPoint, Qt, QRegularExpression
+from PySide6.QtGui import QColor, QFont, QPalette, QRegularExpressionValidator, QCursor
+from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout,
                             QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton,
                             QVBoxLayout, QWidget, QGraphicsOpacityEffect)
 

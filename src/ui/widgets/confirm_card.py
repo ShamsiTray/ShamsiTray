@@ -34,9 +34,9 @@ Design notes for the card's message and detail lines:
 """
 from typing import List, Optional, Tuple
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QFontMetrics, QPainter
-from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QFontMetrics, QPainter
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout)
 
 from config import APP_CONFIG

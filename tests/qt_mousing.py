@@ -3,8 +3,8 @@
 Offscreen tests cannot move the real cursor, so interactions are simulated
 by sending synthesized QMouseEvent objects straight into the handlers.
 """
-from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
-from PyQt6.QtGui import QMouseEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
 
 
 def mouse_event(event_type: QEvent.Type, widget, local=(5, 5), *,

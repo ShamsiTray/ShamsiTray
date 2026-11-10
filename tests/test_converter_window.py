@@ -3,9 +3,9 @@ import datetime
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import QPoint
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QLabel
+from PySide6.QtCore import QPoint
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QLabel
 
 from config import APP_CONFIG
 from ui.widgets.calendar_switch import CALENDAR_GREGORIAN, CALENDAR_JALALI
@@ -430,7 +430,7 @@ def test_copy_payloads_use_latin_digits_while_labels_show_persian(window):
     so the same day copied to Latin digits from the calendar and to Persian
     digits from here. The Gregorian numeric row is Latin on both sides - its
     display IS its payload."""
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
 
     set_jalali_input(window, "۱۴۰۳", 0, "۱")
     window._convert_date()
@@ -462,8 +462,8 @@ def test_weekday_footnotes_are_display_only(window):
     stray second way to copy the same string. A press on the footnote leaves
     the clipboard alone, the payload dict has no entry for it, and the cursor
     stays the arrow no copy affordance promises."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
 
     from tests.qt_mousing import press
 
@@ -481,7 +481,7 @@ def test_weekday_footnotes_are_display_only(window):
 
 def test_copy_payloads_are_rebuilt_on_every_conversion(window):
     """A second conversion must replace the payloads, not merge into them."""
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     from utils.date_utils import format_jalali_numeric
 
     set_jalali_input(window, "۱۴۰۳", 0, "۱")
@@ -496,9 +496,9 @@ def test_copy_rows_copy_from_the_keyboard(window):
     """The copy rows answer the keyboard like the distance tool's lines: each
     row takes tab focus, Enter or Space copies its payload, other keys stay on
     the base QLabel path - and the mouse path copies the same payload."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtTest import QTest
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
 
     from tests.qt_mousing import press
 
@@ -527,8 +527,8 @@ def test_copy_rows_copy_from_the_keyboard(window):
 def test_a_keyboard_copy_flashes_on_its_own_row(window, monkeypatch):
     """A keyboard activation has no cursor truth to ride: its flash anchors to
     the row the copy was launched from, like the distance tool's lines."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtTest import QTest
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
 
     from ui.widgets.tooltip import CustomTooltip
 
@@ -547,8 +547,8 @@ def test_elapsed_line_copies_the_span_in_latin_digits(window):
     """The elapsed row is a copy row like the date values, and the clipboard
     gets the SPAN alone - no «فاصله زمانی:» caption, no «مانده/گذشته» - in
     Latin digits, the form the distance window's breakdown row shows."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
     from tests.qt_mousing import press
     from utils.date_utils import format_distance_units, from_persian_digits
 
@@ -567,8 +567,8 @@ def test_elapsed_today_line_click_copies_nothing(window):
     """«تاریخ امروز است.» has nothing worth pasting: its payload stamps empty,
     so the click leaves the clipboard alone and the cursor stays an arrow -
     the same treatment as the distance window's equal-dates message."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
 
     QApplication.clipboard().clear()
     QApplication.clipboard().setText("sentinel")

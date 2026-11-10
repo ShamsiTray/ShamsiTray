@@ -8,7 +8,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
-from PyQt6.QtNetwork import QNetworkReply
+from PySide6.QtNetwork import QNetworkReply
 
 from config import APP_CONFIG
 from core.update_checker import (APP_STATE_CURRENT, APP_STATE_FAILED,

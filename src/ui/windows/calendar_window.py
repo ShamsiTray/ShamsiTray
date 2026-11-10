@@ -12,9 +12,9 @@ from html import escape
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCursor, QFont
-from PyQt6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QCursor, QFont
+from PySide6.QtWidgets import QBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidgetAction, QVBoxLayout, QWidget, QMenu
 
 from config import APP_CONFIG
 from utils.date_utils import (describe_date_distance, days_in_jalali_month,
@@ -57,13 +57,13 @@ class PersianCalendarWidget(BaseFramelessWindow):
     # Opened from the tray, this is a flyout rather than a form: with
     # always-on-top switched off, a click outside it dismisses it.
     CLOSE_ON_OUTSIDE_CLICK_WHEN_UNPINNED = True
-    event_added = pyqtSignal(object, str, str, bool)  # jdate, text, recurrence, remove_after_finish
+    event_added = Signal(object, str, str, bool)  # jdate, text, recurrence, remove_after_finish
     # key-scoped edit: key, jdate, text, recurrence, remove_after_finish, merge_into
     # (merge_into is empty unless the user confirmed folding this edit into the
     # event already living on the key the edit would land on)
-    event_updated_by_key = pyqtSignal(str, object, str, str, bool, str)
-    event_removed = pyqtSignal(object)
-    event_removed_by_key = pyqtSignal(str)
+    event_updated_by_key = Signal(str, object, str, str, bool, str)
+    event_removed = Signal(object)
+    event_removed_by_key = Signal(str)
 
     def __init__(self, holidays_cache: dict, user_events: dict):
         super().__init__()

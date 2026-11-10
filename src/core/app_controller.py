@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
 import jdatetime
-from PyQt6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl, Qt
-from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
+from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer, QUrl, Qt
+from PySide6.QtGui import QCursor, QDesktopServices, QIcon
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from config import APP_CONFIG
 from core.event_service import EventService

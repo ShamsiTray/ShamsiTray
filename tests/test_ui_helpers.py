@@ -2,9 +2,9 @@
 mixin (shared by every frameless surface), tray pixmaps, combo fitting and
 the shared stylesheet builders."""
 import pytest
-from PyQt6.QtCore import QPoint, QPointF, QRect, Qt
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPixmap
-from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+from PySide6.QtCore import QPoint, QPointF, QRect, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPixmap
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QWidget)
 
 from config import APP_CONFIG
@@ -37,7 +37,7 @@ def palette():
 # --- paint_rounded_card -------------------------------------------------------
 
 def test_paint_rounded_card_returns_inset_path(qtbot):
-    from PyQt6.QtGui import QPainter
+    from PySide6.QtGui import QPainter
     pixmap = QPixmap(60, 40)
     pixmap.fill(Qt.GlobalColor.white)
     painter = QPainter(pixmap)
@@ -74,7 +74,7 @@ def _pin_screen(monkeypatch, virtual, available):
     ``virtualGeometry`` is the whole desktop, taskbar strip included;
     ``availableVirtualGeometry`` is the work area both clamp rules respect.
     """
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
 
     class FakeScreen:
         def virtualGeometry(self):
@@ -116,7 +116,7 @@ def test_drag_move_shifts_window_by_cursor_delta(qtbot):
     target_global = press_global + QPoint(30, 20)
     event = press(surface, local=(10, 10), global_pos=target_global)
     event = type(event)(  # rebuild as a genuine move event
-        __import__("PyQt6.QtCore", fromlist=["QEvent"]).QEvent.Type.MouseMove,
+        __import__("PySide6.QtCore", fromlist=["QEvent"]).QEvent.Type.MouseMove,
         QPointF(10, 10), QPointF(target_global),
         Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier)
@@ -128,7 +128,7 @@ def test_drag_move_clamps_inside_screen(qtbot):
     """The dragged window is clamped to the desktop while it is pushed past the
     edge; on the single-screen offscreen desktop that is the geometry the
     primary screen reports, available area included."""
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     surface = _surface(qtbot)
     surface.handle_drag_press(press(surface, local=(10, 10)))
     geo = QApplication.primaryScreen().availableGeometry()
@@ -137,7 +137,7 @@ def test_drag_move_clamps_inside_screen(qtbot):
     cursor = QPoint(geo.right() - 5, geo.bottom() - 5)
     event = press(surface, local=(10, 10), global_pos=cursor)
     event = type(event)(
-        __import__("PyQt6.QtCore", fromlist=["QEvent"]).QEvent.Type.MouseMove,
+        __import__("PySide6.QtCore", fromlist=["QEvent"]).QEvent.Type.MouseMove,
         QPointF(10, 10), QPointF(cursor),
         Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier)
@@ -151,7 +151,7 @@ def test_drag_move_clamps_against_the_whole_desktop(qtbot, monkeypatch):
     cursor crossed into the next monitor the window teleported to that screen's
     left edge even while the window itself was still mostly on the first one.
     It must span the virtual desktop instead."""
-    from PyQt6.QtCore import QEvent, QRect
+    from PySide6.QtCore import QEvent, QRect
 
     desktop = QRect(0, 0, 3000, 1000)
     _pin_screen(monkeypatch, desktop, desktop)
@@ -174,7 +174,7 @@ def test_drag_move_keeps_a_dialog_above_the_taskbar(qtbot, monkeypatch):
     """``virtualGeometry`` includes the taskbar strip, so a dialog clamped
     "fully on screen" could still come to rest with its bottom buttons behind
     the taskbar. The work area is where fully visible has to stop."""
-    from PyQt6.QtCore import QEvent, QRect
+    from PySide6.QtCore import QEvent, QRect
 
     # A 1000x800 desktop with a 40px taskbar along its bottom edge.
     _pin_screen(monkeypatch, QRect(0, 0, 1000, 800), QRect(0, 0, 1000, 760))
@@ -195,7 +195,7 @@ def test_drag_move_stops_a_tool_window_above_the_taskbar(qtbot, monkeypatch):
     """The tool windows may hang over the taskbar - their body may cover the
     strip - but the top 50px must stay reachable ABOVE the work area's bottom
     edge: a top resting behind the taskbar is unrecoverable."""
-    from PyQt6.QtCore import QEvent, QRect
+    from PySide6.QtCore import QEvent, QRect
 
     class ToolWindow(DragSurface):
         drag_bottom_keep_visible = 50
@@ -244,7 +244,7 @@ def test_drag_strip_height_restricted_to_top_band(qtbot):
 
 def test_base_window_keep_visible_clamp_holds_top_visible(qtbot):
     """The tool-window rule: only the top 50px must stay on screen."""
-    from PyQt6.QtCore import QEvent
+    from PySide6.QtCore import QEvent
     from ui.windows.base_window import BaseFramelessWindow
 
     window = BaseFramelessWindow()
@@ -439,8 +439,8 @@ def test_line_edit_stylesheet_variants(palette):
 def test_line_edit_placeholder_rule_actually_recolors_the_glyphs(qtbot, palette):
     """The rule must reach the widget, not just the string: after polish the
     PlaceholderText palette role carries the requested color."""
-    from PyQt6.QtGui import QPalette
-    from PyQt6.QtWidgets import QLineEdit
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QLineEdit
 
     widget = QLineEdit()
     widget.setPlaceholderText("سال")
@@ -750,8 +750,8 @@ def test_nav_button_stylesheet_variants(palette):
 def work_area(monkeypatch):
     """Pin every screen lookup to a known 1000x800 work area at the origin, so
     the clamping maths is assertable regardless of the CI desktop's size."""
-    from PyQt6.QtCore import QRect
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QApplication
 
     rect = QRect(0, 0, 1000, 800)
 
@@ -767,7 +767,7 @@ def work_area(monkeypatch):
 
 @pytest.fixture
 def menu(qtbot):
-    from PyQt6.QtWidgets import QMenu
+    from PySide6.QtWidgets import QMenu
     popup = QMenu()
     popup.addAction("a")
     return popup
@@ -811,8 +811,8 @@ def test_clamp_keeps_the_top_left_anchor_against_the_edges(work_area, menu):
 def test_clamp_defers_to_qt_when_the_popup_is_larger_than_the_screen(work_area, qtbot):
     """A popup bigger than the work area cannot be made to fit, so clamping
     would fight Qt's own centring; the anchor is returned unchanged."""
-    from PyQt6.QtWidgets import QMenu
-    from PyQt6.QtCore import QSize
+    from PySide6.QtWidgets import QMenu
+    from PySide6.QtCore import QSize
     big = QMenu()
     big.addAction("x")
     big.setFixedSize(QSize(2000, 1200))
@@ -824,7 +824,7 @@ def test_clamp_defers_to_qt_when_the_popup_is_larger_than_the_screen(work_area, 
 def test_clamp_falls_back_to_the_primary_screen_when_the_cursor_is_off_screen(work_area, menu):
     """After an RDP disconnect there may be no screen under the cursor; the
     helper falls back to the primary screen rather than raising."""
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     QApplication.screenAt = staticmethod(lambda pos: None)
     assert isinstance(clamp_popup_to_work_area(menu, QPoint(99999, 99999)), QPoint)
 
@@ -832,7 +832,7 @@ def test_clamp_falls_back_to_the_primary_screen_when_the_cursor_is_off_screen(wo
 def test_nudge_leaves_an_interior_popup_alone(work_area, qtbot):
     """nudge_popup_inside_work_area is the post-show counterpart of the clamp and
     must not move a menu that is already comfortably inside."""
-    from PyQt6.QtWidgets import QMenu
+    from PySide6.QtWidgets import QMenu
     popup = QMenu()
     popup.addAction("a")
     qtbot.addWidget(popup)
@@ -847,7 +847,7 @@ def test_nudge_leaves_an_interior_popup_alone(work_area, qtbot):
 def test_nudge_pulls_a_flush_popup_off_the_edge(work_area, qtbot):
     """A tray menu shown by Qt lands flush against the work-area edge; the
     nudge must pull it back in by the margin without otherwise relocating it."""
-    from PyQt6.QtWidgets import QMenu
+    from PySide6.QtWidgets import QMenu
     popup = QMenu()
     popup.addAction("a")
     qtbot.addWidget(popup)
@@ -862,7 +862,7 @@ def test_nudge_keeps_both_edges_inside_a_snug_work_area(work_area, qtbot):
     """When the work area is barely wider than the popup, a full-width margin on
     both edges makes the left/top rules overwrite the right/bottom ones and push
     the popup back out; each axis's margin must shrink to the free space."""
-    from PyQt6.QtWidgets import QMenu
+    from PySide6.QtWidgets import QMenu
     popup = QMenu()
     popup.addAction("x")
     popup.setFixedSize(work_area.width() - 3, 60)
@@ -877,7 +877,7 @@ def test_nudge_keeps_both_edges_inside_a_snug_work_area(work_area, qtbot):
 def test_nudge_is_a_no_op_while_hidden(work_area, qtbot):
     """Called from showEvent, so a hidden popup must return immediately rather
     than moving a window the show is about to place itself."""
-    from PyQt6.QtWidgets import QMenu
+    from PySide6.QtWidgets import QMenu
     popup = QMenu()
     popup.addAction("a")
     qtbot.addWidget(popup)

@@ -1,6 +1,6 @@
 """Tests for ui.widgets.overlay_blocker: the dim must actually paint."""
-from PyQt6.QtCore import QPoint
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QWidget
 
 from ui.widgets.overlay_blocker import OverlayBlocker
 

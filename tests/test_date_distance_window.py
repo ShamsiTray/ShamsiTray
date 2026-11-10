@@ -13,10 +13,10 @@ import datetime
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QColor
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QLabel
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtGui import QColor
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLabel
 
 from config import APP_CONFIG
 from ui.widgets.calendar_switch import CALENDAR_JALALI

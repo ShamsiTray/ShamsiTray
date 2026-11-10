@@ -4,10 +4,10 @@ import re
 
 import jdatetime
 import pytest
-from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt
-from PyQt6.QtGui import QColor, QCursor
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt
+from PySide6.QtGui import QColor, QCursor
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QDialog, QLabel, QStyle, QStyleOptionSlider,
                              QWidget)
 
@@ -115,7 +115,7 @@ def test_rows_align_with_the_header_and_clear_track_and_footer(manager):
     # sail past it).
     assert manager.rows_layout.contentsMargins().bottom() == SCROLL_BOTTOM_PAD_PX
     assert f"margin: 0px 0px {SCROLL_BOTTOM_PAD_PX}px 0px" in manager.scroll_area.styleSheet()
-    from PyQt6.QtWidgets import QStyle, QStyleOptionSlider
+    from PySide6.QtWidgets import QStyle, QStyleOptionSlider
     opt = QStyleOptionSlider()
     sb.initStyleOption(opt)
     thumb = sb.style().subControlRect(QStyle.ComplexControl.CC_ScrollBar, opt,
@@ -691,7 +691,7 @@ def test_manager_edit_shows_prefilled_date_selector(manager):
 
 def test_manager_calendar_add_refreshes_open_manager(tray):
     """2.3: adding an event from the calendar must refresh an open manager."""
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     tray._open_event_manager()
     window = tray.event_manager_window
     try:
@@ -834,7 +834,7 @@ def test_calendar_remove_event_asks_confirmation(tray):
 # --- tray click closes the whole calendar (1.5) ---
 
 def test_tray_click_hides_whole_calendar_even_with_editor_open(tray):
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon
     calendar = tray.calendar_widget
     today = jdatetime.date.today()
     calendar.show()
@@ -1503,7 +1503,7 @@ def test_manager_filter_combo_items_are_centered(manager):
     The role combines the horizontal and vertical alignment bits: a
     horizontal-only value paints an empty band under the last popup option.
     """
-    from PyQt6.QtCore import Qt as QtCoreQt
+    from PySide6.QtCore import Qt as QtCoreQt
     expected = QtCoreQt.AlignmentFlag.AlignHCenter | QtCoreQt.AlignmentFlag.AlignVCenter
     for combo in (manager.month_combo, manager.type_combo):
         assert combo.count() > 1
@@ -1923,7 +1923,7 @@ def test_manager_and_viewer_combos_match_the_working_converter_recipe(manager):
     and go-to-date combos, whose dropdowns render without dead space.
     (The previous TightPopupCombo subclass pinned the view height from
     pre-popup metrics, which itself re-created the dead-space band.)"""
-    from PyQt6.QtWidgets import QComboBox
+    from PySide6.QtWidgets import QComboBox
     for combo in (manager.month_combo, manager.type_combo):
         assert type(combo) is QComboBox
         assert combo.sizeAdjustPolicy() != QComboBox.SizeAdjustPolicy.AdjustToContents

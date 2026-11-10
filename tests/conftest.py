@@ -12,11 +12,11 @@ import os
 import sys
 from pathlib import Path
 
-# Must happen before anything imports PyQt6 / constructs a QApplication.
+# Must happen before anything imports PySide6 / constructs a QApplication.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PyQt6.QtCore import QCoreApplication, QEvent  # noqa: E402 - after the platform env
+from PySide6.QtCore import QCoreApplication, QEvent  # noqa: E402 - after the platform env
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 if str(SRC) not in sys.path:
@@ -55,7 +55,7 @@ def no_stray_network_checks(monkeypatch):
     sandbox-hostile). Tests exercise ``_auto_check_updates`` directly with
     stubbed checkers, so the scheduled call is dropped outright.
     """
-    from PyQt6.QtCore import QTimer
+    from PySide6.QtCore import QTimer
 
     import core.app_controller as controller
 

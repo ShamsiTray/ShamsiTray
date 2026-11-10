@@ -24,9 +24,9 @@ import datetime
 import jdatetime
 from typing import Iterable, Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal, QRegularExpression
-from PyQt6.QtGui import QColor, QPainter, QRegularExpressionValidator, QTextOption
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal, QRegularExpression
+from PySide6.QtGui import QColor, QPainter, QRegularExpressionValidator, QTextOption
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from config import APP_CONFIG
 from utils.date_utils import (days_in_gregorian_month, days_in_jalali_month,
@@ -133,7 +133,7 @@ class DateSelectorRow(YearRangeValidationMixin, QWidget):
     (the distance window splits two rows into «از تاریخ» / «تا تاریخ»).
     """
 
-    changed = pyqtSignal()  # any dimension moved; the picked date may differ
+    changed = Signal()  # any dimension moved; the picked date may differ
 
     ROW_LABEL = "تاریخ:"
     # Geometry of the ``ltr_date_order`` row (the distance window): the
@@ -371,8 +371,8 @@ class GregorianDateSelectorRow(DateSelectorRow):
 
 class EventInputWidget(QWidget):
     """An integrated widget for adding or editing a user event."""
-    saved = pyqtSignal(str, str, bool)  # text, recurrence, remove_after_finish
-    canceled = pyqtSignal()
+    saved = Signal(str, str, bool)  # text, recurrence, remove_after_finish
+    canceled = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

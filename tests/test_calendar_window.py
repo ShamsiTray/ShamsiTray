@@ -2,9 +2,9 @@
 styling, the event editor overlay and the go-to-date popup."""
 import jdatetime
 import pytest
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication
 
 from config import APP_CONFIG, Config
 from ui.windows.calendar_window import DayStyle, PersianCalendarWidget

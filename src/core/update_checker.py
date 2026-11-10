@@ -28,8 +28,8 @@ import sys
 import urllib.parse
 from typing import Optional, Tuple
 
-from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from PySide6.QtCore import QObject, QTimer, QUrl, Signal
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from config import APP_CONFIG
 from utils import holiday_io
@@ -193,19 +193,19 @@ def should_notify(latest_version: str, ignored_version: Optional[str]) -> bool:
 
 
 class UpdateChecker(QObject):
-    app_update_available = pyqtSignal(str, str, str)  # version, installer_url, sha256_hex
-    holidays_updated = pyqtSignal()
-    no_updates = pyqtSignal()  # app current AND holidays current: nothing changed, nothing failed
-    check_failed = pyqtSignal(str)
-    check_concluded = pyqtSignal(bool)  # True when the APP check failed (retry verdict)
+    app_update_available = Signal(str, str, str)  # version, installer_url, sha256_hex
+    holidays_updated = Signal()
+    no_updates = Signal()  # app current AND holidays current: nothing changed, nothing failed
+    check_failed = Signal(str)
+    check_concluded = Signal(bool)  # True when the APP check failed (retry verdict)
     # One signal carrying the WHOLE round's verdict: (app, holidays) using the
     # APP_STATE_* / HOLIDAYS_STATE_* constants. The controller builds its
     # manual-check message from here, so the two halves of a round can never be
     # reported separately or falsely.
-    round_finished = pyqtSignal(str, str)
-    download_progress = pyqtSignal(int, int)  # received bytes, total bytes (-1 if unknown)
-    installer_downloaded = pyqtSignal(str)  # local file path
-    download_failed = pyqtSignal(str)
+    round_finished = Signal(str, str)
+    download_progress = Signal(int, int)  # received bytes, total bytes (-1 if unknown)
+    installer_downloaded = Signal(str)  # local file path
+    download_failed = Signal(str)
 
     def __init__(self, current_data_version: int = 0, parent=None):
         super().__init__(parent)

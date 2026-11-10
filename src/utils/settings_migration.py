@@ -45,7 +45,7 @@ def migrate_from_registry(settings: JsonSettings, legacy=None) -> None:
         return
 
     if legacy is None:
-        from PyQt6.QtCore import QSettings
+        from PySide6.QtCore import QSettings
         legacy = QSettings(APP_CONFIG.COMPANY_NAME, APP_CONFIG.APP_NAME)
 
     migrated: list = []

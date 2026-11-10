@@ -96,7 +96,7 @@ def _log_qt_message(msg_type, context, message) -> None:
     call it: a fatal is routed by raising out of here and terminates the
     process, which cannot be driven end to end through ``qInstallMessageHandler``.
     """
-    from PyQt6.QtCore import QtMsgType
+    from PySide6.QtCore import QtMsgType
 
     # The benign list is a filter for WARNINGS only. Qt prints those strings as
     # warnings when it is discarding a queued message, but the same words can
@@ -112,7 +112,7 @@ def _log_qt_message(msg_type, context, message) -> None:
         QtMsgType.QtFatalMsg: logging.CRITICAL,
     }.get(msg_type, logging.WARNING)
     try:
-        # PyQt6 hands the category over as a str already (a .decode() here
+        # PySide6 hands the category over as a str already (a .decode() here
         # raises). Qt names uncategorized messages "default", which this app
         # logs as qt.general.
         category = context.category if context.category and context.category != "default" else "general"
@@ -134,6 +134,6 @@ def install_qt_message_handler() -> None:
     entirely, and lets fatal messages terminate the process like the default
     handler would.
     """
-    from PyQt6.QtCore import qInstallMessageHandler
+    from PySide6.QtCore import qInstallMessageHandler
 
     qInstallMessageHandler(_log_qt_message)

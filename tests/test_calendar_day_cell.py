@@ -2,9 +2,9 @@
 custom tooltip lifecycle and the add/remove-event context menu."""
 import jdatetime
 import pytest
-from PyQt6.QtCore import QPoint, QRect, Qt
-from PyQt6.QtGui import QAction, QColor, QContextMenuEvent, QCursor, QFontMetrics, QImage, QPainter
-from PyQt6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QAction, QColor, QContextMenuEvent, QCursor, QFontMetrics, QImage, QPainter
+from PySide6.QtWidgets import QApplication, QMenu, QWidget, QWidgetAction
 
 from config import APP_CONFIG
 from tests.qt_mousing import press
@@ -17,6 +17,18 @@ from ui.widgets.menu_widgets import (CenteredTextMenu, MENU_ITEM_PADDING_LEAD,
                                      paint_copied_row_ground)
 from ui.widgets.tooltip import TOOLTIP_DELAY_MS, TONE_MIN_CONTRAST, CustomTooltip
 from utils.ui_helpers import copied_pill_ground, legible_on
+import ui.widgets.calendar_day_cell as _day_cell_module
+
+
+class _StubExecMenu(CenteredTextMenu):
+    """exec() that never blocks, because PySide6 ignores a python override
+    installed directly on the native QMenu class (PyQt6 honors it) and the
+    real modal loop hangs the offscreen suite forever. The stub rides the
+    concrete menu classes the cell builds by name, which resolve python
+    overrides like any python attribute."""
+
+    def exec(self, *args, **kwargs):
+        return None
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -140,8 +152,8 @@ def test_context_menu_requires_date_and_text(cell):
 
 
 def test_context_menu_add_action_emits_after_menu_closes(qtbot, cell, monkeypatch):
-    """The full right-click flow, with QMenu.exec stubbed out (offscreen)."""
-    monkeypatch.setattr(QMenu, "exec", lambda self, pos: None)
+    """The full right-click flow, with exec stubbed out (offscreen)."""
+    monkeypatch.setattr(_day_cell_module, "CenteredTextMenu", _StubExecMenu)
     cell.setText("۵")  # a non-empty label is required too
     add_requested, remove_requested = [], []
     cell.add_event_requested.connect(lambda j: add_requested.append(j))
@@ -253,7 +265,7 @@ def test_context_menu_asks_host_window_to_normalize_hover(qtbot, monkeypatch):
     qtbot.addWidget(cell)
     cell.jalali_date = jdatetime.date(1404, 5, 2)
     cell.setText("۵")
-    monkeypatch.setattr(QMenu, "exec", lambda self, pos: None)
+    monkeypatch.setattr(_day_cell_module, "CenteredTextMenu", _StubExecMenu)
 
     event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5),
                               cell.mapToGlobal(QPoint(5, 5)))
@@ -266,11 +278,22 @@ def test_context_menu_asks_host_window_to_normalize_hover(qtbot, monkeypatch):
 
 @pytest.fixture
 def open_menu(monkeypatch):
-    """Open the day context menu with QMenu.exec stubbed, capturing the menu."""
+    """Open the day context menu with exec stubbed, capturing the menu.
+
+    The stub is a class swap on the module symbol the cell builds menus from:
+    PySide6 ignores a python override on the native QMenu.exec (the real
+    modal loop would hang the suite offscreen), while a python subclass's
+    override is honored."""
     captured = []
 
+    class CapturingExecMenu(_StubExecMenu):
+        def exec(self, *args, **kwargs):
+            captured.append(self)
+            return None
+
+    monkeypatch.setattr(_day_cell_module, "CenteredTextMenu", CapturingExecMenu)
+
     def _open(cell):
-        monkeypatch.setattr(QMenu, "exec", lambda self, pos: captured.append(self))
         event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5),
                                   cell.mapToGlobal(QPoint(5, 5)))
         cell.contextMenuEvent(event)

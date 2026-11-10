@@ -32,9 +32,9 @@ Design notes:
 """
 from typing import List, Optional, Tuple
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QScreen
-from PyQt6.QtWidgets import QApplication, QDialog
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QScreen
+from PySide6.QtWidgets import QApplication, QDialog
 
 from config import APP_CONFIG
 from ui.widgets.confirm_card import ConfirmCard

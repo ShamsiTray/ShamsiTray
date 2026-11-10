@@ -9,9 +9,9 @@ the default QAction, such as items with icons, hover effects, and custom text.
 import math
 from typing import Optional
 
-from PyQt6.QtCore import QRect, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPainterPath
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QWidget
+from PySide6.QtCore import QRect, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPainterPath
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QWidget
 
 from config import APP_CONFIG
 from utils.ui_helpers import (copied_pill_ground, legible_on,
@@ -80,7 +80,7 @@ def paint_device_snapped_hairline(painter: QPainter, rect: QRect, color: QColor,
 
 class HoverWidget(QWidget):
     """Base widget for menu items that handles hover effects."""
-    triggered = pyqtSignal()
+    triggered = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)

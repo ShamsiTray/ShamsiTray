@@ -21,9 +21,9 @@ from html import escape
 from typing import Dict, List, Optional, Tuple
 
 import jdatetime
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (QComboBox, QFrame, QGraphicsOpacityEffect,
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QComboBox, QFrame, QGraphicsOpacityEffect,
                              QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
                              QWidget)
 
@@ -341,6 +341,14 @@ class HolidayViewerWindow(BaseFramelessWindow):
             item = self.rows_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # A rebuilt page must lose its outgoing rows NOW, not whenever
+                # the deferred-delete queue runs - PySide6 keeps a
+                # deleteLater() widget parented (and child-listed) for a whole
+                # event-loop turn, where PyQt6 drops it immediately. hide()
+                # first: setParent(None) alone would promote the orphan to a
+                # stray top-level for the moment before deletion.
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
 
         year = self._current_year()

@@ -1,7 +1,7 @@
 """Clock/rollover tests: midnight scheduling, day rollover, time-change filter."""
 import datetime
 
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 import jdatetime
 

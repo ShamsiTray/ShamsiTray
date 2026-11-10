@@ -16,7 +16,7 @@ This implementation is specific to Windows (WM_TIMECHANGE / WM_SETTINGCHANGE).
 """
 import ctypes.wintypes
 
-from PyQt6.QtCore import QAbstractNativeEventFilter
+from PySide6.QtCore import QAbstractNativeEventFilter
 
 from .logger import setup_logging
 

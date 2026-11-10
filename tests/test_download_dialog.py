@@ -1,6 +1,6 @@
 """Tests for ui.widgets.download_dialog: the themed installer-download card."""
-from PyQt6.QtCore import QRect, Qt
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtWidgets import QApplication
 
 from config import APP_CONFIG
 from tests.qt_mousing import release
@@ -173,8 +173,8 @@ def test_message_label_height_fits_its_wrapped_text(qtbot):
 
 def test_drag_from_blank_surface_moves_dialog(qtbot):
     """Dragging the blank card tracks the cursor 1:1 (unclamped)."""
-    from PyQt6.QtCore import QPoint, QPointF, QEvent
-    from PyQt6.QtGui import QMouseEvent
+    from PySide6.QtCore import QPoint, QPointF, QEvent
+    from PySide6.QtGui import QMouseEvent
     dialog = DownloadUpdateDialog("1.4.0")
     qtbot.addWidget(dialog)
     dialog.resize(340, 180)

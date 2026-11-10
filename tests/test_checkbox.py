@@ -1,6 +1,6 @@
 """Tests for ui.widgets.checkbox: the FontAwesome custom checkboxes used in
 the tray menu and the event editor."""
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from config import APP_CONFIG
 from tests.qt_mousing import press, release

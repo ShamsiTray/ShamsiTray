@@ -9,9 +9,9 @@ Windows ignore border-radius styling and appear as rectangles with sharp corners
 `HoverTooltipMixin` is the widget half: a widget that mixes it in gets the
 themed tooltip on hover instead of Qt's own.
 """
-from PyQt6.QtCore import Qt, QPoint, QTimer
-from PyQt6.QtGui import QCursor
-from PyQt6.QtWidgets import QLabel, QPushButton, QWidget, QVBoxLayout, QApplication
+from PySide6.QtCore import Qt, QPoint, QTimer
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QLabel, QPushButton, QWidget, QVBoxLayout, QApplication
 
 from config import APP_CONFIG
 from utils.ui_helpers import copied_pill_ground, legible_on
