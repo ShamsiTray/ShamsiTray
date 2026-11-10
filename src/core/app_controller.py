@@ -30,7 +30,7 @@ from ui.windows.event_manager_window import EventManagerWindow
 from ui.windows.holiday_viewer_window import HolidayViewerWindow
 from ui.windows.theme_gallery_window import ThemeGalleryWindow
 from ui.widgets.tray_menu import build_tray_menu
-from ui.widgets.confirm_dialog import ConfirmDialog
+from ui.widgets.confirm_dialog import ConfirmDialog, pin_dialog_wrappers
 from ui.widgets.download_dialog import DownloadUpdateDialog
 from core.update_checker import (
     APP_STATE_CURRENT,
@@ -611,6 +611,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                 actions=[("دانلود", "accent"),
                          ("نادیده گرفتن", "danger"),
                          ("بعداً یادآوری کن", "ghost")])
+            pin_dialog_wrappers(dialog)
             self._active_update_popup = dialog
             # The shared present-tail; the reference above is what lets a
             # manual arrival raise the open popup while it runs.
@@ -667,6 +668,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # another - the exact overflow the narrowing exists to avoid.
         screen = self._tray_screen()
         dialog = DownloadUpdateDialog(version, screen=screen)
+        pin_dialog_wrappers(dialog)
         dialog.adjustSize()
         center_on_screen(dialog, screen)
         dialog.canceled.connect(self.update_checker.cancel_download)

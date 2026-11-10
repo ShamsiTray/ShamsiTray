@@ -41,6 +41,27 @@ from ui.widgets.confirm_card import ConfirmCard
 from utils.ui_helpers import FramelessDragMixin, HoverDriverMixin
 
 
+_DIALOG_WRAPPERS: List["ConfirmDialog"] = []
+
+
+def pin_dialog_wrappers(*dialogs: "ConfirmDialog") -> None:
+    """Keep the wrapper of a handed-over dialog until the process ends.
+
+    The static flows (ask/choose/notify) and the controller's directly built
+    prompts drop their dialog reference the moment the modal run returns, so
+    the C++ side dies mid-run. Under PySide 6.12 that exact deletion is what
+    the interpreter's finalization then trips over: an access violation with
+    no Python frame at process exit, after all the work already completed
+    (0xC0000005 / 0xC0000409, ~40% of exits here). The deletion is safe when
+    it happens inside QApplication's own widget sweep at teardown - holding
+    the wrapper parks it for exactly that sweep - and the pytest-qt-managed
+    shape (qtbot.addWidget, closed + deleteLater'd by the plugin) proves the
+    other deletion paths bother nothing. A handful of wrappers per session,
+    pinned only until process end.
+    """
+    _DIALOG_WRAPPERS.extend(dialogs)
+
+
 class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
     """A themed modal ask: icon badge, title, short message, detail box, buttons.
 
@@ -188,6 +209,7 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         dialog = ConfirmDialog(parent, title, message, detail=detail,
                                confirm_text=confirm_text, cancel_text=cancel_text,
                                danger=danger, glyph=glyph, width=width)
+        pin_dialog_wrappers(dialog)
         return dialog.exec_centered(parent, screen) == QDialog.DialogCode.Accepted
 
     @staticmethod
@@ -205,6 +227,7 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         """
         dialog = ConfirmDialog(parent, title, message, danger=danger, detail=detail,
                                glyph=glyph, actions=actions, width=width)
+        pin_dialog_wrappers(dialog)
         dialog.exec_centered(parent, screen)
         return dialog.choice
 
@@ -245,6 +268,7 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         dialog = ConfirmDialog(parent, title, message, detail=detail, danger=danger,
                                glyph=glyph, width=width,
                                actions=[(button_text, "danger" if danger else "accent")])
+        pin_dialog_wrappers(dialog)
         ConfirmDialog._active_notice = dialog
         ConfirmDialog._active_notice_key = key
         try:
