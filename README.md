@@ -58,10 +58,6 @@ ShamsiTray is a lightweight Persian (Jalali/Shamsi) calendar app for Windows tha
 - Right-clicking on the year at the top of the calendar popup allows you to use the feature "Go To Date".
 - Left-clicking on the results in the date converter window copies them.
 
-## 🐛 Known Issues
-
-- Tray icon for the date **23** slightly exceed bounds, though it’s barely noticeable.
-
 ## 📝 Notes
 The concept of this app was inspired by the software [LeoMoon JalaliTray](https://leomoon.com/downloads/desktop-apps/leomoon-jalalitray/), but I found it lacking in features, so I kept adding more until I ended up with **ShamsiTray**. The calendar popup UI was inspired by [Widgetify](https://widgetify.ir/).
 

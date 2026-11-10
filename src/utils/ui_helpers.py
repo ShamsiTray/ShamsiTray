@@ -555,17 +555,28 @@ class YearRangeValidationMixin:
         self.year_input.setStyleSheet(builder(palette, **kwargs))
 
 
+# Font em relative to the tray pixmap's side. Two Vazirmatn bold digits advance
+# ~1.156 em, so the ratio must stay under ~0.87 or the pair overflows the canvas:
+# the point-size days (26pt on a 38px canvas) converted to ~34.7px em at 96dpi and
+# clipped both digits' outer tails. 0.868 is the widest no-damage rendering - 0.16px
+# of sub-pixel slack - which reads full-bleed without losing a single drawn pixel.
+TRAY_GLYPH_TO_ICON_RATIO = 0.868
+
+
 def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
     """
     Creates a square QPixmap with the given day number drawn in the center.
 
     This function handles DPI scaling to ensure the icon looks crisp on
-    high-resolution displays.
+    high-resolution displays: the glyph em rides the pixmap side in pixels
+    (TRAY_GLYPH_TO_ICON_RATIO), never a point size, so the logical-DPI
+    conversion cannot overflow the canvas on either DPI branch.
     """
     screen = QApplication.primaryScreen()
     dpi = screen.logicalDotsPerInch() if screen else 96
 
-    icon_size, font_size = (36, 20) if dpi >= 110 else (38, 26)
+    icon_size = 36 if dpi >= 110 else 38
+    font_px = round(icon_size * TRAY_GLYPH_TO_ICON_RATIO)
 
     pixmap = QPixmap(icon_size, icon_size)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -575,7 +586,10 @@ def create_tray_pixmap(day_str: str, color_hex: str) -> QPixmap:
         return pixmap
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor(color_hex))
-    painter.setFont(QFont(APP_CONFIG.FONT_FAMILY, font_size, QFont.Weight.Bold))
+    font = QFont(APP_CONFIG.FONT_FAMILY)
+    font.setPixelSize(font_px)
+    font.setBold(True)
+    painter.setFont(font)
 
     painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, day_str)
     painter.end()

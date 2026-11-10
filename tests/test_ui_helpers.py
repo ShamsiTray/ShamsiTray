@@ -3,15 +3,18 @@ mixin (shared by every frameless surface), tray pixmaps, combo fitting and
 the shared stylesheet builders."""
 import pytest
 from PySide6.QtCore import QPoint, QPointF, QRect, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontInfo, QFontMetrics, QPainter, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
                              QWidget)
 
 from config import APP_CONFIG
 from themes import THEMES
 from tests.qt_mousing import press, release
+from utils.asset_loader import load_fonts
+from utils.date_utils import to_persian_digits
 from utils.ui_helpers import (COPIED_WASH_ALPHA, ERROR_RED_DARK,
                               ERROR_RED_MIN_CONTRAST, MENU_EDGE_MARGIN,
+                              TRAY_GLYPH_TO_ICON_RATIO,
                               DigitsFirstCombo, FramelessDragMixin,
                               ReservedRailScrollArea, _error_floor_walk,
                               accent_button_stylesheet, center_combo_items,
@@ -280,6 +283,55 @@ def test_create_tray_pixmap_draws_day_text():
             if (image.pixel(x, y) >> 24) & 0xFF > 0:  # QRgb alpha byte
                 painted += 1
     assert painted > 0, "the day number must be painted onto the pixmap"
+
+
+def _paint_day(day_str, icon, em):
+    pixmap = QPixmap(icon, icon)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QColor("#FFFFFF"))
+    font = QFont(APP_CONFIG.FONT_FAMILY)
+    font.setPixelSize(em)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, day_str)
+    painter.end()
+    return pixmap
+
+
+def _tray_intended_ink_width(day_str, icon, em):
+    """Ink width the day would need, measured 4x wide so nothing can clip."""
+    pm = _paint_day(day_str, icon * 4, round(em * 4))
+    image = pm.toImage()
+    lo, hi = icon * 4, -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if (image.pixel(x, y) >> 24) & 0xFF > 60:  # QRgb alpha byte
+                lo = min(lo, x)
+                hi = max(hi, x)
+    return (hi - lo + 1) / 4 if hi >= 0 else 0
+
+
+def test_create_tray_pixmap_two_digit_days_stay_within_the_canvas(qapp):
+    """Pins TRAY_GLYPH_TO_ICON_RATIO: the ratio-chosen em must leave the widest
+    pair of digits at most sub-pixel ink beyond the canvas (the point-size era
+    clipped 23's outer tails), and the produced pixels must be the ratio em.
+    """
+    load_fonts()
+    if QFontInfo(QFont(APP_CONFIG.FONT_FAMILY)).family() != APP_CONFIG.FONT_FAMILY:
+        pytest.skip("the bundled font is not available on this Qt platform")
+    for icon in (38, 36):
+        em = round(icon * TRAY_GLYPH_TO_ICON_RATIO)
+        for day in range(1, 32):
+            intended = _tray_intended_ink_width(to_persian_digits(day), icon, em)
+            assert intended <= icon + 0.6, (
+                f"em {em} on a {icon}px canvas needs {intended:.2f}px for day {day}")
+    production = create_tray_pixmap("۲۳", "#FFFFFF").toImage()
+    replica = _paint_day("۲۳", production.width(),
+                         round(production.width() * TRAY_GLYPH_TO_ICON_RATIO))
+    assert production == replica.toImage()
+
 
 
 # --- combo helpers ---------------------------------------------------------------
