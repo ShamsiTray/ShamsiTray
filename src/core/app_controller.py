@@ -694,6 +694,11 @@ class SystemTrayIcon(QSystemTrayIcon):
             # or a failure does not re-emit `canceled` (Qt's default
             # closeEvent -> reject() chain would have fired it every time).
             dialog.dismiss()
+            # Every end of the card (success, failure, user cancel) funnels
+            # here, so its native widgets are released at the next event-loop
+            # turn - the pinned wrapper stays behind as the inert shell
+            # pin_dialog_wrappers keeps for the teardown sweep.
+            dialog.deleteLater()
 
     def _on_installer_downloaded(self, path: str):
         """Close the progress card and ask whether to run the installer now.

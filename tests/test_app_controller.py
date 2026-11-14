@@ -516,6 +516,9 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
         def dismiss(self):
             self.dismissed = True
 
+        def deleteLater(self):
+            self.deleted = True
+
     monkeypatch.setattr(controller_module, "DownloadUpdateDialog", FakeDialog)
     fake_geo = QRect(2000, 0, 1920, 1040)
     fake_screen = _FakeScreen(fake_geo)
@@ -552,8 +555,10 @@ def test_download_update_wires_dialog_and_installer(tray, monkeypatch):
     # can never disagree about which work area they serve.
     assert screen_calls == [1]
     assert tray._download_dialog.screen == fake_screen
+    card = tray._download_dialog
     tray._close_download_dialog()
     assert tray._download_dialog is None
+    assert card.deleted  # the closed card's widgets are released at its end
 
 
 def test_download_progress_forwards_to_dialog(tray):
@@ -2407,6 +2412,9 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
         def dismiss(self):
             self.dismissed = True
 
+        def deleteLater(self):
+            self.deleted = True
+
     dialog = FakeDialog("1.4.1")
     fake_geo = QRect(2000, 0, 1920, 1040)
     fake_screen = _FakeScreen(fake_geo)
@@ -2427,5 +2435,6 @@ def test_download_update_rejected_request_closes_dialog(tray, monkeypatch):
     assert dialog.pos == (fake_geo.center().x() - 340 // 2,
                           fake_geo.center().y() - 120 // 2)
     assert dialog.shown and dialog.dismissed
+    assert dialog.deleted  # the closed card's widgets are released at its end
     assert dialog.screen == tray._tray_screen()
     assert tray._download_dialog is None
