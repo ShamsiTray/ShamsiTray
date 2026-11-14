@@ -227,3 +227,36 @@ def hold_static_dialogs(monkeypatch):
     _HELD_DIALOGS[:] = [dialog for dialog in _HELD_DIALOGS
                         if id(dialog) not in marked_ids
                         and shiboken6.isValid(dialog)]
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Tear Qt down HERE, while every Python frame is still alive.
+
+    pytest-qt keeps the session QApplication in a module global, so under
+    PySide 6.12 its destructor only runs during interpreter finalization -
+    and destroying the surviving widgets from there dispatches into a
+    Python state that is already gone: the suite exits fail-fast after it
+    has fully passed. The same teardown at session end deletes every
+    remaining top-level widget and drops the plugin's hold on the app, so
+    the C++ side dies inside a living interpreter instead. Whatever a late
+    reference still pins is the interpreter's problem exactly as it always
+    was; the widgets - the crash's fuel - are not.
+    """
+    import gc
+
+    import pytestqt.plugin as qt_plugin
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in list(app.topLevelWidgets()):
+        try:
+            widget.deleteLater()
+        except RuntimeError:
+            pass  # this widget's C++ side is already gone
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_plugin._qapp_instance = None
+    del app
+    gc.collect()

@@ -290,6 +290,17 @@ exclude addWidget'd dialogs (it prunes them from the hold on addWidget):
 pytest-qt closes every tracked widget at its own teardown, and a wrapper held
 past that close turns `w.close()` into a RuntimeError on a dead shell.
 
+At session end a `pytest_sessionfinish` hook in conftest tears Qt down itself:
+pytest-qt pins the session QApplication in a module global, so under PySide
+6.12 its destructor used to run during interpreter finalization and destroy
+the surviving widgets there — a fail-fast exit (0xC0000409, no Python frame)
+after the whole suite had already passed, present since the PySide6 port and
+absent under the PyQt6 tree it replaced (bisected). The hook deleteLater's
+every remaining top-level widget, flushes the deferred deletes, and drops the
+plugin's `_qapp_instance` hold, so the C++ side dies inside a living
+interpreter instead; whatever a late reference still pins to the app is
+unchanged.
+
 Test modules (in `tests/`): every module of the app has a dedicated file —
 persistence/settings: `json_settings`, `settings_migration`, `event_io`,
 `holiday_io`, `event_service`; core: `update_checker` (pure helpers + full
