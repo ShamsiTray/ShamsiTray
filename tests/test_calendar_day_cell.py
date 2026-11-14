@@ -151,18 +151,25 @@ def test_context_menu_requires_date_and_text(cell):
     assert cell._context_menu_open is False
 
 
-def test_context_menu_add_action_emits_after_menu_closes(qtbot, cell, monkeypatch):
-    """The full right-click flow, with exec stubbed out (offscreen)."""
-    monkeypatch.setattr(_day_cell_module, "CenteredTextMenu", _StubExecMenu)
-    cell.setText("۵")  # a non-empty label is required too
-    add_requested, remove_requested = [], []
-    cell.add_event_requested.connect(lambda j: add_requested.append(j))
-    cell.remove_event_requested.connect(lambda j: remove_requested.append(j))
+def test_context_menu_add_action_emits_after_menu_closes(qtbot, cell, open_menu):
+    """The full right-click flow, with exec stubbed out (offscreen).
 
-    event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5),
-                              cell.mapToGlobal(QPoint(5, 5)))
-    cell.contextMenuEvent(event)
+    The add row is the add editor's opener, so activating it must emit the
+    cell's date - deferred through the 50ms after-close timer, never
+    synchronously."""
+    cell.setText("۵")  # a non-empty label is required too
+    menu = open_menu(cell)
     assert cell._context_menu_open is False  # reset after exec returns
+
+    add_widget = next(a.defaultWidget() for a in menu.actions()
+                      if getattr(a, "defaultWidget", lambda: None)() is not None
+                      and hasattr(a.defaultWidget(), "label")
+                      and a.defaultWidget().label.text() == "افزودن رویداد")
+    received = []
+    cell.add_event_requested.connect(lambda j: received.append(j))
+    with qtbot.waitSignal(cell.add_event_requested, timeout=2000) as blocker:
+        add_widget.triggered.emit()
+    assert blocker.args == [cell.jalali_date]
 
 
 def test_context_menu_without_user_event_offers_only_adding(qtbot, cell, open_menu):
