@@ -233,9 +233,9 @@ pytest
 - Icon: `assets/images/icons/icon.ico`
 - Assets: only runtime files (`assets/fonts/`, `assets/data/holidays.json`,
   `assets/images/icons/icon.ico`, `assets/images/welcome.gif`,
-  `assets/licenses/THIRD-PARTY-NOTICES.txt` → bundle root: the bundled Qt
-  6.12 runtime is LGPL-3.0, and redistributing its binaries must carry the
-  license notice and texts);
+  `THIRD-PARTY-NOTICES.txt` → bundle root: the bundled Qt 6.12 runtime is
+  LGPL-3.0, and redistributing its binaries must carry the license notice
+  and texts);
   PSDs/LogoEvolution/screenshots/badges are NOT bundled
 - Version resource: `build/details.txt`
 - Pathex includes `src/`
