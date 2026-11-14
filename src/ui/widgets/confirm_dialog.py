@@ -41,10 +41,10 @@ from ui.widgets.confirm_card import ConfirmCard
 from utils.ui_helpers import FramelessDragMixin, HoverDriverMixin
 
 
-_DIALOG_WRAPPERS: List["ConfirmDialog"] = []
+_DIALOG_WRAPPERS: List[QDialog] = []
 
 
-def pin_dialog_wrappers(*dialogs: "ConfirmDialog") -> None:
+def pin_dialog_wrappers(*dialogs: QDialog) -> None:
     """Keep the wrapper of a handed-over dialog until the process ends.
 
     The static flows (ask/choose/notify) and the controller's directly built
@@ -56,8 +56,13 @@ def pin_dialog_wrappers(*dialogs: "ConfirmDialog") -> None:
     it happens inside QApplication's own widget sweep at teardown - holding
     the wrapper parks it for exactly that sweep - and the pytest-qt-managed
     shape (qtbot.addWidget, closed + deleteLater'd by the plugin) proves the
-    other deletion paths bother nothing. A handful of wrappers per session,
-    pinned only until process end.
+    other deletion paths bother nothing.
+
+    Holding is retention of the Python WRAPPER only: the native widgets are
+    released at their flow's own end (``exec_centered`` schedules the
+    deleteLater once the modal loop has returned; the download card is
+    deleted by the controller's dismiss), the pytest-qt-proven mid-run path,
+    so a long session accrues inert wrappers - not widget trees.
     """
     _DIALOG_WRAPPERS.extend(dialogs)
 
@@ -185,7 +190,8 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
     # --- ready-made flows -------------------------------------------------------
 
     def exec_centered(self, parent=None, screen=None):
-        """The shared tail of every dialog flow: size, center, run modally.
+        """The shared tail of every dialog flow: size, center, run modally,
+        then release the native widgets.
 
         Callers that must keep a reference to the dialog itself (the update
         popup raises it when a manual check lands while it is up) build it by
@@ -194,10 +200,19 @@ class ConfirmDialog(HoverDriverMixin, FramelessDragMixin, ConfirmCard, QDialog):
         are presented cannot diverge between them. ``screen`` names the work
         area for a parentless run (the tray's screen, for the tray-owned
         family). Returns the QDialog exec() result code.
+
+        The deleteLater after exec is the retention contract's other half:
+        the modal run is over, so the native widgets are gone at the next
+        event-loop turn and only the pinned wrapper (see
+        ``pin_dialog_wrappers``) survives as an inert shell the teardown
+        sweep disposes safely - bounded memory without giving up the
+        exit-crash protection.
         """
         self._refit()
         self.center_over_parent(parent, screen)
-        return self.exec()
+        result = self.exec()
+        self.deleteLater()
+        return result
 
     @staticmethod
     def ask(parent, title: str, message: str, *, detail: str = "",

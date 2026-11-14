@@ -18,7 +18,7 @@ from utils.ui_helpers import contrast_ratio
 from ui.windows.base_window import BaseFramelessWindow
 from ui.windows.calendar_window import PersianCalendarWidget
 from ui.widgets.confirm_card import ConfirmCard
-from ui.widgets.confirm_dialog import ConfirmDialog
+from ui.widgets.confirm_dialog import ConfirmDialog, _DIALOG_WRAPPERS
 from ui.widgets.confirm_overlay import ConfirmOverlay
 from ui.widgets.tooltip import CustomTooltip
 from ui.windows.event_manager_window import (AUTO_DELETE_MARKER,
@@ -1194,17 +1194,31 @@ def test_confirm_dialog_static_flows_go_through_the_shared_tail(qtbot, monkeypat
     The sizing/centering tail used to be duplicated per flow, so a change to
     how dialogs are shown could land in one flow and silently miss another -
     or in a hand-built dialog that has to keep its own reference (the update
-    popup). exec_centered() is that single tail."""
+    popup). exec_centered() is that single tail.
+
+    The dialogs must also land in the app-level pin list: that list IS the
+    exit-crash protection, and the suite's hold fixture deliberately keeps
+    clear of pinned dialogs, so asserting it here is the only thing that
+    catches ask/choose/notify dropping their pin_dialog_wrappers call."""
     calls = []
+    built = []
+    real_init = ConfirmDialog.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        built.append(self)
 
     def fake_exec_centered(self, parent=None, screen=None):
         calls.append(parent)
         return int(QDialog.DialogCode.Accepted)
 
+    monkeypatch.setattr(ConfirmDialog, "__init__", tracking_init)
     monkeypatch.setattr(ConfirmDialog, "exec_centered", fake_exec_centered)
     assert ConfirmDialog.ask(None, "ت", "م") is True
     ConfirmDialog.choose(None, "ت", "م", actions=[("یک", "accent")])
-    assert calls == [None, None]
+    ConfirmDialog.notify(None, "ت", "م", key="test/notice")
+    assert calls == [None, None, None]
+    assert built and all(d in _DIALOG_WRAPPERS for d in built)
 
 
 def test_confirm_dialog_modality_follows_the_parent(qtbot):

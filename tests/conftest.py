@@ -186,9 +186,16 @@ def hold_static_dialogs(monkeypatch):
     them at its own teardown, and holding their wrappers turns that close into a
     RuntimeError on a dead shell - the parent chain dies mid-run either way,
     so there is nothing left for the interpreter to trip over.
+
+    Dialogs the production code pinned itself (the static flows and the
+    controller's prompts, via pin_dialog_wrappers) stay out of the hold too:
+    the app-level list retains them for the whole session, and duplicating
+    that retention here would mask a dropped production pin - the static-flow
+    test asserts the app list directly instead (test_new_windows.py).
     """
     from pytestqt.qtbot import QtBot
 
+    import ui.widgets.confirm_dialog as confirm_dialog_module
     from ui.widgets.confirm_dialog import ConfirmDialog
 
     # Identity keys, not references: pytest-qt resolves its weakrefs to close
@@ -218,15 +225,18 @@ def hold_static_dialogs(monkeypatch):
     yield
     import shiboken6
 
-    # Drop both the wrappers pytest-qt manages (their C++ side is already gone
-    # by now, deleted mid-run, and holding them would trip its close pass) and
-    # any C++-deleted shells the rest of the session produced. What survives is
-    # exactly the static-flow set the interpreter cannot tear down safely.
-    # Two live objects cannot share an id, and a held dialog keeps its id while
-    # it is alive, so an id reissued to some new widget can never match here.
+    # Drop the wrappers pytest-qt manages (their C++ side is already gone
+    # by now, deleted mid-run, and holding them would trip its close pass),
+    # any C++-deleted shells the rest of the session produced, and everything
+    # production pinned itself (the app-level list owns that retention). What
+    # survives is exactly the un-pinned set the interpreter cannot tear down
+    # safely. Two live objects cannot share an id, and a held dialog keeps its
+    # id while it is alive, so an id reissued to some new widget can never
+    # match here.
     _HELD_DIALOGS[:] = [dialog for dialog in _HELD_DIALOGS
                         if id(dialog) not in marked_ids
-                        and shiboken6.isValid(dialog)]
+                        and shiboken6.isValid(dialog)
+                        and dialog not in confirm_dialog_module._DIALOG_WRAPPERS]
 
 
 def pytest_sessionfinish(session, exitstatus):
