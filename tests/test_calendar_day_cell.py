@@ -169,6 +169,7 @@ def test_context_menu_add_action_emits_after_menu_closes(qtbot, cell, open_menu)
     cell.add_event_requested.connect(lambda j: received.append(j))
     with qtbot.waitSignal(cell.add_event_requested, timeout=2000) as blocker:
         add_widget.triggered.emit()
+        assert received == []  # deferred: must not emit synchronously
     assert blocker.args == [cell.jalali_date]
 
 
