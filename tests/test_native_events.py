@@ -62,6 +62,35 @@ def test_dispatcher_message_type_is_also_watched():
     assert seen == [1]
 
 
+def test_pyside6_qbytearray_event_types_are_watched():
+    """PySide6 hands the filter a QByteArray event type, not a str.
+
+    The production path: a str-only compare never matched either watched
+    message under the port, so the callbacks never ran. The str tests above
+    keep covering the ctypes parsing; this one pins the binding's own type.
+    """
+    from PySide6.QtCore import QByteArray
+
+    seen = []
+    filt = TimeChangeEventFilter(lambda: seen.append(1),
+                                 on_setting_change_callback=seen.append)
+    msg, section_buf, addr = _setting_msg(WM_SETTINGCHANGE, "ImmersiveColorSet")
+    filt.nativeEventFilter(QByteArray(b"windows_generic_MSG"), addr)
+    assert seen == ["ImmersiveColorSet"]
+
+    msg, addr = _win_msg(WM_TIMECHANGE)
+    filt.nativeEventFilter(QByteArray(b"windows_dispatcher_MSG"), addr)
+    assert seen == ["ImmersiveColorSet", 1]
+
+
+def test_pyside6_qbytearray_unrelated_type_is_ignored():
+    from PySide6.QtCore import QByteArray
+
+    filt = TimeChangeEventFilter(lambda: pytest.fail("must not fire"))
+    msg, addr = _win_msg(WM_NOTHING)
+    assert filt.nativeEventFilter(QByteArray(b"some_other_BUS"), addr) == (False, 0)
+
+
 def test_zeroed_message_buffer_is_safe():
     """A pointer to an unexpected/zeroed buffer reads message=0: no fire.
 
