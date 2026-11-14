@@ -82,6 +82,10 @@
    "value": "assets/images/welcome.gif;assets/images/"
   },
   {
+   "optionDest": "datas",
+   "value": "assets/licenses/THIRD-PARTY-NOTICES.txt;."
+  },
+  {
    "optionDest": "pathex",
    "value": "src"
   }
