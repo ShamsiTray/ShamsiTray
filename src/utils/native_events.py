@@ -36,6 +36,23 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
         logger.debug("TimeChangeEventFilter initialized.")
 
     @staticmethod
+    def _event_type_name(eventType) -> str:
+        """The watched-message compare runs on a plain str.
+
+        PySide6 hands ``nativeEventFilter`` a QByteArray event type (PyQt6
+        handed a str), so comparing the object itself against the Python
+        names never matched and neither watched broadcast was ever seen -
+        the tray stayed stale on clock changes and system theme flips.
+        Whatever the binding passes, one string comes out of here.
+        """
+        if isinstance(eventType, str):
+            return eventType
+        try:
+            return bytes(eventType).decode("ascii", "replace")
+        except TypeError:
+            return ""  # an unrecognized event-type object: never watched
+
+    @staticmethod
     def _setting_change_section(lparam: int):
         """The WM_SETTINGCHANGE lParam string ('ImmersiveColorSet', ...), or
         None when it cannot be read as a string.
@@ -68,7 +85,7 @@ class TimeChangeEventFilter(QAbstractNativeEventFilter):
             return None
 
     def nativeEventFilter(self, eventType, message):
-        if eventType in ("windows_generic_MSG", "windows_dispatcher_MSG"):
+        if self._event_type_name(eventType) in ("windows_generic_MSG", "windows_dispatcher_MSG"):
             if not message:
                 return False, 0
             try:
