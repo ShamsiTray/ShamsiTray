@@ -83,7 +83,7 @@
   },
   {
    "optionDest": "datas",
-   "value": "assets/licenses/THIRD-PARTY-NOTICES.txt;."
+   "value": "THIRD-PARTY-NOTICES.txt;."
   },
   {
    "optionDest": "pathex",
