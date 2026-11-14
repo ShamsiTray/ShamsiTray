@@ -332,7 +332,10 @@ Conventions worth keeping when adding tests:
   anything imports PySide6: calling `load_fonts()` with no QApplication yet
   access-violates instead of raising — observed on both the `offscreen` and
   `windows` platforms. `load_fonts()` is guarded to raise instead; `main.py`
-  boots the QApplication first, and the suite never calls it.
+  boots the QApplication first. The suite calls it exactly once —
+  `test_create_tray_pixmap_two_digit_days_stay_within_the_canvas`, whose
+  font-metric assertions need the bundled Vazirmatn metrics and which takes
+  `qapp` so the QApplication already exists.
 - `utils.logger` sets `propagate = False`, so `caplog` stays empty — attach a
   capture handler to the specific module logger instead.
 - `tests/` is a package-free folder but imported as `tests.xxx` by the suite
